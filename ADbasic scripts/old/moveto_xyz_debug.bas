@@ -1,0 +1,97 @@
+'<ADbasic Header, Headerversion 001.001>
+' Process_Number                 = 2
+' Initial_Processdelay           = 3000
+' Eventsource                    = Timer
+' Control_long_Delays_for_Stop   = No
+' Priority                       = High
+' Version                        = 1
+' ADbasic_Version                = 6.2.0
+' Optimize                       = Yes
+' Optimize_Level                 = 1
+' Stacksize                      = 1000
+' Info_Last_Save                 = USUARIO-PC  USUARIO-PC\USUARIO
+'<Header End>
+'process goto: goto_xy by luciano a. masullo
+
+'par_11: number of x pixels
+'par_12: number of y pixels
+
+'fpar_21: x initial position
+'fpar_22: y initial position
+
+'fpar23: x final position
+'fpar24: y final position
+
+'fpar_25: pixeltime
+
+
+#INCLUDE .\data-acquisition.inc
+
+dim currentx, currenty, currentz as float at dm_local
+dim setpointx, setpointy, setpointz as float at dm_local
+dim dx, dy, dz as float at dm_local
+dim Nx,Ny,Nz as long at dm_local
+dim time0, time1 as float at dm_local
+
+
+INIT:
+  
+  time0 = 0
+  time1 = 0
+
+  currentx = ADC(1)
+  currenty = ADC(2)
+  currentz = ADC(6)
+  
+  fpar_8 = currentx
+  fpar_9 = currenty
+  fpar_10 = currentz
+  
+  setpointx = fpar_23 
+  setpointy = fpar_24
+  setpointz = fpar_25
+  
+  Nx = par_21
+  Ny = par_22
+  Nz = par_23
+ 
+  dx = (setpointx-currentx)/Nx
+  dy = (setpointy-currenty)/Ny
+  dz = (setpointz-currentz)/Nz
+  
+
+EVENT:
+
+  time0 = Read_Timer() 
+  DO 
+    time1 = Read_Timer()
+    
+  UNTIL (Abs(time1 - time0) > fpar_26)
+    
+  currentx = currentx + dx
+  currenty = currenty + dy
+  currentz = currentz + dz
+  
+  if (currentx > POSMAX) then currentx = POSMAX 'check that set x position is not higher than POSMAX
+  if (currentx < POSMIN) then currentx = POSMIN 'check that set x position is not lower than POSMIN
+  
+  if (currenty > POSMAX) then currenty = POSMAX 'check that set x position is not higher than POSMAX
+  if (currenty < POSMIN) then currenty = POSMIN 'check that set x position is not lower than POSMIN
+  
+  if (currentz > POSMAX) then currentz = POSMAX 'check that set x position is not higher than POSMAX
+  if (currentz < POSMIN) then currentz = POSMIN 'check that set x position is not lower than POSMIN
+  
+  fpar_1 = currentx
+  fpar_2 = currenty
+  fpar_3 = currentz
+
+  DAC(1, currentx)
+  DAC(2, currenty)
+  DAC(6, currentz)
+  
+  if ((currentx = setpointx) & (currenty = setpointy)) then End
+  
+
+FINISH:
+  
+
