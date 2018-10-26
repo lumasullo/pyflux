@@ -12,16 +12,18 @@ import matplotlib.pyplot as plt
 import tools
 from PIL import Image
 from tkinter import Tk, filedialog
+import importlib
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 import ADwin
+import lantz.drivers.legacy.andor.ccd as ccd
 import viewbox_tools
 
 
-class ScanWidget(QtGui.QFrame):
+class scanWidget(QtGui.QFrame):
 
     def __init__(self, *args, **kwargs):
 
@@ -36,6 +38,10 @@ class ScanWidget(QtGui.QFrame):
         self.lineROI = None
         self.image = np.zeros((128, 128))
         self.resize(1800, 800)
+        
+        # setup device parameters
+
+        self.setupDevice()
 
         # Create widget where the liveview image will be displayed
 
@@ -223,6 +229,15 @@ class ScanWidget(QtGui.QFrame):
         minfluxDock.addWidget(minfluxWidget)
         dockArea.addDock(minfluxDock)
         
+        # drift correction
+        
+        driftDock = Dock("Drift correction")
+
+        self.driftWidget = driftWidget(self.adw)
+        driftDock.addWidget(self.driftWidget)
+        driftDock.addWidget(self.driftWidget)
+        dockArea.addDock(driftDock)
+        
         # trace measurement
         
         traceDock = Dock("Trace measurement")
@@ -270,9 +285,8 @@ class ScanWidget(QtGui.QFrame):
         
         traceDock.addWidget(traceWidget)
         dockArea.addDock(traceDock, 'above', minfluxDock)
+        dockArea.addDock(driftDock, 'above', traceDock)
         
-
-
         # Viewbox and image item where the liveview will be displayed
 
         self.vb.setMouseMode(pg.ViewBox.RectMode)
@@ -304,10 +318,6 @@ class ScanWidget(QtGui.QFrame):
         # initialize flag for the ADwin process
 
         self.flag = 0
-        
-        # setup device parameters
-
-        self.setupDevice()
 
         # update parameters
 
@@ -954,12 +964,112 @@ class ScanWidget(QtGui.QFrame):
         self.moveTo(x_0, y_0, z_0)
 
         super().closeEvent(*args, **kwargs)
+        
+class driftWidget(QtGui.QFrame):
+    
+    def __init__(self, ADwin, *args, **kwargs):
+
+        super().__init__(*args, **kwargs)
+        
+        imageWidget = pg.GraphicsLayoutWidget()
+        self.vb = imageWidget.addViewBox(row=0, col=0)
+        self.vb.setMouseMode(pg.ViewBox.RectMode)
+        self.img= pg.ImageItem()
+        self.img.translate(-0.5, -0.5)
+        self.vb.addItem(self.img)
+        self.vb.setAspectLocked(True)
+        imageWidget.setAspectLocked(True)
+        
+        self.hist = pg.HistogramLUTItem(image=self.img)
+        self.hist.gradient.loadPreset('thermal')
+        self.hist.vb.setLimits(yMin=0, yMax=66000)
+
+        for tick in self.hist.gradient.ticks:
+            tick.hide()
+        imageWidget.addItem(self.hist, row=0, col=1)
+        
+        grid = QtGui.QGridLayout()
+        self.setLayout(grid)
+        grid.addWidget(imageWidget, 0, 0)
+        
+        self.paramWidget = QtGui.QFrame()
+        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+        
+        grid.addWidget(self.paramWidget, 0, 1)
+        
+        # IR LiveView Button
+
+        self.liveviewButton = QtGui.QPushButton('IR camera LIVEVIEW')
+        self.liveviewButton.setCheckable(True)
+        self.liveviewButton.clicked.connect(self.liveview)
+        
+        self.viewtimer = QtCore.QTimer()
+        self.viewtimer.timeout.connect(self.updateView)
+        
+        subgrid = QtGui.QGridLayout()
+        self.paramWidget.setLayout(subgrid)
+
+        subgrid.addWidget(self.liveviewButton, 0, 1)
+        
+        self.andorLuca = ccd.CCD()
+        cam = 0
+        self.andorLuca.current_camera = self.andorLuca.camera_handle(cam)
+        self.andorLuca.lib.Initialize()
+        self.shape = self.andorLuca.detector_shape
+        self.andorLuca.set_exposure_time(0.100)
+
+        print(self.andorLuca.idn)
+        
+    def liveview(self):
+
+        if self.liveviewButton.isChecked():
+            self.liveviewStart()
+
+        else:
+            self.liveviewStop()
+
+        
+    def liveviewStart(self):
+        
+        idle = 'Camera is idle, waiting for instructions.'
+        if self.andorLuca.status != idle:
+            self.andorLuca.abort_acquisition()
+
+        self.andorLuca.acquisition_mode = 'Run till abort'
+#            self.andor.shutter(0, 1, 0, 0, 0)
+
+        self.andorLuca.start_acquisition()
+        time.sleep(0.5)
+
+        # Initial image
+        self.image = self.andorLuca.most_recent_image16(self.shape)
+
+        self.img.setImage(np.transpose(self.image), autoLevels=False)
+        self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
+
+        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
+
+        self.viewtimer.start(20)
+            
+    def updateView(self):
+        """ Image update while in Liveview mode
+        """
+        try:
+            self.image = self.andor.most_recent_image16(self.shape)
+
+        except:
+            
+            pass
+            
+        
+        
 
 
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-    win = ScanWidget()
+    win = scanWidget()
     win.show()
 
     app.exec_()
