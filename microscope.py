@@ -19,7 +19,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 import ADwin
-import lantz.drivers.legacy.andor.ccd as ccd
+#import lantz.drivers.legacy.andor.ccd as ccd
 import viewbox_tools
 
 
@@ -1012,14 +1012,15 @@ class driftWidget(QtGui.QFrame):
 
         subgrid.addWidget(self.liveviewButton, 0, 1)
         
-        self.andorLuca = ccd.CCD()
-        cam = 0
-        self.andorLuca.current_camera = self.andorLuca.camera_handle(cam)
-        self.andorLuca.lib.Initialize()
-        self.shape = self.andorLuca.detector_shape
-        self.andorLuca.set_exposure_time(0.100)
-
-        print(self.andorLuca.idn)
+#        self.andorLuca = ccd.CCD()
+#        cam = 1
+#        self.andorLuca.current_camera = self.andorLuca.camera_handle(cam)
+#        self.andorLuca.lib.Initialize()
+#        self.shape = self.andorLuca.detector_shape
+#        self.andorLuca.set_image(shape=self.shape)
+#        self.andorLuca.set_exposure_time(0.100)
+#
+#        print(self.andorLuca.idn)
         
     def liveview(self):
 
@@ -1032,37 +1033,52 @@ class driftWidget(QtGui.QFrame):
         
     def liveviewStart(self):
         
-        idle = 'Camera is idle, waiting for instructions.'
-        if self.andorLuca.status != idle:
-            self.andorLuca.abort_acquisition()
+#        idle = 'Camera is idle, waiting for instructions.'
+#        if self.andorLuca.status != idle:
+#            self.andorLuca.abort_acquisition()
+#
+#        self.andorLuca.acquisition_mode = 'Run till abort'
+##            self.andor.shutter(0, 1, 0, 0, 0)
+#
+#        self.andorLuca.start_acquisition()
+#        time.sleep(0.5)
+#
+#        # Initial image
+#        self.image = self.andorLuca.most_recent_image16(self.shape)
+#
+#        self.img.setImage(np.transpose(self.image), autoLevels=False)
+#        self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
+#
+##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
+#
+#        self.viewtimer.start(500)
 
-        self.andorLuca.acquisition_mode = 'Run till abort'
-#            self.andor.shutter(0, 1, 0, 0, 0)
-
-        self.andorLuca.start_acquisition()
-        time.sleep(0.5)
-
-        # Initial image
-        self.image = self.andorLuca.most_recent_image16(self.shape)
-
-        self.img.setImage(np.transpose(self.image), autoLevels=False)
-        self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
-
-        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
-
-        self.viewtimer.start(20)
+        pass
             
     def updateView(self):
         """ Image update while in Liveview mode
         """
         try:
-            self.image = self.andor.most_recent_image16(self.shape)
+#            self.image = self.andorLuca.most_recent_image16(self.shape)
+#            self.img.setImage(self.image)
+#            print('np.max(self.image)', np.max(self.image))
+#            print('np.min(self.image)', np.min(self.image))
+#            print('np.mean(self.image)', np.mean(self.image))
+#            print('np.std(self.image)', np.std(self.image))
+
+            pass
 
         except:
             
             pass
+
+#        self.image = self.andorLuca.most_recent_image16(self.shape)
             
+class minfluxWidget(QtGui.QFrame):
         
+    def __init__(self, ADwin, *args, **kwargs):
+
+        super().__init__(*args, **kwargs)
         
 
 
