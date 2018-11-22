@@ -12,14 +12,14 @@ import matplotlib.pyplot as plt
 import tools
 from PIL import Image
 from tkinter import Tk, filedialog
-import importlib
+import tifffile as tiff
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 import ADwin
-#import lantz.drivers.legacy.andor.ccd as ccd
+from instrumental.drivers.cameras import uc480
 import viewbox_tools
 
 
@@ -137,6 +137,11 @@ class scanWidget(QtGui.QFrame):
         self.moveToEdit = QtGui.QLineEdit('0 0 10')
 
         self.moveToButton.clicked.connect(self.moveToAction)
+        
+        # drift precision measurement
+        
+        self.driftPresMeasButton = QtGui.QPushButton('Drift precision measurement')
+        self.driftPresMeasButton.clicked.connect(self.driftPrecisionMeas)
 
         # scan selection
 
@@ -212,6 +217,7 @@ class scanWidget(QtGui.QFrame):
         subgrid.addWidget(self.moveToLabel, 5, 1)
         subgrid.addWidget(self.moveToEdit, 6, 1)
         subgrid.addWidget(self.moveToButton, 7, 1)
+        subgrid.addWidget(self.driftPresMeasButton, 8, 1)
 
         self.paramWidget.setFixedHeight(500)
         self.paramWidget.setFixedWidth(400)
@@ -365,8 +371,8 @@ class scanWidget(QtGui.QFrame):
 
         btl = self.adw.ADwindir + BTL
 
-        currdir = os.getcwd()
-        process_folder = os.path.join(currdir, "processes")
+        self.currdir = os.getcwd()
+        process_folder = os.path.join(self.currdir, "processes")
 
         process_1 = os.path.join(process_folder, PROCESS_1)
         process_2 = os.path.join(process_folder, PROCESS_2)
@@ -948,7 +954,39 @@ class scanWidget(QtGui.QFrame):
         newRange_µm = self.pxSize * newRange_px
         newRange_µm = np.around(newRange_µm, 2)
         self.scanRangeEdit.setText('{}'.format(newRange_µm))
-
+        
+    def driftPrecisionMeas(self):
+        
+        n = 50 # number of images saved
+        dx = 0.010 # step in µm
+        exptime = '50 ms' # exposure time in ms
+        
+        width = self.driftWidget.uc480.width
+        height = self.driftWidget.uc480.height
+        
+        self.driftPrecisionData = np.zeros((n, height, width), dtype=np.int16)
+        self.targetPos = self.initialPos
+        
+        for i in range(0, n):
+            
+            self.targetPos = self.targetPos + np.array([dx, 0, 0])
+            print(self.targetPos)
+            self.moveTo(*self.targetPos)
+            rawimage = self.driftWidget.uc480.grab_image(exposure_time=exptime)
+            image = np.sum(rawimage, axis=2)
+            self.driftPrecisionData[i, :, :] = image
+            
+            time.sleep(0.050) # wait 50 ms just in case
+            
+        
+            
+        np.save(self.currdir + '\driftdata.npy', self.driftPrecisionData)
+        tiff.imsave(self.currdir + '\driftdata.tif', self.driftPrecisionData)
+            
+        # TO DO: change position in display to actual new position for safety
+        # TO DO: display actual position somwhere in the GUI
+        # TO DO: save driftPrecisionData
+            
     def closeEvent(self, *args, **kwargs):
 
         # Stop running threads
@@ -971,17 +1009,19 @@ class driftWidget(QtGui.QFrame):
 
         super().__init__(*args, **kwargs)
         
+        self.uc480 = uc480.UC480_Camera()
+        
         imageWidget = pg.GraphicsLayoutWidget()
         self.vb = imageWidget.addViewBox(row=0, col=0)
         self.vb.setMouseMode(pg.ViewBox.RectMode)
-        self.img= pg.ImageItem()
+        self.img = pg.ImageItem()
         self.img.translate(-0.5, -0.5)
         self.vb.addItem(self.img)
         self.vb.setAspectLocked(True)
         imageWidget.setAspectLocked(True)
         
         self.hist = pg.HistogramLUTItem(image=self.img)
-        self.hist.gradient.loadPreset('thermal')
+        self.hist.gradient.loadPreset('grey')
         self.hist.vb.setLimits(yMin=0, yMax=66000)
 
         for tick in self.hist.gradient.ticks:
@@ -1044,41 +1084,38 @@ class driftWidget(QtGui.QFrame):
 #        time.sleep(0.5)
 #
 #        # Initial image
-#        self.image = self.andorLuca.most_recent_image16(self.shape)
+        self.rawimage = self.uc480.grab_image(exposure_time='20 ms')
+        self.image = np.sum(self.rawimage, axis=2) # sum r, g, b images
 #
-#        self.img.setImage(np.transpose(self.image), autoLevels=False)
-#        self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
+        self.img.setImage(np.transpose(self.image), autoLevels=False)
+        self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
 #
 ##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
 #
-#        self.viewtimer.start(500)
+        self.viewtimer.start(30)
 
         pass
+    
+    def liveviewStop(self):
+        
+        self.viewtimer.stop()
             
     def updateView(self):
         """ Image update while in Liveview mode
         """
-        try:
-#            self.image = self.andorLuca.most_recent_image16(self.shape)
-#            self.img.setImage(self.image)
-#            print('np.max(self.image)', np.max(self.image))
-#            print('np.min(self.image)', np.min(self.image))
-#            print('np.mean(self.image)', np.mean(self.image))
-#            print('np.std(self.image)', np.std(self.image))
+        self.rawimage = self.uc480.grab_image(exposure_time='20 ms')
+        self.image = np.sum(self.rawimage, axis=2) # sum r, g, b images
 
-            pass
+        self.img.setImage(np.transpose(self.image), autoLevels=False)
+#            self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
 
-        except:
-            
-            pass
-
-#        self.image = self.andorLuca.most_recent_image16(self.shape)
             
 class minfluxWidget(QtGui.QFrame):
         
     def __init__(self, ADwin, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
+        self.PH = picoharp.PicoHarp300()
         
 
 

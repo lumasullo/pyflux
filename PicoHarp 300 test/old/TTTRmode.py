@@ -5,6 +5,10 @@ Created on Thu Nov  1 16:42:34 2018
 @author: Luciano A. Masullo
 """
 
+# Demo for access to PicoHarp 300 Hardware via PHLIB.DLL v 3.0.
+# The program performs a measurement based on hard coded settings.
+# The resulting data is stored in a binary output file.
+#
 # Keno Goertz, PicoQuant GmbH, February 2018
 
 import time
@@ -24,7 +28,7 @@ FLAG_FIFOFULL = 0x0003
 
 # Measurement parameters, these are hardcoded since this is just a demo
 mode = MODE_T3 # set T2 or T3 here, observe suitable Syncdivider and Range!
-binning = 0 # you can change this, meaningful only in T3 mode
+binning = 4 # you can change this, meaningful only in T3 mode
 offset = 0 # you can change this, meaningful only in T3 mode
 tacq = 1000 # Measurement time in millisec, you can change this
 syncDivider = 1 # you can change this, observe mode! READ MANUAL!
@@ -77,7 +81,6 @@ print("PHLIB.DLL version is %s" % libVersion.value.decode("utf-8"))
 if libVersion.value.decode("utf-8") != LIB_VERSION:
     print("Warning: The application was built for version %s" % LIB_VERSION)
 
-#outputfile = open("tttrmode.out", "wb+")
 outputfile = open("tttrmode.out", "wb+")
 
 print("\nMode              : %d" % mode)
