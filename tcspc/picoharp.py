@@ -52,25 +52,20 @@ class PicoHarp300(LibraryDriver):
         # Measurement parameters, these are hardcoded since this is just a demo
         self.mode = MODE_T3 # set T2 or T3 here, observe suitable Syncdivider and Range!
         self.binning = 0 # you can change this, meaningful only in T3 mode
-        self.offset = 0 # you can change this, meaningful only in T3 mode
+        self.offsetValue = 0 # you can change this, meaningful only in T3 mode
         self.tacq = 1000 # Measurement time in millisec, you can change this
-        self.syncDivider = 1 # you can change this, observe mode! READ MANUAL!
+        self.syncDiv = 1 # you can change this, observe mode! READ MANUAL!
         self.CFDZeroCross0 = 10 # you can change this (in mV)
         self.CFDLevel0 = 50 # you can change this (in mV)
         self.CFDZeroCross1 = 10 # you can change this (in mV)
         self.CFDLevel1 = 150 # you can change this (in mV)
         
-        print('Library version {}'.format(self.getLibraryVersion()))
-        self.open()
-        self.initialize()
-        print(self.getHardwareInfo())
-#        hwinfo = self.getHardwareInfo()
-#        print('Device: {}, Part No: {}, Hardware Version: {}'.format(self.getHardwareInfo()))
-#        self.offset = 0
-#        self.resolution = 64.0
-
-        self.maxRes = self.resolution
+        self.maxRes = 4 # max res of PicoHarp 300 in ps
         
+#        print('Library version {}'.format(self.getLibraryVersion()))
+#        self.open()
+#        self.initialize()
+#
 
     def getLibraryVersion(self):
         
@@ -177,10 +172,23 @@ class PicoHarp300(LibraryDriver):
             value = self.countRate1.value
         
         return value
-               
-    def startTTTR(self):
+     
+    @Feat
+    def syncDivider(self):
         
-        outputfile = open("tttr_data.out", "wb+")
+        return self.syncDiv
+      
+    @syncDivider.setter
+    def syncDivider(self, value):
+        
+        self.lib.PH_SetSyncDiv(ctypes.c_int(DEV_NUM), ctypes.c_int(value))
+        self.syncDiv = value
+               
+    def startTTTR(self, outputfilename):
+        
+        print('TCSPC measurement started')
+        
+        outputfile = open(outputfilename, "wb+")
         progress = 0
        
         self.lib.PH_StartMeas(ctypes.c_int(DEV_NUM), ctypes.c_int(self.tacq))
@@ -199,6 +207,7 @@ class PicoHarp300(LibraryDriver):
                 
         
             if self.nactual.value > 0:
+                print(self.nactual.value)
                 # We could just iterate through our buffer with a for loop, however,
                 # this is slow and might cause a FIFO overrun. So instead, we shrinken
                 # the buffer to its appropriate length with array slicing, which gives
@@ -206,15 +215,17 @@ class PicoHarp300(LibraryDriver):
                 # a ctype array which can be written at once to the output file
                 outputfile.write((ctypes.c_uint*self.nactual.value)(*self.buffer[0:self.nactual.value]))
                 progress += self.nactual.value
-                sys.stdout.write("\rProgress:%9u" % progress)
-                sys.stdout.flush()
+#                sys.stdout.write("\rProgress:%9u" % progress)
+#                sys.stdout.flush()
                 
             else:
                 self.lib.PH_CTCStatus(ctypes.c_int(DEV_NUM), byref(self.ctcDone))
                 
                 if self.ctcDone.value > 0: 
                     print("\nDone")
+                    self.numRecords = progress
                     self.stopTTTR()
+                    print('{} events recorded'.format(self.numRecords))
                     meas = False
                     
     def stopTTTR(self):

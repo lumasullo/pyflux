@@ -8,6 +8,16 @@ Created on Mon Dec 14 19:52:49 2015
 import numpy as np
 from PyQt4 import QtCore, QtGui
 import pyqtgraph as pg
+import matplotlib.pyplot as plt
+
+
+def generatePgColormap(cm_name):
+    pltMap = plt.get_cmap(cm_name)
+    colors = pltMap.colors
+    colors = [c + [1.] for c in colors]
+    positions = np.linspace(0, 1, len(colors))
+    pgMap = pg.ColorMap(positions, colors)
+    return pgMap
 
 
 # taken from https://www.mrao.cam.ac.uk/~dag/CUBEHELIX/cubehelix.py
@@ -212,7 +222,6 @@ class Crosshair():
         self.vb.removeItem(self.hLine)
         self.showed = False
 
-
 class ROI(pg.ROI):
 
     def __init__(self, shape, vb, pos, handlePos, handleCenter, *args,
@@ -240,6 +249,49 @@ class ROI(pg.ROI):
     def hide(self, *args, **kwargs):
         super().hide(*args, **kwargs)
         self.label.hide()
+        
+class ROI2(pg.ROI):
+
+    def __init__(self, shape, vb, pos, handlePos, handleCenter, number, *args,
+                 **kwargs):
+
+        pg.ROI.__init__(self, pos, size=(shape, shape), *args, **kwargs)
+        self.addScaleHandle(handlePos, handleCenter, lockAspect=True)
+        vb.addItem(self)
+        
+        self.id = number
+
+        self.label = pg.TextItem()
+        self.label.setPos(self.pos()[0] + self.size()[0],
+                          self.pos()[1] + self.size()[1])
+        self.label.setText('{}x{}'.format(shape, shape))
+        
+        self.number = pg.TextItem()
+        self.number.setPos(self.pos()[0] - 0.0*self.size()[0],
+                          self.pos()[1] + self.size()[1])
+        self.number.setText('{}'.format(self.id))
+        
+        self.sigRegionChanged.connect(self.updateText)
+
+        vb.addItem(self.label)
+        vb.addItem(self.number)
+
+    def updateText(self):
+        
+        self.label.setPos(self.pos()[0] + self.size()[0],
+                          self.pos()[1] + self.size()[1])
+        size = np.round(self.size()).astype(np.int)
+        self.label.setText('{}x{}'.format(int(size[0]), int(size[0])))
+        
+        self.number.setPos(self.pos()[0] - 0.0*self.size()[0],
+                          self.pos()[1] + self.size()[1])
+        size = np.round(self.size()).astype(np.int)
+        self.number.setText('{}'.format(self.id))
+
+    def hide(self, *args, **kwargs):
+        super().hide(*args, **kwargs)
+        self.label.hide()
+        self.number.hide()
 
 
 class cropROI(pg.ROI):

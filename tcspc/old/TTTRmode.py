@@ -28,10 +28,10 @@ FLAG_FIFOFULL = 0x0003
 
 # Measurement parameters, these are hardcoded since this is just a demo
 mode = MODE_T3 # set T2 or T3 here, observe suitable Syncdivider and Range!
-binning = 4 # you can change this, meaningful only in T3 mode
+binning = 2 # you can change this, meaningful only in T3 mode
 offset = 0 # you can change this, meaningful only in T3 mode
 tacq = 1000 # Measurement time in millisec, you can change this
-syncDivider = 1 # you can change this, observe mode! READ MANUAL!
+syncDivider = 4 # you can change this, observe mode! READ MANUAL!
 CFDZeroCross0 = 10 # you can change this (in mV)
 CFDLevel0 = 50 # you can change this (in mV)
 CFDZeroCross1 = 10 # you can change this (in mV)

@@ -9,10 +9,15 @@ import numpy as np
 import time
 import os
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import tools
 from PIL import Image
 from tkinter import Tk, filedialog
 import tifffile as tiff
+import scipy.optimize as opt
+
+
+from threading import Thread
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
@@ -21,6 +26,10 @@ from pyqtgraph.dockarea import Dock, DockArea
 import ADwin
 from instrumental.drivers.cameras import uc480
 import viewbox_tools
+import tcspc.picoharp as picoharp
+import tcspc.Read_PTU as Read_PTU
+import PSF
+import colormaps as cmaps
 
 
 class scanWidget(QtGui.QFrame):
@@ -47,7 +56,7 @@ class scanWidget(QtGui.QFrame):
 
         imageWidget = pg.GraphicsLayoutWidget()
         self.vb = imageWidget.addViewBox(row=0, col=0)
-        self.linePlot = imageWidget.addPlot(row=1, col=0)
+        self.linePlot = imageWidget.addPlot(row=1, col=0, title="Intensity line profile")
         self.linePlot.setLabels(bottom=('nm'),
                                 left=('counts'))
 
@@ -167,13 +176,54 @@ class scanWidget(QtGui.QFrame):
         
         scanParamTitle = QtGui.QLabel('<h2><strong>Scan settings</strong></h2>')
         scanParamTitle.setTextFormat(QtCore.Qt.RichText)
+        
+        # widget with EBP parameters and buttons
+        
+        self.EBPWidget = QtGui.QFrame()
+        self.EBPWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+        
+        EBPparamTitle = QtGui.QLabel('<h2><strong>Excitation Beam Pattern</strong></h2>')
+        EBPparamTitle.setTextFormat(QtCore.Qt.RichText)
+        
+        self.EBProiButton = QtGui.QPushButton('EBP ROI')
+        self.EBProiButton.setCheckable(True)
+        self.EBProiButton.clicked.connect(self.ROImethod)
+
+        self.centerButton = QtGui.QPushButton('get center')
+        self.centerButton.clicked.connect(self.getDoughnutCenter)
+        
+        self.EBPgraphWidget = pg.GraphicsLayoutWidget()
+        self.vbEBP = self.EBPgraphWidget.addViewBox(row=0, col=0)
+#        self.imgEBP = np.zeros((64, 64))
+        
+        self.imgEBP = pg.ImageItem()
+        self.imgEBP.translate(-0.5, -0.5)
+        self.vbEBP.addItem(self.imgEBP)
+        
+        # Get the colormap
+#        colormap = cm.get_cmap("viridis")  # cm.get_cmap("CMRmap")
+        colormap = cm.get_cmap(cmaps.parula) # cm.get_cmap("CMRmap")
+        colormap._init()
+        lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
+        
+#        # Apply the colormap
+        self.imgEBP.setLookupTable(lut)
+        
+        # initialize EBP image
+        initialimage = np.zeros((64, 64))
+        self.imgEBP.setImage(initialimage)
+        
+        self.vbEBP.setAspectLocked(True)
+        imageWidget.setAspectLocked(True)
 
         # GUI layout
 
         grid = QtGui.QGridLayout()
         self.setLayout(grid)
-        grid.addWidget(imageWidget, 0, 1)
+        grid.addWidget(imageWidget, 0, 1, 2, 1)
         grid.addWidget(self.paramWidget, 0, 0)
+        grid.addWidget(self.EBPWidget, 1, 0)
 
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
@@ -219,20 +269,29 @@ class scanWidget(QtGui.QFrame):
         subgrid.addWidget(self.moveToButton, 7, 1)
         subgrid.addWidget(self.driftPresMeasButton, 8, 1)
 
-        self.paramWidget.setFixedHeight(500)
+        self.paramWidget.setFixedHeight(550)
         self.paramWidget.setFixedWidth(400)
+        
+        subgridEBP = QtGui.QGridLayout()
+        self.EBPWidget.setLayout(subgridEBP)
+        
+        subgridEBP.addWidget(EBPparamTitle, 0, 0, 2, 3)
+        
+        subgridEBP.addWidget(self.EBProiButton, 2, 0)
+        subgridEBP.addWidget(self.centerButton, 3, 0)
+        subgridEBP.addWidget(self.EBPgraphWidget, 4, 0)
         
         # Dock Area
         
         dockArea = DockArea()
         
-        grid.addWidget(dockArea, 0, 2)
+        grid.addWidget(dockArea, 0, 2, 2, 1)
         
-        # pulsed-MINFLUX measurement
+        # t-MINFLUX measurement
         
         minfluxDock = Dock("MINFLUX measurement")
-        minfluxWidget = QtGui.QWidget()
-        minfluxDock.addWidget(minfluxWidget)
+        self.minfluxWidget = minfluxWidget()
+        minfluxDock.addWidget(self.minfluxWidget)
         dockArea.addDock(minfluxDock)
         
         # drift correction
@@ -244,54 +303,54 @@ class scanWidget(QtGui.QFrame):
         driftDock.addWidget(self.driftWidget)
         dockArea.addDock(driftDock)
         
-        # trace measurement
+#        # trace measurement (NOT SHOWN AT THE MOMENT)
+#        
+#        traceDock = Dock("Trace measurement")
+#
+#        traceWidget = QtGui.QWidget()
+#        traceGrid = QtGui.QGridLayout()
+#        traceWidget.setLayout(traceGrid)
+#        self.traceGraph = pg.GraphicsLayoutWidget()
+#        self.tracePlot = self.traceGraph.addPlot(0, 0)
+#        
+#        self.linePlot.setLabels(bottom=('s'),
+#                                left=('counts'))
+#        
+#        self.traceROIButton = QtGui.QPushButton('Trace ROI')
+#        self.traceROIButton.setCheckable(True)
+#        self.traceROIButton.clicked.connect(self.traceROImethod)
+#        
+#        self.measureTracesButton = QtGui.QPushButton('Measure traces')
+#        self.measureTracesButton.setCheckable(True)
+#        self.measureTracesButton.clicked.connect(self.measureTraces)
+#        
+#        self.binTimeLabel = QtGui.QLabel('Time bin (µs)')
+#        self.binTimeLabel.setFixedWidth(65)
+#        self.binTimeEdit = QtGui.QLineEdit('100')
+#        self.binTimeEdit.setFixedWidth(45)
+#        
+#        self.totTimeLabel = QtGui.QLabel('Total time (s)')
+#        self.totTimeLabel.setFixedWidth(65)
+#        self.totTimeEdit = QtGui.QLineEdit('0.01')
+#        self.totTimeEdit.setFixedWidth(45)
+#        
+#        self.binTimeEdit.textChanged.connect(self.paramChanged)
+#        self.totTimeEdit.textChanged.connect(self.paramChanged)
+#        
+#        traceGrid.addWidget(self.traceGraph, 0, 0, 1, 5)
+#        traceGrid.addWidget(self.measureTracesButton, 1, 4, 1, 1)
+#        traceGrid.addWidget(self.traceROIButton, 1, 2, 1, 1)
+#        
+#        traceGrid.addWidget(self.binTimeLabel, 1, 0, 1, 1)
+#        traceGrid.addWidget(self.binTimeEdit, 1, 1, 1, 1)
+#        
+#        traceGrid.addWidget(self.totTimeLabel, 2, 0, 1, 1)
+#        traceGrid.addWidget(self.totTimeEdit, 2, 1, 1, 1)
         
-        traceDock = Dock("Trace measurement")
-
-        traceWidget = QtGui.QWidget()
-        traceGrid = QtGui.QGridLayout()
-        traceWidget.setLayout(traceGrid)
-        self.traceGraph = pg.GraphicsLayoutWidget()
-        self.tracePlot = self.traceGraph.addPlot(0, 0)
         
-        self.linePlot.setLabels(bottom=('s'),
-                                left=('counts'))
-        
-        self.traceROIButton = QtGui.QPushButton('Trace ROI')
-        self.traceROIButton.setCheckable(True)
-        self.traceROIButton.clicked.connect(self.traceROImethod)
-        
-        self.measureTracesButton = QtGui.QPushButton('Measure traces')
-        self.measureTracesButton.setCheckable(True)
-        self.measureTracesButton.clicked.connect(self.measureTraces)
-        
-        self.binTimeLabel = QtGui.QLabel('Time bin (µs)')
-        self.binTimeLabel.setFixedWidth(65)
-        self.binTimeEdit = QtGui.QLineEdit('100')
-        self.binTimeEdit.setFixedWidth(45)
-        
-        self.totTimeLabel = QtGui.QLabel('Total time (s)')
-        self.totTimeLabel.setFixedWidth(65)
-        self.totTimeEdit = QtGui.QLineEdit('0.01')
-        self.totTimeEdit.setFixedWidth(45)
-        
-        self.binTimeEdit.textChanged.connect(self.paramChanged)
-        self.totTimeEdit.textChanged.connect(self.paramChanged)
-        
-        traceGrid.addWidget(self.traceGraph, 0, 0, 1, 5)
-        traceGrid.addWidget(self.measureTracesButton, 1, 4, 1, 1)
-        traceGrid.addWidget(self.traceROIButton, 1, 2, 1, 1)
-        
-        traceGrid.addWidget(self.binTimeLabel, 1, 0, 1, 1)
-        traceGrid.addWidget(self.binTimeEdit, 1, 1, 1, 1)
-        
-        traceGrid.addWidget(self.totTimeLabel, 2, 0, 1, 1)
-        traceGrid.addWidget(self.totTimeEdit, 2, 1, 1, 1)
-        
-        
-        traceDock.addWidget(traceWidget)
-        dockArea.addDock(traceDock, 'above', minfluxDock)
-        dockArea.addDock(driftDock, 'above', traceDock)
+#        traceDock.addWidget(traceWidget)
+#        dockArea.addDock(traceDock, 'above', minfluxDock)
+#        dockArea.addDock(driftDock, 'above', traceDock)
         
         # Viewbox and image item where the liveview will be displayed
 
@@ -305,7 +364,9 @@ class scanWidget(QtGui.QFrame):
         # set up histogram for the liveview image
 
         self.hist = pg.HistogramLUTItem(image=self.img)
-        self.hist.gradient.loadPreset('thermal')
+#        self.hist.gradient.loadPreset('thermal')
+        self.lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        self.hist.gradient.setColorMap(self.lut)
         self.hist.vb.setLimits(yMin=0, yMax=66000)
 
         for tick in self.hist.gradient.ticks:
@@ -477,12 +538,12 @@ class scanWidget(QtGui.QFrame):
         self.image = self.blankImage
         self.i = 0
         
-        # parameters for the time trace measurements
-        
-        self.binTime = float(self.binTimeEdit.text())
-        self.totTime = float(self.totTimeEdit.text()) * 10**6 # in µs
-        
-        self.tot_bins = np.int(self.totTime/self.binTime)
+#        # parameters for the time trace measurements
+#        
+#        self.binTime = float(self.binTimeEdit.text())
+#        self.totTime = float(self.totTimeEdit.text()) * 10**6 # in µs
+#        
+#        self.tot_bins = np.int(self.totTime/self.binTime)
 
         # load the new parameters into the ADwin system
 
@@ -556,19 +617,19 @@ class scanWidget(QtGui.QFrame):
         self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
         self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
         
-        # prepare and load time trace parameters
-        
-        self.binTime_adwin = tools.timeToADwin(self.binTime)
-        self.totTime_adwin = tools.timeToADwin(self.totTime)
-        
-        self.trace_data = list(np.array(np.zeros(self.tot_bins), 
-                                                 dtype='int'))
-        
-        self.adw.SetData_Long(self.trace_data, 6, 1, self.tot_bins)
-
-        self.adw.Set_FPar(60, self.tot_bins)
-        self.adw.Set_FPar(65, self.binTime_adwin)
-        self.adw.Set_FPar(67, self.totTime_adwin)
+#        # prepare and load time trace parameters
+#        
+#        self.binTime_adwin = tools.timeToADwin(self.binTime)
+#        self.totTime_adwin = tools.timeToADwin(self.totTime)
+#        
+#        self.trace_data = list(np.array(np.zeros(self.tot_bins), 
+#                                                 dtype='int'))
+#        
+#        self.adw.SetData_Long(self.trace_data, 6, 1, self.tot_bins)
+#
+#        self.adw.Set_FPar(60, self.tot_bins)
+#        self.adw.Set_FPar(65, self.binTime_adwin)
+#        self.adw.Set_FPar(67, self.totTime_adwin)
 
     def moveToParameters(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
@@ -955,6 +1016,52 @@ class scanWidget(QtGui.QFrame):
         newRange_µm = np.around(newRange_µm, 2)
         self.scanRangeEdit.setText('{}'.format(newRange_µm))
         
+    def getDoughnutCenter(self):
+        
+        array = self.roi.getArrayRegion(self.image, self.img)
+        ROIpos_µm = np.array(self.roi.pos()) * self.pxSize
+            
+        print('ROIpos_µm ', ROIpos_µm)
+        
+        xmin = ROIpos_µm[0]
+        xmax = ROIpos_µm[0] + np.shape(array)[0] * self.pxSize
+        
+        ymin = ROIpos_µm[1]
+        ymax = ROIpos_µm[1] + np.shape(array)[1] * self.pxSize
+        
+        x = np.arange(xmin, xmax, self.pxSize)
+        y = np.arange(ymin, ymax, self.pxSize)
+        
+        [Mx, My] = np.meshgrid(x, y)
+        
+        A = np.max(array)
+        x0 = (xmax+xmin)/2
+        y0 = (ymax+ymin)/2
+        d = 0.3 # doughnut parameter in µm
+        bkg = np.mean(array) - np.std(array)
+        
+        initial_guess_D = [A, x0, y0, d, bkg]
+        
+        t0 = time.time()
+        
+        poptD, pcovD = opt.curve_fit(PSF.doughnut2D, (Mx, My), 
+                                     array.ravel(), p0=initial_guess_D)
+        
+        t1 = time.time()
+        t_D = (t1-t0)*1e3 
+        print('doughnut fit took {} ms'.format(np.around(t_D, 2)))
+        
+#        poptD[1:4] = px_nm * poptD[1:4] # get results in nm
+        poptD = np.around(poptD, 2)
+        print('A = {}, (x0, y0) = ({}, {}), d = {}, bkg = {}'.format(*poptD))
+
+        fittedPSF = PSF.doughnut2D((Mx, My), *poptD)
+    
+        fittedPSF_2d = fittedPSF.reshape(np.shape(array))
+        print(np.max(fittedPSF_2d))
+        
+        self.imgEBP.setImage(fittedPSF_2d)
+        
     def driftPrecisionMeas(self):
         
         n = 50 # number of images saved
@@ -1009,6 +1116,9 @@ class driftWidget(QtGui.QFrame):
 
         super().__init__(*args, **kwargs)
         
+        # TO DO: finish gaussian fit calculation and plot
+        # TO DO: fix multithreading
+        
         self.uc480 = uc480.UC480_Camera()
         
         imageWidget = pg.GraphicsLayoutWidget()
@@ -1028,6 +1138,13 @@ class driftWidget(QtGui.QFrame):
             tick.hide()
         imageWidget.addItem(self.hist, row=0, col=1)
         
+        # xy drift graph
+        
+        self.xyPlot = imageWidget.addPlot(row=1, col=0, title="xy drift")
+        self.xyPlot.setLabels(bottom=('x [nm]'),
+                                left=('y  [nm]'))
+        self.xyPlot.showGrid(x=True, y=True)
+        
         grid = QtGui.QGridLayout()
         self.setLayout(grid)
         grid.addWidget(imageWidget, 0, 0)
@@ -1035,6 +1152,9 @@ class driftWidget(QtGui.QFrame):
         self.paramWidget = QtGui.QFrame()
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
+        
+        self.paramWidget.setFixedHeight(320)
+        self.paramWidget.setFixedWidth(200)
         
         grid.addWidget(self.paramWidget, 0, 1)
         
@@ -1047,21 +1167,72 @@ class driftWidget(QtGui.QFrame):
         self.viewtimer = QtCore.QTimer()
         self.viewtimer.timeout.connect(self.updateView)
         
+        # create ROI button
+    
+        self.ROIButton = QtGui.QPushButton('add ROI')
+        self.ROIButton.setCheckable(True)
+        self.ROIButton.clicked.connect(self.createROI)
+        
+        # delete ROI button
+        
+        self.deleteROIsButton = QtGui.QPushButton('delete ROIs')
+        self.deleteROIsButton.setCheckable(True)
+        self.deleteROIsButton.clicked.connect(self.deleteROIs)
+        
+        # buttons and param layout
+        
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
 
-        subgrid.addWidget(self.liveviewButton, 0, 1)
+        subgrid.addWidget(self.liveviewButton, 0, 0)
+        subgrid.addWidget(self.ROIButton, 1, 0)
+        subgrid.addWidget(self.deleteROIsButton, 2, 0)
         
-#        self.andorLuca = ccd.CCD()
-#        cam = 1
-#        self.andorLuca.current_camera = self.andorLuca.camera_handle(cam)
-#        self.andorLuca.lib.Initialize()
-#        self.shape = self.andorLuca.detector_shape
-#        self.andorLuca.set_image(shape=self.shape)
-#        self.andorLuca.set_exposure_time(0.100)
+        # initial ROI parameters        
+        
+        self.NofPixels = 200
+        self.roi = None
+        self.ROInumber = 0
+        self.roilist = []
+        
+        # tracking parameters
+        
+        self.tracking = False
+
+    def createROI(self):
+        
+        ROIpen = pg.mkPen(color='r')
+
+        ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
+        self.roi = viewbox_tools.ROI2(self.NofPixels/2, self.vb, ROIpos,
+                                     handlePos=(1, 0),
+                                     handleCenter=(0, 1),
+                                     scaleSnap=True,
+                                     translateSnap=True,
+                                     pen=ROIpen, number=self.ROInumber)
+        
+        self.ROInumber += 1
+        
+        self.roilist.append(self.roi)
+        
+        self.ROIButton.setChecked(False)
+
+#        else:
 #
-#        print(self.andorLuca.idn)
+#            self.vb.removeItem(self.roi)
+#            self.roi.hide()
+
+    def deleteROIs(self):
         
+        for i in range(len(self.roilist)):
+            
+            self.vb.removeItem(self.roilist[i])
+            self.roilist[i].hide()
+            
+        self.roilist = []
+        self.deleteROIsButton.setChecked(False)
+        self.ROInumber = 0
+            
     def liveview(self):
 
         if self.liveviewButton.isChecked():
@@ -1072,19 +1243,9 @@ class driftWidget(QtGui.QFrame):
 
         
     def liveviewStart(self):
-        
-#        idle = 'Camera is idle, waiting for instructions.'
-#        if self.andorLuca.status != idle:
-#            self.andorLuca.abort_acquisition()
-#
-#        self.andorLuca.acquisition_mode = 'Run till abort'
-##            self.andor.shutter(0, 1, 0, 0, 0)
-#
-#        self.andorLuca.start_acquisition()
-#        time.sleep(0.5)
-#
+
 #        # Initial image
-        self.rawimage = self.uc480.grab_image(exposure_time='20 ms')
+        self.rawimage = self.uc480.grab_image(exposure_time='1 ms')
         self.image = np.sum(self.rawimage, axis=2) # sum r, g, b images
 #
         self.img.setImage(np.transpose(self.image), autoLevels=False)
@@ -1092,7 +1253,7 @@ class driftWidget(QtGui.QFrame):
 #
 ##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
 #
-        self.viewtimer.start(30)
+        self.viewtimer.start(1)
 
         pass
     
@@ -1109,15 +1270,201 @@ class driftWidget(QtGui.QFrame):
         self.img.setImage(np.transpose(self.image), autoLevels=False)
 #            self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
 
+        if self.tracking == True:
+            
+            for i in range(len(self.roilist)):
+                
+            # gaussian fit for every selected particle
+            
+                array = self.roilist[i].getArrayRegion(self.image, self.img)
+                
+            # TO DO: finish gaussian fit calculation and plot
+            # TO DO: fix multithreading
+
             
 class minfluxWidget(QtGui.QFrame):
         
-    def __init__(self, ADwin, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-        self.PH = picoharp.PicoHarp300()
         
+        # create ph object
+        
+        self.ph = picoharp.PicoHarp300()
+        
+        # widget with tcspc parameters
 
+        self.paramWidget = QtGui.QFrame()
+        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+        
+        self.paramWidget.setFixedHeight(420)
+        self.paramWidget.setFixedWidth(200)
+        
+        phParamTitle = QtGui.QLabel('<h2><strong>TCSPC settings</strong></h2>')
+        phParamTitle.setTextFormat(QtCore.Qt.RichText)
+        
+        # widget to display data
+        
+        self.dataWidget = pg.GraphicsLayoutWidget()
+        
+        # Measure button
+
+        self.measureButton = QtGui.QPushButton('Measure')
+        self.measureButton.setCheckable(True)
+        self.measureButton.clicked.connect(self.measure)
+        
+        # Read button
+        
+        self.readButton = QtGui.QPushButton('Read')
+        self.readButton.setCheckable(True)
+        self.readButton.clicked.connect(self.read)
+        
+        # TCSPC parameters
+
+        self.acqtimeLabel = QtGui.QLabel('Acquisition time (s)')
+        self.acqtimeEdit = QtGui.QLineEdit('1')
+        self.resolutionLabel = QtGui.QLabel('Resolution (ps)')
+        self.resolutionEdit = QtGui.QLineEdit('16')
+        self.offsetLabel = QtGui.QLabel('Offset (ns)')
+        self.offsetEdit = QtGui.QLineEdit('0')
+        self.channel0Label = QtGui.QLabel('Input0 (sync) = --- c/s')
+        self.channel1Label = QtGui.QLabel('Input1 (APD) = --- c/s')
+        
+        self.filenameLabel = QtGui.QLabel('File name')
+        self.filenameEdit = QtGui.QLineEdit('filename')
+        
+        # microTime histogram and timetrace
+        
+        self.histPlot = self.dataWidget.addPlot(row=1, col=0, title="microTime histogram")
+        self.histPlot.setLabels(bottom=('ns'),
+                                left=('counts'))
+        
+        self.tracePlot = self.dataWidget.addPlot(row=2, col=0, title="Time trace")
+        self.tracePlot.setLabels(bottom=('ms'),
+                                left=('counts'))
+        
+        # folder
+
+        self.folderLabel = QtGui.QLabel('Folder')
+        self.folderEdit = QtGui.QLineEdit(r'C:\Data')
+        self.browseFolderButton = QtGui.QPushButton('Browse')
+        self.browseFolderButton.setCheckable(True)
+        self.browseFolderButton.clicked.connect(self.loadFolder)
+        
+        # initial directory
+
+        self.initialDir = r'C:\Data'
+        
+        # GUI layout
+
+        grid = QtGui.QGridLayout()
+        self.setLayout(grid)
+        grid.addWidget(self.paramWidget, 0, 0)
+        grid.addWidget(self.dataWidget, 0, 1)
+        
+        subgrid = QtGui.QGridLayout()
+        self.paramWidget.setLayout(subgrid)
+        subgrid.addWidget(phParamTitle, 0, 0, 2, 3)
+
+        subgrid.addWidget(self.acqtimeLabel, 2, 0)
+        subgrid.addWidget(self.acqtimeEdit, 3, 0)
+        subgrid.addWidget(self.resolutionLabel, 4, 0)
+        subgrid.addWidget(self.resolutionEdit, 5, 0)
+        subgrid.addWidget(self.offsetLabel, 6, 0)
+        subgrid.addWidget(self.offsetEdit, 7, 0)
+        subgrid.addWidget(self.channel0Label, 8, 0)
+        subgrid.addWidget(self.channel1Label, 9, 0)
+        
+        subgrid.addWidget(self.filenameLabel, 11, 0)
+        subgrid.addWidget(self.filenameEdit, 12, 0)
+        subgrid.addWidget(self.folderLabel, 13, 0)
+        subgrid.addWidget(self.folderEdit, 14, 0)
+        subgrid.addWidget(self.browseFolderButton, 15, 0)
+        
+        subgrid.addWidget(self.measureButton, 17, 0)
+        subgrid.addWidget(self.readButton, 19, 0)
+        
+    def preparePH(self):
+        
+        self.ph.open()
+        self.ph.initialize()
+        self.ph.setup()
+        
+        self.ph.syncDivider = 4 # this parameter must be set such that the count rate at channel 0 (sync) is equal or lower than 10MHz
+        self.ph.resolution = int(self.resolutionEdit.text()) # desired resolution in ps
+        self.ph.offset = 0
+        self.ph.tacq = int(self.acqtimeEdit.text()) * 1000 # time in ms
+        
+        self.cts0 = self.ph.countrate(0)
+        self.cts1 = self.ph.countrate(1)
+        
+        self.channel0Label.setText(('Input0 (sync) = {} c/s'.format(self.cts0)))
+        self.channel1Label.setText(('Input0 (sync) = {} c/s'.format(self.cts1)))
+  
+        print('Resolution = {} ps'.format(self.ph.resolution))
+        print('Acquisition time = {} s'.format(self.ph.tacq))
+        
+    def measure(self):
+        
+        self.preparePH()
+        self.filename = os.path.join(self.folderEdit.text(),
+                                     self.filenameEdit.text())
+        self.name = tools.getUniqueName(self.filename)
+        self.ph.startTTTR(self.name)
+        
+        self.measureButton.setChecked(False)
+        
+    def read(self):
+        
+        inputfile = open(self.name, "rb")
+        
+        numRecords = self.ph.numRecords # number of records
+        globRes = 2.5e-8  # in ns, corresponds to sync @40 MHz
+        timeRes = self.ph.resolution * 1e-12 # time resolution in s
+
+        relTime, absTime = Read_PTU.readPT3(inputfile, numRecords)
+        
+        inputfile.close()
+        
+        relTime = relTime * timeRes # in real time units (s)
+        relTime = relTime * 1e9  # in (ns)
+        
+        counts, bins = np.histogram(relTime, bins=100) # TO DO: choose proper binning
+        self.histPlot.plot(bins[0:-1], counts)
+        
+        self.readButton.setChecked(False)
+
+#        plt.hist(relTime, bins=300)
+#        plt.xlabel('time (ns)')
+#        plt.ylabel('ocurrences')
+
+        absTime = absTime * globRes * 1e9  # true time in (ns), 4 comes from syncDivider, 10 Mhz = 40 MHz / syncDivider 
+        absTime = absTime / 1e6 # in ms
+
+#        plt.figure()
+        timetrace, time = np.histogram(absTime, bins=50) # timetrace with 10 ms bins
+        
+        self.tracePlot.plot(time[0:-1], timetrace)
+
+#        plt.plot(time[0:-1], timetrace)
+#        plt.xlabel('time (ms)')
+#        plt.ylabel('counts')
+#        
+#        inputfile.close()
+        
+    def loadFolder(self):
+
+        try:
+            root = Tk()
+            root.withdraw()
+            folder = filedialog.askdirectory(parent=root,
+                                             initialdir=self.initialDir)
+            root.destroy()
+            if folder != '':
+                self.folderEdit.setText(folder)
+        except OSError:
+            pass
 
 if __name__ == '__main__':
 
