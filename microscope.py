@@ -40,11 +40,19 @@ class scanWidget(QtGui.QFrame):
 
 #        self.device = 'simulated'
 #        self.device = 'nidaq'
+
+        self.setWindowTitle('PyFLUX')
+
         self.device = 'ADwin'
         self.edited_scan = True
         self.roi = None
         self.traceROI = None
         self.lineROI = None
+        self.EBPscatter = [None, None, None, None]
+        self.EBPcenters = np.zeros((4, 2))
+        self.advanced = False
+        self.EBPshown = True
+        self.fitting = False
         self.image = np.zeros((128, 128))
         self.resize(1800, 800)
         
@@ -110,12 +118,18 @@ class scanWidget(QtGui.QFrame):
         self.frameTimeLabel = QtGui.QLabel('Frame time (s)')
         self.frameTimeValue = QtGui.QLabel('')
 
+        self.advancedButton = QtGui.QPushButton('Advanced options')
+        self.advancedButton.setCheckable(True)
+        self.advancedButton.clicked.connect(self.toggleAdvanced)
+        
+        
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
         self.auxAccelerationEdit = QtGui.QLineEdit('1 1 1 1')
-
         self.waitingTimeLabel = QtGui.QLabel('Scan waiting time (µs)')
         self.waitingTimeEdit = QtGui.QLineEdit('0')
+        
+        self.toggleAdvanced()
 
         # Connections between changes in parameters and paramChanged function
 
@@ -189,9 +203,17 @@ class scanWidget(QtGui.QFrame):
         self.EBProiButton = QtGui.QPushButton('EBP ROI')
         self.EBProiButton.setCheckable(True)
         self.EBProiButton.clicked.connect(self.ROImethod)
+        
+        self.showEBPButton = QtGui.QPushButton('show/hide EBP')
+        self.showEBPButton.setCheckable(True)
+        self.showEBPButton.clicked.connect(self.toggleEBP)
 
         self.centerButton = QtGui.QPushButton('get center')
         self.centerButton.clicked.connect(self.getDoughnutCenter)
+        
+        self.EBPtext_template = '\n Doughnut 0: {}' + ' \n \n Doughnut 1: {}' +  ' \n \n Doughnut 2: {}' + '\n \n Doughnut 3: {}'
+        self.EBPtext = self.EBPtext_template.format(*list(self.EBPcenters))
+        self.EBPlabel = QtGui.QLabel(self.EBPtext)
         
         self.EBPgraphWidget = pg.GraphicsLayoutWidget()
         self.vbEBP = self.EBPgraphWidget.addViewBox(row=0, col=0)
@@ -200,15 +222,18 @@ class scanWidget(QtGui.QFrame):
         self.imgEBP = pg.ImageItem()
         self.imgEBP.translate(-0.5, -0.5)
         self.vbEBP.addItem(self.imgEBP)
+#        self.clickevent = self.imgEBP.mouseClickEvent()        
         
-        # Get the colormap
-#        colormap = cm.get_cmap("viridis")  # cm.get_cmap("CMRmap")
-        colormap = cm.get_cmap(cmaps.parula) # cm.get_cmap("CMRmap")
-        colormap._init()
-        lut = (colormap._lut * 255).view(np.ndarray)  # Convert matplotlib colormap from 0-1 to 0 -255 for Qt
-        
-#        # Apply the colormap
-        self.imgEBP.setLookupTable(lut)
+        # set up histogram for the liveview image
+
+        self.histEBP = pg.HistogramLUTItem(image=self.imgEBP)
+        lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        self.histEBP.gradient.setColorMap(lut)
+        self.histEBP.vb.setLimits(yMin=0, yMax=1000)
+
+        for tick in self.histEBP.gradient.ticks:
+            tick.hide()
+        self.EBPgraphWidget.addItem(self.histEBP, row=0, col=1)
         
         # initialize EBP image
         initialimage = np.zeros((64, 64))
@@ -228,12 +253,11 @@ class scanWidget(QtGui.QFrame):
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
 
-        subgrid.addWidget(self.liveviewButton, 18, 0)
-        subgrid.addWidget(self.ROIButton, 19, 0)
-        subgrid.addWidget(self.selectROIButton, 20, 0)
-        subgrid.addWidget(self.acquireFrameButton, 21, 0)
-        subgrid.addWidget(self.previewScanButton, 22, 0)
-        subgrid.addWidget(self.lineProfButton, 23, 0)
+        subgrid.addWidget(self.liveviewButton, 10, 1)
+        subgrid.addWidget(self.ROIButton, 11, 1)
+        subgrid.addWidget(self.selectROIButton, 12, 1)
+        subgrid.addWidget(self.acquireFrameButton, 13, 1)
+        subgrid.addWidget(self.lineProfButton, 15, 1)
 
         subgrid.addWidget(scanParamTitle, 0, 0, 2, 3)
         
@@ -249,10 +273,15 @@ class scanWidget(QtGui.QFrame):
         subgrid.addWidget(self.pxSizeValue, 11, 0)
         subgrid.addWidget(self.frameTimeLabel, 12, 0)
         subgrid.addWidget(self.frameTimeValue, 13, 0)
-        subgrid.addWidget(self.auxAccelerationLabel, 14, 0)
-        subgrid.addWidget(self.auxAccelerationEdit, 15, 0)
-        subgrid.addWidget(self.waitingTimeLabel, 16, 0)
-        subgrid.addWidget(self.waitingTimeEdit, 17, 0)
+        
+        subgrid.addWidget(self.advancedButton, 14, 0)
+        
+        subgrid.addWidget(self.auxAccelerationLabel, 15, 0)
+        subgrid.addWidget(self.auxAccelerationEdit, 16, 0)
+        subgrid.addWidget(self.waitingTimeLabel, 17, 0)
+        subgrid.addWidget(self.waitingTimeEdit, 18, 0)
+        subgrid.addWidget(self.previewScanButton, 19, 0)
+
 
         subgrid.addWidget(self.filenameLabel, 2, 2)
         subgrid.addWidget(self.filenameEdit, 3, 2)
@@ -267,9 +296,9 @@ class scanWidget(QtGui.QFrame):
         subgrid.addWidget(self.moveToLabel, 5, 1)
         subgrid.addWidget(self.moveToEdit, 6, 1)
         subgrid.addWidget(self.moveToButton, 7, 1)
-        subgrid.addWidget(self.driftPresMeasButton, 8, 1)
+#        subgrid.addWidget(self.driftPresMeasButton, 8, 1)
 
-        self.paramWidget.setFixedHeight(550)
+#        self.paramWidget.setFixedHeight(500)
         self.paramWidget.setFixedWidth(400)
         
         subgridEBP = QtGui.QGridLayout()
@@ -277,9 +306,15 @@ class scanWidget(QtGui.QFrame):
         
         subgridEBP.addWidget(EBPparamTitle, 0, 0, 2, 3)
         
-        subgridEBP.addWidget(self.EBProiButton, 2, 0)
-        subgridEBP.addWidget(self.centerButton, 3, 0)
-        subgridEBP.addWidget(self.EBPgraphWidget, 4, 0)
+        subgridEBP.addWidget(self.EBProiButton, 2, 0, 1, 1)
+        subgridEBP.addWidget(self.centerButton, 3, 0, 1, 1)
+        subgridEBP.addWidget(self.showEBPButton, 3, 1, 1, 1)
+        subgridEBP.addWidget(self.EBPgraphWidget, 4, 0, 2, 2)
+        
+        subgridEBP.addWidget(self.EBPlabel, 6, 0, 1, 2)
+        
+#        self.EBPWidget.setFixedHeight(550)
+        self.EBPWidget.setFixedWidth(400)
         
         # Dock Area
         
@@ -303,55 +338,6 @@ class scanWidget(QtGui.QFrame):
         driftDock.addWidget(self.driftWidget)
         dockArea.addDock(driftDock)
         
-#        # trace measurement (NOT SHOWN AT THE MOMENT)
-#        
-#        traceDock = Dock("Trace measurement")
-#
-#        traceWidget = QtGui.QWidget()
-#        traceGrid = QtGui.QGridLayout()
-#        traceWidget.setLayout(traceGrid)
-#        self.traceGraph = pg.GraphicsLayoutWidget()
-#        self.tracePlot = self.traceGraph.addPlot(0, 0)
-#        
-#        self.linePlot.setLabels(bottom=('s'),
-#                                left=('counts'))
-#        
-#        self.traceROIButton = QtGui.QPushButton('Trace ROI')
-#        self.traceROIButton.setCheckable(True)
-#        self.traceROIButton.clicked.connect(self.traceROImethod)
-#        
-#        self.measureTracesButton = QtGui.QPushButton('Measure traces')
-#        self.measureTracesButton.setCheckable(True)
-#        self.measureTracesButton.clicked.connect(self.measureTraces)
-#        
-#        self.binTimeLabel = QtGui.QLabel('Time bin (µs)')
-#        self.binTimeLabel.setFixedWidth(65)
-#        self.binTimeEdit = QtGui.QLineEdit('100')
-#        self.binTimeEdit.setFixedWidth(45)
-#        
-#        self.totTimeLabel = QtGui.QLabel('Total time (s)')
-#        self.totTimeLabel.setFixedWidth(65)
-#        self.totTimeEdit = QtGui.QLineEdit('0.01')
-#        self.totTimeEdit.setFixedWidth(45)
-#        
-#        self.binTimeEdit.textChanged.connect(self.paramChanged)
-#        self.totTimeEdit.textChanged.connect(self.paramChanged)
-#        
-#        traceGrid.addWidget(self.traceGraph, 0, 0, 1, 5)
-#        traceGrid.addWidget(self.measureTracesButton, 1, 4, 1, 1)
-#        traceGrid.addWidget(self.traceROIButton, 1, 2, 1, 1)
-#        
-#        traceGrid.addWidget(self.binTimeLabel, 1, 0, 1, 1)
-#        traceGrid.addWidget(self.binTimeEdit, 1, 1, 1, 1)
-#        
-#        traceGrid.addWidget(self.totTimeLabel, 2, 0, 1, 1)
-#        traceGrid.addWidget(self.totTimeEdit, 2, 1, 1, 1)
-        
-        
-#        traceDock.addWidget(traceWidget)
-#        dockArea.addDock(traceDock, 'above', minfluxDock)
-#        dockArea.addDock(driftDock, 'above', traceDock)
-        
         # Viewbox and image item where the liveview will be displayed
 
         self.vb.setMouseMode(pg.ViewBox.RectMode)
@@ -364,10 +350,9 @@ class scanWidget(QtGui.QFrame):
         # set up histogram for the liveview image
 
         self.hist = pg.HistogramLUTItem(image=self.img)
-#        self.hist.gradient.loadPreset('thermal')
-        self.lut = viewbox_tools.generatePgColormap(cmaps.parula)
-        self.hist.gradient.setColorMap(self.lut)
-        self.hist.vb.setLimits(yMin=0, yMax=66000)
+        lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        self.hist.gradient.setColorMap(lut)
+        self.hist.vb.setLimits(yMin=0, yMax=1000)
 
         for tick in self.hist.gradient.ticks:
             tick.hide()
@@ -405,6 +390,29 @@ class scanWidget(QtGui.QFrame):
         # initial directory
 
         self.initialDir = r'C:\Data'
+        
+        
+    def toggleAdvanced(self):
+        
+        if self.advanced:
+            
+            self.auxAccelerationLabel.show()
+            self.auxAccelerationEdit.show()
+            self.waitingTimeLabel.show()
+            self.waitingTimeEdit.show() 
+            self.previewScanButton.show()
+            
+            self.advanced = False
+            
+        else:
+            
+            self.auxAccelerationLabel.hide()
+            self.auxAccelerationEdit.hide()
+            self.waitingTimeLabel.hide()
+            self.waitingTimeEdit.hide() 
+            self.previewScanButton.hide()
+            
+            self.advanced = True
 
     def loadFolder(self):
 
@@ -537,13 +545,6 @@ class scanWidget(QtGui.QFrame):
         self.blankImage = np.zeros(size)
         self.image = self.blankImage
         self.i = 0
-        
-#        # parameters for the time trace measurements
-#        
-#        self.binTime = float(self.binTimeEdit.text())
-#        self.totTime = float(self.totTimeEdit.text()) * 10**6 # in µs
-#        
-#        self.tot_bins = np.int(self.totTime/self.binTime)
 
         # load the new parameters into the ADwin system
 
@@ -616,20 +617,6 @@ class scanWidget(QtGui.QFrame):
         self.adw.SetData_Long(self.data_t_adwin, 2, 1, self.time_range)
         self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
         self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
-        
-#        # prepare and load time trace parameters
-#        
-#        self.binTime_adwin = tools.timeToADwin(self.binTime)
-#        self.totTime_adwin = tools.timeToADwin(self.totTime)
-#        
-#        self.trace_data = list(np.array(np.zeros(self.tot_bins), 
-#                                                 dtype='int'))
-#        
-#        self.adw.SetData_Long(self.trace_data, 6, 1, self.tot_bins)
-#
-#        self.adw.Set_FPar(60, self.tot_bins)
-#        self.adw.Set_FPar(65, self.binTime_adwin)
-#        self.adw.Set_FPar(67, self.totTime_adwin)
 
     def moveToParameters(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
@@ -895,14 +882,14 @@ class scanWidget(QtGui.QFrame):
         
         if self.lineROI is None:
             
-            self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='b')
+            self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
             self.vb.addItem(self.lineROI)
             
         else:
 
             self.vb.removeItem(self.lineROI)
             
-            self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='b')
+            self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
             self.vb.addItem(self.lineROI)
             
         self.lineROI.sigRegionChanged.connect(self.updateLineProfile)
@@ -992,6 +979,9 @@ class scanWidget(QtGui.QFrame):
                                          translateSnap=True,
                                          pen=ROIpen)
             
+        if self.EBProiButton.isChecked:
+            self.EBProiButton.setChecked(False)
+            
     def selectROI(self):
 
         self.liveviewStop()
@@ -1016,7 +1006,16 @@ class scanWidget(QtGui.QFrame):
         newRange_µm = np.around(newRange_µm, 2)
         self.scanRangeEdit.setText('{}'.format(newRange_µm))
         
+        
     def getDoughnutCenter(self):
+        
+        i, *_ = QtGui.QInputDialog.getInt(self, 'Text Input Dialog', 'Doughnut number [0, 1, 2, 3]:')
+   
+        # i = 0, 1, 2, 3
+        
+        if self.EBPscatter[i] is not None:
+            
+            self.vb.removeItem(self.EBPscatter[i])
         
         array = self.roi.getArrayRegion(self.image, self.img)
         ROIpos_µm = np.array(self.roi.pos()) * self.pxSize
@@ -1029,38 +1028,121 @@ class scanWidget(QtGui.QFrame):
         ymin = ROIpos_µm[1]
         ymax = ROIpos_µm[1] + np.shape(array)[1] * self.pxSize
         
-        x = np.arange(xmin, xmax, self.pxSize)
-        y = np.arange(ymin, ymax, self.pxSize)
-        
-        [Mx, My] = np.meshgrid(x, y)
-        
-        A = np.max(array)
         x0 = (xmax+xmin)/2
         y0 = (ymax+ymin)/2
-        d = 0.3 # doughnut parameter in µm
-        bkg = np.mean(array) - np.std(array)
         
-        initial_guess_D = [A, x0, y0, d, bkg]
+        if self.fitting is True:
         
-        t0 = time.time()
-        
-        poptD, pcovD = opt.curve_fit(PSF.doughnut2D, (Mx, My), 
-                                     array.ravel(), p0=initial_guess_D)
-        
-        t1 = time.time()
-        t_D = (t1-t0)*1e3 
-        print('doughnut fit took {} ms'.format(np.around(t_D, 2)))
-        
-#        poptD[1:4] = px_nm * poptD[1:4] # get results in nm
-        poptD = np.around(poptD, 2)
-        print('A = {}, (x0, y0) = ({}, {}), d = {}, bkg = {}'.format(*poptD))
+            x = np.arange(xmin, xmax, self.pxSize)
+            y = np.arange(ymin, ymax, self.pxSize)
+            
+            [Mx, My] = np.meshgrid(x, y)
+            
+            A = np.max(array)
 
-        fittedPSF = PSF.doughnut2D((Mx, My), *poptD)
+            d = 0.3 # doughnut parameter in µm
+            bkg = np.mean(array) - np.std(array)
+            
+            initial_guess_D = [A, x0, y0, d, bkg]
+            
+            t0 = time.time()
+            
+            poptD, pcovD = opt.curve_fit(PSF.doughnut2D, (Mx, My), 
+                                         array.ravel(), p0=initial_guess_D)
+            
+            t1 = time.time()
+            t_D = (t1-t0)*1e3 
+            print('doughnut fit took {} ms'.format(np.around(t_D, 2)))
+            
+    #        poptD[1:4] = px_nm * poptD[1:4] # get results in nm
+            poptD = np.around(poptD, 2)
+            print('A = {}, (x0, y0) = ({}, {}), d = {}, bkg = {}'.format(*poptD))
+            
+            self.EBPcenters[i] = [poptD[1], poptD[2]]
     
-        fittedPSF_2d = fittedPSF.reshape(np.shape(array))
-        print(np.max(fittedPSF_2d))
+            fittedPSF = PSF.doughnut2D((Mx, My), *poptD)
         
-        self.imgEBP.setImage(fittedPSF_2d)
+            fittedPSF_2d = np.array(fittedPSF.reshape(np.shape(array)), 
+                                    dtype=np.float16)
+            
+            self.imgEBP.setImage(fittedPSF_2d, autoLevels=True)
+        
+            xscatter = poptD[1]/self.pxSize
+            yscatter = poptD[2]/self.pxSize
+            
+            # TO DO: double check this conversion
+            xscatter = (poptD[2] - ymin + xmin)/self.pxSize
+            yscatter = (poptD[1] - xmin + ymin)/self.pxSize
+
+        if i == 0:
+            mybrush = pg.mkBrush(255, 0, 0, 200)
+            
+        if i == 1:
+            mybrush = pg.mkBrush(0, 255, 0, 200)
+            
+        if i == 2:
+            mybrush = pg.mkBrush(0, 0, 255, 200)
+            
+        if i == 3:
+            mybrush = pg.mkBrush(50, 255, 100, 200)
+            
+        if self.fitting is True:
+            
+            # finding of the center using doughnut fit
+        
+            self.EBPscatter[i] = pg.ScatterPlotItem([xscatter], [yscatter], 
+                                                    size=10, pen=pg.mkPen(None), 
+                                                    brush=mybrush)
+        else:
+            
+            # manual finding of the center
+            
+            self.EBPscatter[i] = pg.ScatterPlotItem([x0/self.pxSize], [y0/self.pxSize], 
+                                                    size=10, pen=pg.mkPen(None), 
+                                                    brush=mybrush)            
+
+        self.vb.addItem(self.EBPscatter[i])
+        
+        self.centerButton.setChecked(False)
+        
+        print(self.EBPcenters)
+        self.updateEBPcenters()
+        
+    def updateEBPcenters(self):
+        
+        self.relativeEBP = (self.EBPcenters - self.EBPcenters[0])
+        print(self.relativeEBP)
+        self.relativeEBP = np.around(self.relativeEBP, 1)
+        
+        self.EBPtext = self.EBPtext_template.format(*list(self.relativeEBP))
+        self.EBPlabel.setText(self.EBPtext)
+        
+    def toggleEBP(self):
+        
+        if self.EBPshown:
+        
+            for i in range(len(self.EBPscatter)):
+                
+                if self.EBPscatter[i] is not None:
+                    self.vb.removeItem(self.EBPscatter[i])
+                else:
+                    pass
+            
+            self.EBPshown = False
+            
+        else:
+            
+            for i in range(len(self.EBPscatter)):
+                
+                if self.EBPscatter[i] is not None:
+                    self.vb.addItem(self.EBPscatter[i])
+                else:
+                    pass
+            
+            self.EBPshown = True
+    
+        self.showEBPButton.setChecked(False)
+        
         
     def driftPrecisionMeas(self):
         
