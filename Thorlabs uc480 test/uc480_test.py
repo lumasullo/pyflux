@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from instrumental.drivers.cameras import uc480
+import time
 
 sys.path.append('C:\Program Files\Thorlabs\Scientific Imaging\ThorCam')
 
@@ -17,7 +18,12 @@ myCamera = uc480.UC480_Camera()
 print('Model {}'.format(myCamera.model))
 print('Serial number {}'.format(myCamera.serial))
 
-raw_image = myCamera.grab_image(exposure_time='50 ms')
+#raw_image = myCamera.grab_image(exposure_time='50 ms')
+
+myCamera.start_live_video('10 Hz')
+time.sleep(1)
+
+raw_image = myCamera.latest_frame()
 
 r = raw_image[:, :, 0]
 g = raw_image[:, :, 1]
