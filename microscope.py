@@ -11,6 +11,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import tools
+import ctypes as ct
 from PIL import Image
 from tkinter import Tk, filedialog
 import tifffile as tiff
@@ -30,8 +31,8 @@ import tcspc.picoharp as picoharp
 import tcspc.Read_PTU as Read_PTU
 import pyqtsubclass as pyqtsc
 import colormaps as cmaps
-
-from instrumental.drivers.cameras import uc480
+import lantz.drivers.legacy.andor.ccd as ccd
+import PSF
 
 import focus
 import sys
@@ -287,6 +288,8 @@ class scanWidget(QtGui.QFrame):
 
         self.paramWidget.setFixedHeight(500)
         self.paramWidget.setFixedWidth(400)
+        imageWidget.setFixedHeight(700)
+        imageWidget.setFixedWidth(600)
         
         subgridEBP = QtGui.QGridLayout()
         self.EBPWidget.setLayout(subgridEBP)
@@ -382,6 +385,18 @@ class scanWidget(QtGui.QFrame):
         
         self.focusThread = QtCore.QThread(self)
         self.focusWidget.moveToThread(self.focusThread)
+        
+        # xy drift
+        
+        xyDock = Dock("xy drift control")
+        
+        self.xydriftWidget = driftWidget(self.adw)
+        xyDock.addWidget(self.xydriftWidget)
+        xyDock.addWidget(self.xydriftWidget)
+        dockArea.addDock(xyDock, 'above', minfluxDock)
+        
+        self.xydriftThread = QtCore.QThread(self)
+        self.xydriftWidget.moveToThread(self.xydriftThread)
         
         # Viewbox and image item where the liveview will be displayed
 
@@ -1144,6 +1159,8 @@ class scanWidget(QtGui.QFrame):
         
     def driftPrecisionMeas(self):
         
+        # TO DO: change to Andor 887 camera
+        
         n = 50 # number of images saved
         dx = 0.010 # step in µm
         exptime = '50 ms' # exposure time in ms
@@ -1187,6 +1204,10 @@ class scanWidget(QtGui.QFrame):
         z_0 = 0
 
         self.moveTo(x_0, y_0, z_0)
+        
+        self.xydriftWidget.andor.shutter(0, 2, 0, 0, 0)
+        self.xydriftWidget.andor.abort_acquisition()
+        self.xydriftWidget.andor.finalize()
 
         super().closeEvent(*args, **kwargs)
         
@@ -1199,7 +1220,14 @@ class driftWidget(QtGui.QFrame):
         # TO DO: finish gaussian fit calculation and plot
         # TO DO: fix multithreading
         
-        self.uc480 = uc480.UC480_Camera()
+        
+        self.andor = ccd.CCD()
+        cam = 0
+        self.andor.current_camera = self.andor.camera_handle(cam)
+        self.andor.lib.Initialize()
+        print('idn:', self.andor.idn)
+        
+        self.setUpCamera()
         
         imageWidget = pg.GraphicsLayoutWidget()
         self.vb = imageWidget.addViewBox(row=0, col=0)
@@ -1210,9 +1238,12 @@ class driftWidget(QtGui.QFrame):
         self.vb.setAspectLocked(True)
         imageWidget.setAspectLocked(True)
         
+        # set up histogram for the liveview image
+
         self.hist = pg.HistogramLUTItem(image=self.img)
-        self.hist.gradient.loadPreset('grey')
-        self.hist.vb.setLimits(yMin=0, yMax=66000)
+        lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        self.hist.gradient.setColorMap(lut)
+        self.hist.vb.setLimits(yMin=0, yMax=10000)
 
         for tick in self.hist.gradient.ticks:
             tick.hide()
@@ -1240,7 +1271,7 @@ class driftWidget(QtGui.QFrame):
         
         # IR LiveView Button
 
-        self.liveviewButton = QtGui.QPushButton('IR camera LIVEVIEW')
+        self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
         self.liveviewButton.setCheckable(True)
         self.liveviewButton.clicked.connect(self.liveview)
         
@@ -1323,32 +1354,42 @@ class driftWidget(QtGui.QFrame):
 
         
     def liveviewStart(self):
+        
+        print('Temperature = {} °C'.format(self.andor.temperature))
+        print(self.andor.temperature_status)
 
 #        # Initial image
-        self.rawimage = self.uc480.grab_image(exposure_time='1 ms')
-        self.image = np.sum(self.rawimage, axis=2) # sum r, g, b images
+        
+        self.andor.acquisition_mode = 'Run till abort'
+        print('Acquisition mode:', self.andor.acquisition_mode)
+        self.andor.shutter(0, 1, 0, 0, 0)
+        self.andor.start_acquisition()
+        
+        time.sleep(self.expTime * 2)
+        self.image = self.andor.most_recent_image16(self.shape)
 #
         self.img.setImage(np.transpose(self.image), autoLevels=False)
         self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
 #
 ##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
 #
-        self.viewtimer.start(1)
-
-        pass
+        self.viewtimer.start(50)
     
     def liveviewStop(self):
         
         self.viewtimer.stop()
+        self.andor.abort_acquisition()
+        self.andor.shutter(0, 2, 0, 0, 0)
+        
+        self.liveviewButton.setChecked(False)
             
     def updateView(self):
         """ Image update while in Liveview mode
         """
-        self.rawimage = self.uc480.grab_image(exposure_time='20 ms')
-        self.image = np.sum(self.rawimage, axis=2) # sum r, g, b images
+        
+        self.image = self.andor.most_recent_image16(self.shape)
 
         self.img.setImage(np.transpose(self.image), autoLevels=False)
-#            self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
 
         if self.tracking == True:
             
@@ -1358,10 +1399,79 @@ class driftWidget(QtGui.QFrame):
             
                 array = self.roilist[i].getArrayRegion(self.image, self.img)
                 
+#                initial_guess_G = [N_G, x0, y0, σ, σ, bkg]
+#
+#                t0 = time.time()
+#                
+#                poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx, My), arrray, 
+#                                             p0=initial_guess_G)
+#                
+#                t1 = time.time()
+#                t_G = (t1-t0)*1e3 
+#                print('gaussian fit took {} ms'.format(np.around(t_G, 2)))
+#                
+#                poptG[1:5] = px_nm * poptG[1:5] # get results in nm
+#                poptG = np.around(poptG, 2)
+#                print('A = {}, (x0, y0) = ({}, {}), σ_x = {}, σ_y = {}, bkg = {}'.format(*poptG))
+                
             # TO DO: finish gaussian fit calculation and plot
-            # TO DO: fix multithreading
-
             
+            
+            # TO DO: fix multithreading
+            
+    def setUpCamera(self):
+        
+        self.shape = (512, 512)
+        self.expTime = 0.300   # in sec
+        
+        self.andor.set_exposure_time(self.expTime)
+        self.andor.set_image(shape=self.shape)
+        
+        print('FOV size = {}'.format(self.shape))
+
+        # Temperature
+
+        self.andor.cooler_on = True
+        self.andor.temperature_setpoint = -20   # in °C
+        
+        # Frame transfer mode
+        
+        self.andor.frame_transfer_mode = True
+        print('Frame transfer mode =', self.andor.frame_transfer_mode)
+
+        # Horizontal readout speed
+
+        ad = 1   # 16-bit DAC
+        typ = 0   # EM mode
+        index = 0   # 1 MHz
+        self.andor.lib.SetHSSpeed(ct.c_int(ad), ct.c_int(typ), ct.c_int(index))
+        
+        hrate = self.andor.true_horiz_shift_speed(index=0, typ=0, ad=1)
+        print('Horizontal readout rate = {} MHz'.format(hrate.magnitude))
+        
+        # pre-amp GAIN
+
+        self.andor.preamp = 2  # index 2 for preamp gain = 4.7 
+        
+        gain = self.andor.true_preamp(2)
+        print('PreAmp gain = {}'.format(np.round(gain, 1)))
+
+        # EM GAIN
+        
+        self.andor.EM_gain_mode = 'DAC255'
+        self.andor.EM_gain = 1  # EM gain set to 100
+
+        print('EM gain = {}'.format(self.andor.EM_gain))
+    
+        # Vertical shift speed
+        
+        self.andor.vert_shift_speed = 4
+        
+        vspeed = self.andor.true_vert_shift_speed(4)
+        print('Vertical shift speed = {} µs'.format(np.round(vspeed.magnitude,
+                                                             1)))
+        
+        
 class minfluxWidget(QtGui.QFrame):
         
     def __init__(self, *args, **kwargs):

@@ -37,6 +37,7 @@ class FocusWidget(QtGui.QFrame):
         self.setMinimumSize(2, 350)
 
         self.cam = camera
+        self.roi = None
 
         self.setPoint = 0
 
@@ -46,32 +47,40 @@ class FocusWidget(QtGui.QFrame):
 
         self.setFrameStyle(QtGui.QFrame.Panel | QtGui.QFrame.Raised)
 
-        self.scansPerS = 25
-        self.cam.start_live_video(framerate='25 Hz')
+        self.scansPerS = 20
+        self.cam.start_live_video(framerate='20 Hz')
         self.naverage = 1
-#        self.displayRate = 20
+        self.displayRate = 5
+        self.i = 0
 
         self.ProcessData = ProcessData(self.cam, self.naverage)
 
         # Focus lock widgets
+        
         self.kpEdit = QtGui.QLineEdit('4')
         self.kpEdit.setFixedWidth(60)
-        self.kpEdit.textChanged.connect(self.unlockFocus)
+
         self.kpLabel = QtGui.QLabel('kp')
         self.kiEdit = QtGui.QLineEdit('0.01')
         self.kiEdit.setFixedWidth(60)
-        self.kiEdit.textChanged.connect(self.unlockFocus)
         self.kiLabel = QtGui.QLabel('ki')
         self.lockButton = QtGui.QPushButton('Lock')
         self.lockButton.setCheckable(True)
-        self.lockButton.clicked.connect(self.toggleFocus)
         self.lockButton.setSizePolicy(QtGui.QSizePolicy.Preferred,
                                       QtGui.QSizePolicy.Expanding)
         moveLabel = QtGui.QLabel('Move [nm]')
         moveLabel.setAlignment(QtCore.Qt.AlignCenter)
         self.moveEdit = QtGui.QLineEdit('0')
         self.moveEdit.setFixedWidth(60)
+        self.ROIbutton = QtGui.QPushButton('ROI')
+        self.selectROIbutton = QtGui.QPushButton('select ROI')
+        
+        self.kiEdit.textChanged.connect(self.unlockFocus)
+        self.kpEdit.textChanged.connect(self.unlockFocus)
         self.moveEdit.returnPressed.connect(self.zMoveEdit)
+        self.lockButton.clicked.connect(self.toggleFocus)
+        self.ROIbutton.clicked.connect(self.ROImethod)
+        self.selectROIbutton.clicked.connect(self.selectROI)
 
         self.focusDataBox = QtGui.QCheckBox('Save focus data')
         self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
@@ -82,9 +91,6 @@ class FocusWidget(QtGui.QFrame):
         self.focusTimer = QtCore.QTimer()
         self.focusTimer.timeout.connect(self.update)
         self.focusTimer.start(self.focusTime)
-
-        
-        print(self.focusTime)
 
         self.locked = False
         self.n = 1
@@ -137,7 +143,7 @@ class FocusWidget(QtGui.QFrame):
         # GUI layout
         grid = QtGui.QGridLayout()
         self.setLayout(grid)
-        grid.addWidget(dockArea, 0, 0, 1, 6)
+        grid.addWidget(dockArea, 0, 0, 1, 7)
 #        grid.addWidget(self.focusCalibButton, 1, 0)
         grid.addWidget(self.calibrationDisplay, 2, 0)
         grid.addWidget(self.focusDataBox, 1, 1)
@@ -147,7 +153,10 @@ class FocusWidget(QtGui.QFrame):
         grid.addWidget(self.kpEdit, 1, 4)
         grid.addWidget(self.kiLabel, 2, 3)
         grid.addWidget(self.kiEdit, 2, 4)
-        grid.addWidget(self.lockButton, 1, 5, 2, 1)
+        grid.addWidget(self.lockButton, 1, 6, 2, 1)
+        grid.addWidget(self.ROIbutton, 1, 5, 1, 1)
+        grid.addWidget(self.selectROIbutton, 2, 5, 1, 1)
+
         grid.setColumnMinimumWidth(5, 170)
 
     def zMoveEdit(self):
@@ -173,17 +182,24 @@ class FocusWidget(QtGui.QFrame):
         self.ProcessData.update()
         
         t1 = time.time()
-        print('t1', t1-t0)
-        
+#        print('t1', t1-t0)
+#        
         self.graph.update()
         
         t2 = time.time()
-        print('t2', t2-t1)
+#        print('t2', t2-t1)
+        if self.i == self.displayRate:
         
-        self.img.setImage(self.ProcessData.image, autoLevels=False)
+            self.img.setImage(self.ProcessData.image, autoLevels=False)
+#            print(np.shape(self.ProcessData.image))
+            self.i = 0
+            
+        else:
+            
+            self.i += 1
         
         t3 = time.time()
-        print('t3', t3-t2)
+#        print('t3', t3-t2)
         
         if self.locked:
             self.updatePI()
@@ -266,54 +282,59 @@ class FocusWidget(QtGui.QFrame):
         self.cam.close()
         super().closeEvent(*args, **kwargs)
         
-#    def ROImethod(self):
-#        
-#        ROIpen = pg.mkPen(color='y')
-#
-#        if self.roi is None:
-#
-#            ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
-#            self.roi = viewbox_tools.ROI(self.NofPixels/2, self.vb, ROIpos,
-#                                         handlePos=(1, 0),
-#                                         handleCenter=(0, 1),
-#                                         scaleSnap=True,
-#                                         translateSnap=True,
-#                                         pen=ROIpen)
-#
-#        else:
-#
-#            self.vb.removeItem(self.roi)
-#            self.roi.hide()
-#
-#            ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
-#            self.roi = viewbox_tools.ROI(self.NofPixels/2, self.vb, ROIpos,
-#                                         handlePos=(1, 0),
-#                                         handleCenter=(0, 1),
-#                                         scaleSnap=True,
-#                                         translateSnap=True,
-#                                         pen=ROIpen)
-#            
-#    def selectROI(self):
-#        
-#        array = self.roi.getArrayRegion(self.image, self.img)
-#        ROIpos = np.array(self.roi.pos())
-#
-#        newPos_px = tools.ROIscanRelativePOS(ROIpos,
-#                                             self.NofPixels,
-#                                             np.shape(array)[1])
-#
-#        newPos_µm = newPos_px * self.pxSize + self.initialPos[0:2]
-#
-#        newPos_µm = np.around(newPos_µm, 2)
-#
-#        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm[0],
-#                                                      newPos_µm[1],
-#                                                      self.initialPos[2]))
-#
-#        newRange_px = np.shape(array)[0]
-#        newRange_µm = self.pxSize * newRange_px
-#        newRange_µm = np.around(newRange_µm, 2)
-#        self.scanRangeEdit.setText('{}'.format(newRange_µm))
+    def ROImethod(self):
+        
+        ROIpen = pg.mkPen(color='y')
+
+        if self.roi is None:
+
+#            ROIpos = (0.5 * self.cam.width - 64, 0.5 * self.cam.height - 64)
+            ROIpos = (0, 0)
+            self.roi = viewbox_tools.ROI(300, self.vb, ROIpos,
+                                         handlePos=(1, 0),
+                                         handleCenter=(0, 1),
+                                         scaleSnap=True,
+                                         translateSnap=True,
+                                         pen=ROIpen)
+
+        else:
+
+            self.vb.removeItem(self.roi)
+            self.roi.hide()
+
+#            ROIpos = (0.5 * self.cam.width - 64, 0.5 * self.cam.height - 64)
+            ROIpos = (0, 0)
+            self.roi = viewbox_tools.ROI(300, self.vb, ROIpos,
+                                         handlePos=(1, 0),
+                                         handleCenter=(0, 1),
+                                         scaleSnap=True,
+                                         translateSnap=True,
+                                         pen=ROIpen)
+            
+    def selectROI(self):
+        
+        array = self.roi.getArrayRegion(self.ProcessData.image, self.img)
+        ROIpos = np.array(self.roi.pos())
+        
+        print('max image size', self.cam._get_max_img_size())
+        print('initial ROI size', self.cam._get_AOI())
+        
+        print('ROIpos', ROIpos)
+        print('array', np.shape(array))
+        
+        y0 = int(ROIpos[0])
+        x0 = int(ROIpos[1])
+        y1 = int(ROIpos[0] + np.shape(array)[0])
+        x1 = int(ROIpos[1] + np.shape(array)[1])
+
+        
+        print('setpoint ROI', [x0, y0, x1, y1])
+
+        self.cam._set_AOI(x0, y0, x1, y1)
+        print('focus lock ROI changed to', self.cam._get_AOI())
+        
+        self.vb.removeItem(self.roi)
+        self.roi.hide()
 
 
 class ProcessData(QtCore.QObject):
@@ -321,10 +342,13 @@ class ProcessData(QtCore.QObject):
     def __init__(self, camera, naverage, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
+        # for self.i = 1 and self.n = 1, no average is computed
+        
         self.n = naverage
         self.datamass = np.zeros(self.n)
 
-        self.i = 0
+        self.i = 1
+        
         self.method = 'mass center'
         self.camera = camera
         
@@ -335,34 +359,21 @@ class ProcessData(QtCore.QObject):
         
         self.sensorSize = np.array(image.shape)
         self.focusSignal = 0
-        
-        self.xmin = int(self.sensorSize[0] * 0/100)
-        self.xmax = int(self.sensorSize[0] * 100/100)
-        
-        self.ymin = int(self.sensorSize[1] * 0/100)
-        self.ymax = int(self.sensorSize[1] * 100/100)
-        
-        x = np.arange(self.xmin, self.xmax)
-        y = np.arange(self.ymin , self.ymax) 
-
-        [self.Mx, self.My] = np.meshgrid(x, y)
 
     def update(self, delay=0.000):
 
         time.sleep(delay)
         
         raw_image = self.camera.latest_frame()
-    
+        
         r = raw_image[:, :, 0]
         g = raw_image[:, :, 1]
         b = raw_image[:, :, 2]
 
         image = np.sum(raw_image, axis=2)
         
-        finalImage = image[self.xmin:self.xmax, self.ymin:self.ymax]
-    
-            
-        self.massCenterAux = np.array(ndi.measurements.center_of_mass(finalImage))
+        self.massCenterAux = np.array(ndi.measurements.center_of_mass(image))
+        
         self.datamass[self.i-1] = self.massCenterAux[0]
         
         if self.i == self.n:
@@ -375,11 +386,10 @@ class ProcessData(QtCore.QObject):
         else:
             self.i += 1
         
-        self.image = finalImage
+        self.image = image
         
-        print('max R', np.max(r))
-        print('min R', np.min(r))
-
+#        print('max R', np.max(r))
+#        print('min R', np.min(r))
 
 
 class FocusLockGraph(pg.GraphicsWindow):
@@ -388,8 +398,8 @@ class FocusLockGraph(pg.GraphicsWindow):
 
         super().__init__(*args, **kwargs)
 
-        self.n = naverage
-        self.i = 0
+        self.n = naverage  # number of frames that it are averaged
+        self.i = 0  # update counter
         
         self.focusWidget = focusWidget
         self.analize = self.focusWidget.analizeFocus
@@ -430,6 +440,8 @@ class FocusLockGraph(pg.GraphicsWindow):
         """ Update the data displayed in the graphs
         """
         
+        # i counter goes from 0 to n, at n it actually does the update
+        
         if self.i == self.n:
             
             self.focusSignal = self.focusWidget.ProcessData.focusSignal
@@ -462,41 +474,6 @@ class FocusLockGraph(pg.GraphicsWindow):
 #
 #            if self.recButton.isChecked():
 #                self.analize()
-                
-
-#class CameraDisplay(pg.GraphicsLayoutWidget):
-#
-#    def __init__(self, focusWidget, *args, **kwargs):
-#
-#        super().__init__(*args, **kwargs)
-#        
-#        
-#        self.i = 0
-#        self.focusWidget = focusWidget
-#        self.vb = self.addViewBox(row=0, col=0)
-#
-#        self.vb.setMouseMode(pg.ViewBox.RectMode)
-#        self.img = pg.ImageItem()
-#        self.img.translate(-0.5, -0.5)
-#        self.vb.addItem(self.img)
-#        self.vb.setAspectLocked(True)
-#        self.setAspectLocked(True)
-#
-#        # set up histogram for the liveview image
-#
-#        self.hist = pg.HistogramLUTItem(image=self.img)
-#        lut = viewbox_tools.generatePgColormap(cmaps.inferno)
-#        self.hist.gradient.setColorMap(lut)
-#        self.hist.vb.setLimits(yMin=0, yMax=10000)
-#
-#        for tick in self.hist.gradient.ticks:
-#            tick.hide()
-#        self.addItem(self.hist, row=0, col=1)
-#
-#    def update(self):
-#        
-#        self.img.setImage(self.focusWidget.ProcessData.image, autoLevels=False)
-
 
 
 #class FocusCalibration(QtCore.QObject):
