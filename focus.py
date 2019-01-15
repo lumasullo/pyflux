@@ -15,18 +15,19 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
 from instrumental.drivers.cameras import uc480
-import viewbox_tools
-import colormaps as cmaps
-import PSF
+import tools.viewbox_tools as viewbox_tools
+import tools.tools as tools
+import tools.colormaps as cmaps
+import tools.PSF as PSF
 from scipy import optimize as opt
 
-import tools
 
 
 from lantz import Q_
 
 #import tormenta.control.instruments as instruments
-import pi
+import tools.pi as pi
+
 
 class FocusWidget(QtGui.QFrame):
 
@@ -466,62 +467,13 @@ class FocusLockGraph(pg.GraphicsWindow):
             
             self.i += 1
 
-#        if self.main is not None:
-#
-#            if self.recButton.isChecked():
-#                self.savedDataSignal.append(self.focusSignal)
-#                self.savedDataTime.append(self.time[-1])
-#
-#            if self.recButton.isChecked():
-#                self.analize()
+if __name__ == '__main__':
+
+    app = QtGui.QApplication([])
+    cam = uc480.UC480_Camera()
 
 
-#class FocusCalibration(QtCore.QObject):
-#
-#    def __init__(self, mainwidget, *args, **kwargs):
-#
-#        super().__init__(*args, **kwargs)
-#
-#        self.signalData = []
-#        self.positionData = []
-#        self.nm = Q_(1, 'nm')
-#        self.step = 50 * self.nm
-#        self.z = mainwidget.z
-#        self.mainFocus = mainwidget  # mainwidget será FocusLockWidget
-#
-#    def start(self):
-#
-#        steps = 20
-#
-#        # Calibration centered in the initial position
-#        self.z.zMoveRelative(-0.5*steps*self.step)
-#        for i in range(steps):
-#            self.focusCalibSignal = self.mainFocus.ProcessData.focusSignal
-#            self.signalData.append(self.focusCalibSignal)
-#            self.positionData.append(self.z.zPosition.magnitude)
-#            self.z.zMoveRelative(self.step)
-#            time.sleep(0.5)
-#
-#        # Go back to initial position
-#        self.z.zMoveRelative(-0.5*steps*self.step)
-#
-#        self.argmax = np.argmax(self.signalData)
-#        self.argmin = np.argmin(self.signalData)
-#        self.signalData = self.signalData[self.argmin:self.argmax]
-#        self.positionData = self.positionData[self.argmin:self.argmax]
-#
-#        self.calResult = np.polyfit(self.positionData, self.signalData, 1)
-#        self.export()
-#
-#    def export(self):
-#
-#        np.savetxt(self.mainFocus.mainRec.name + 'calibration', self.calResult)
-#        cal = np.around(np.abs(self.calResult[0]), 1)
-#        calText = '1 px --> {} nm'.format(cal)
-#        self.mainFocus.calibrationDisplay.setText(calText)
-#        poly = np.polynomial.polynomial.polyval(self.positionData,
-#                                                self.calResult[::-1])
-#        self.savedCalibData = [self.positionData, self.signalData, poly]
-#        np.savetxt(self.mainFocus.mainRec.name + 'calibrationcurves',
-#                   self.savedCalibData)
+    win = FocusWidget(cam)
+    win.show()
+    app.exec_()
         
