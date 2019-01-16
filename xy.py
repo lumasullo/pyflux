@@ -31,15 +31,22 @@ class xyWidget(QtGui.QFrame):
         # TO DO: finish gaussian fit calculation and plot
         # TO DO: fix multithreading
         
-        self.setUpGUI()
-        
         self.andor = camera
         cam = 0
         self.andor.current_camera = self.andor.camera_handle(cam)
         self.andor.lib.Initialize()
         print('idn:', self.andor.idn)
         
-        self.setUpCamera()
+        self.lvworker = LiveViewWorker(self, self.andor)
+        
+        self.setUpGUI()
+        
+        # initial ROI parameters        
+        
+        self.NofPixels = 200
+        self.roi = None
+        self.ROInumber = 0
+        self.roilist = []
 
     def createROI(self):
         
@@ -75,105 +82,133 @@ class xyWidget(QtGui.QFrame):
         self.deleteROIsButton.setChecked(False)
         self.ROInumber = 0
             
-    def liveview(self):
-
-        if self.liveviewButton.isChecked():
-            self.liveviewStart()
-
-        else:
-            self.liveviewStop()
-
         
-    def liveviewStart(self):
+    def setUpGUI(self):
         
-        print('Temperature = {} °C'.format(self.andor.temperature))
-        print(self.andor.temperature_status)
+        # GUI layout
+        
+        grid = QtGui.QGridLayout()
+        self.setLayout(grid)
+        
+        # parameters widget
+        
+        self.paramWidget = QtGui.QFrame()
+        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+        
+        self.paramWidget.setFixedHeight(320)
+        self.paramWidget.setFixedWidth(200)
+        
+        grid.addWidget(self.paramWidget, 0, 1)
+        
+        # image widget layout
+        
+        imageWidget = pg.GraphicsLayoutWidget()
+        self.vb = imageWidget.addViewBox(row=0, col=0)
+        self.vb.setMouseMode(pg.ViewBox.RectMode)
+        self.img = pg.ImageItem()
+        self.img.translate(-0.5, -0.5)
+        self.vb.addItem(self.img)
+        self.vb.setAspectLocked(True)
+        imageWidget.setAspectLocked(True)
+        grid.addWidget(imageWidget, 0, 0)
+        
+        # set up histogram for the liveview image
 
-#        # Initial image
+        self.hist = pg.HistogramLUTItem(image=self.img)
+        lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        self.hist.gradient.setColorMap(lut)
+#        self.hist.vb.setLimits(yMin=800, yMax=3000)
+
+        ## TO DO: fix histogram range
+
+
+        for tick in self.hist.gradient.ticks:
+            tick.hide()
+        imageWidget.addItem(self.hist, row=0, col=1)
         
-        self.andor.acquisition_mode = 'Run till abort'
-        print('Acquisition mode:', self.andor.acquisition_mode)
-        self.andor.shutter(0, 1, 0, 0, 0)
-        self.andor.start_acquisition()
+        # xy drift graph (graph without a fixed range)
         
-        time.sleep(self.expTime * 2)
-        self.image = self.andor.most_recent_image16(self.shape)
-#
-        self.img.setImage(np.transpose(self.image), autoLevels=False)
-        self.hist.setHistogramRange(np.min(self.image), np.max(self.image))
-#
-##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
-#
-        self.viewtimer.start(50)
+        self.xyGraph = pg.GraphicsWindow()
+        self.xyGraph.setAntialiasing(True)
+        
+        self.xyGraph.statistics = pg.LabelItem(justify='right')
+        self.xyGraph.addItem(self.xyGraph.statistics)
+        self.xyGraph.statistics.setText('---')
+        
+        self.xyGraph.xPlot = self.xyGraph.addPlot(row=0, col=0)
+        self.xyGraph.xPlot.setLabels(bottom=('Time', 's'),
+                            left=('X position', 'nm'))
+        self.xyGraph.xPlot.showGrid(x=True, y=True)
+        self.xCurve = self.xyGraph.xPlot.plot(pen='b')
+        
+        self.xyGraph.yPlot = self.xyGraph.addPlot(row=1, col=0)
+        self.xyGraph.yPlot.setLabels(bottom=('Time', 's'),
+                            left=('Y position', 'nm'))
+        self.xyGraph.yPlot.showGrid(x=True, y=True)
+        self.yCurve = self.xyGraph.yPlot.plot(pen='r')
+        
+        # LiveView Button
+
+        self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
+        self.liveviewButton.setCheckable(True)
+        self.liveviewButton.clicked.connect(self.lvworker.liveview)
+        
+        # create ROI button
     
-    def liveviewStop(self):
+        self.ROIButton = QtGui.QPushButton('add ROI')
+        self.ROIButton.setCheckable(True)
+        self.ROIButton.clicked.connect(self.createROI)
         
-        self.viewtimer.stop()
-        self.andor.abort_acquisition()
+        # delete ROI button
+        
+        self.deleteROIsButton = QtGui.QPushButton('delete ROIs')
+        self.deleteROIsButton.setCheckable(True)
+        self.deleteROIsButton.clicked.connect(self.deleteROIs)
+        
+        # position tracking checkbox
+        
+        self.trackingBeadsBox = QtGui.QCheckBox('track beads positions')
+        
+        # buttons and param layout
+        
+        subgrid = QtGui.QGridLayout()
+        self.paramWidget.setLayout(subgrid)
+
+        subgrid.addWidget(self.liveviewButton, 0, 0)
+        subgrid.addWidget(self.ROIButton, 1, 0)
+        subgrid.addWidget(self.deleteROIsButton, 2, 0)
+        subgrid.addWidget(self.trackingBeadsBox, 3, 0)
+        
+        grid.addWidget(self.xyGraph, 1, 0)
+        
+        
+    def closeEvent(self, *args, **kwargs):
+        
         self.andor.shutter(0, 2, 0, 0, 0)
-        
-        self.liveviewButton.setChecked(False)
-            
-    def updateView(self):
-        """ Image update while in Liveview mode
-        """
-        
-        self.image = self.andor.most_recent_image16(self.shape)
+        self.andor.abort_acquisition()
+        self.andor.finalize()
 
-        self.img.setImage(np.transpose(self.image), autoLevels=False)
-
-        if self.trackingBeadsBox.isChecked():
-            
-            for i in range(len(self.roilist)):
-                
-                self.trackBead(i)
-                
-            
-    def trackBead(self, i):
+        super().closeEvent(*args, **kwargs)
         
-            # gaussian fit for every selected particle
+class LiveViewWorker(QtCore.QObject):
     
-        array = self.roilist[i].getArrayRegion(self.image, self.img)
-        ROIpos_µm = np.array(self.roi.pos()) * self.pxSize
+    def __init__(self, gui, andor, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         
-        ymin = ROIpos_µm[1]
-        ymax = ROIpos_µm[1] + np.shape(array)[1] * self.pxSize
+        self.andor = andor
+        self.gui = gui
+        self.setUpCamera()
         
-        xmin = ROIpos_µm[0]
-        xmax = ROIpos_µm[0] + np.shape(array)[0] * self.pxSize
+        self.viewtimer = QtCore.QTimer()
+        self.viewtimer.timeout.connect(self.updateView)
         
-        x = np.arange(xmin, xmax, self.pxSize)
-        y = np.arange(ymin, ymax, self.pxSize)
+        self.n = 0  # number of frames that it are averaged, 0 means no average
+        self.i = 0  # update counter
+        self.npoints = 400
         
-        (Mx, My) = np.meshgrid(x, y)
+        self.reset()
         
-        N_G = np.max(array)
-        x0 = (xmax+xmin)/2
-        y0 = (ymax+ymin)/2
-        bkg = np.min(array)
-        σ = 2   # in px
-        
-        initial_guess_G = [N_G, x0, y0, σ, σ, bkg]
-#
-#                t0 = time.time()
-#                
-        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx, My), array.ravel(), 
-                                     p0=initial_guess_G)
-#                
-#                t1 = time.time()
-#                t_G = (t1-t0)*1e3 
-#                print('gaussian fit took {} ms'.format(np.around(t_G, 2)))
-#                
-#                poptG[1:5] = px_nm * poptG[1:5] # get results in nm
-#                poptG = np.around(poptG, 2)
-#        print('A = {}, (x0, y0) = ({}, {}), σ x = {}, σ y = {}, bkg = {}'.format(*poptG))
-
-        print(poptG)
-        
-    # TO DO: finish gaussian fit calculation and plot
-
-    # TO DO: fix multithreading
-            
     def setUpCamera(self):
         
         self.pxSize = 80  # in nm
@@ -226,119 +261,173 @@ class xyWidget(QtGui.QFrame):
         vspeed = self.andor.true_vert_shift_speed(4)
         print('Vertical shift speed = {} µs'.format(np.round(vspeed.magnitude,
                                                              1)))
-        
-    def setUpGUI(self):
-        
-        # GUI layout
-        
-        grid = QtGui.QGridLayout()
-        self.setLayout(grid)
-        
-        # parameters widget
-        
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-        
-        self.paramWidget.setFixedHeight(320)
-        self.paramWidget.setFixedWidth(200)
-        
-        grid.addWidget(self.paramWidget, 0, 1)
-        
-        # image widget layout
-        
-        imageWidget = pg.GraphicsLayoutWidget()
-        self.vb = imageWidget.addViewBox(row=0, col=0)
-        self.vb.setMouseMode(pg.ViewBox.RectMode)
-        self.img = pg.ImageItem()
-        self.img.translate(-0.5, -0.5)
-        self.vb.addItem(self.img)
-        self.vb.setAspectLocked(True)
-        imageWidget.setAspectLocked(True)
-        grid.addWidget(imageWidget, 0, 0)
-        
-        # set up histogram for the liveview image
-
-        self.hist = pg.HistogramLUTItem(image=self.img)
-        lut = viewbox_tools.generatePgColormap(cmaps.parula)
-        self.hist.gradient.setColorMap(lut)
-#        self.hist.vb.setLimits(yMin=1000, yMax=2000)
-
-        ## TO DO: fix histogram range
-
-
-        for tick in self.hist.gradient.ticks:
-            tick.hide()
-        imageWidget.addItem(self.hist, row=0, col=1)
-        
-        # x drift graph
-        
-        self.xPlot = imageWidget.addPlot(row=1, col=0, title="x position")
-        self.xPlot.setLabels(bottom=('t [s]'),
-                             left=('x [nm]'))
-        self.xPlot.showGrid(x=True, y=True)
-        
-        # y drift graph
-        
-        self.yPlot = imageWidget.addPlot(row=2, col=0, title="y position")
-        self.yPlot.setLabels(bottom=('t [s]'),
-                             left=('y [nm]'))
-        self.yPlot.showGrid(x=True, y=True)
-        
-        # LiveView Button
-
-        self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
-        self.liveviewButton.setCheckable(True)
-        self.liveviewButton.clicked.connect(self.liveview)
-        
-        self.viewtimer = QtCore.QTimer()
-        self.viewtimer.timeout.connect(self.updateView)
-        
-        # create ROI button
     
-        self.ROIButton = QtGui.QPushButton('add ROI')
-        self.ROIButton.setCheckable(True)
-        self.ROIButton.clicked.connect(self.createROI)
-        
-        # delete ROI button
-        
-        self.deleteROIsButton = QtGui.QPushButton('delete ROIs')
-        self.deleteROIsButton.setCheckable(True)
-        self.deleteROIsButton.clicked.connect(self.deleteROIs)
-        
-        # position tracking checkbox
-        
-        self.trackingBeadsBox = QtGui.QCheckBox('track beads positions')
-        
-        # buttons and param layout
-        
-        subgrid = QtGui.QGridLayout()
-        self.paramWidget.setLayout(subgrid)
+    def liveview(self):
 
-        subgrid.addWidget(self.liveviewButton, 0, 0)
-        subgrid.addWidget(self.ROIButton, 1, 0)
-        subgrid.addWidget(self.deleteROIsButton, 2, 0)
-        subgrid.addWidget(self.trackingBeadsBox, 3, 0)
+        if self.gui.liveviewButton.isChecked():
+            self.liveviewStart()
+
+        else:
+            self.liveviewStop()
+
         
-        # initial ROI parameters        
+    def liveviewStart(self):
         
-        self.NofPixels = 200
-        self.roi = None
-        self.ROInumber = 0
-        self.roilist = []
+        self.initial = True
         
-    def closeEvent(self, *args, **kwargs):
+        print('Temperature = {} °C'.format(self.andor.temperature))
+        print(self.andor.temperature_status)
+
+#        # Initial image
         
-        self.andor.shutter(0, 2, 0, 0, 0)
+        self.andor.acquisition_mode = 'Run till abort'
+        print('Acquisition mode:', self.andor.acquisition_mode)
+        self.andor.shutter(0, 1, 0, 0, 0)
+        self.andor.start_acquisition()
+        
+        time.sleep(self.expTime * 2)
+        self.image = self.andor.most_recent_image16(self.shape)
+#
+#        self.gui.img.setImage(np.transpose(self.image), autoLevels=False)
+        self.gui.img.setImage(self.image, autoLevels=False)
+#
+##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
+#
+        self.viewtimer.start(50)
+    
+    def liveviewStop(self):
+        
+        self.viewtimer.stop()
         self.andor.abort_acquisition()
-        self.andor.finalize()
+        self.andor.shutter(0, 2, 0, 0, 0)
+        
+        self.gui.liveviewButton.setChecked(False)
+            
+    def updateView(self):
+        """ Image update while in Liveview mode
+        """
+        
+        self.image = self.andor.most_recent_image16(self.shape)
 
-        super().closeEvent(*args, **kwargs)
+#        self.gui.img.setImage(np.transpose(self.image), autoLevels=False)
+        self.gui.img.setImage(self.image, autoLevels=False)
+
+        if self.gui.trackingBeadsBox.isChecked():
+            
+            for i in range(len(self.gui.roilist)):
+                
+                self.trackBead(i, self.initial)
+                self.update()
+                
+            
+    def trackBead(self, i, initial=False):
         
-class LiveViewWorker(QtCore.QObject):
+        # gaussian fit for every selected particle
     
-    
+        array = self.gui.roilist[i].getArrayRegion(self.image, self.gui.img)
         
+        ROIpos_nm = np.array(self.gui.roilist[i].pos()) * self.pxSize
+        
+        ymin = ROIpos_nm[1]
+        ymax = ROIpos_nm[1] + np.shape(array)[1] * self.pxSize
+        
+        xmin = ROIpos_nm[0]
+        xmax = ROIpos_nm[0] + np.shape(array)[0] * self.pxSize
+        
+        print('xmin', xmin)
+        print('ymin', ymin)
+        
+        x = np.arange(xmin, xmax, self.pxSize)
+        y = np.arange(ymin, ymax, self.pxSize)
+        
+        (Mx, My) = np.meshgrid(x, y)
+        
+        bkg = np.min(array)
+        A = np.max(array) - bkg
+        x0 = (xmax+xmin)/2
+        y0 = (ymax+ymin)/2
+
+        σ = 130   # in nm
+        
+        initial_guess_G = [A, x0, y0, σ, σ, bkg]
+#
+#                t0 = time.time()
+#                
+        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx, My), array.ravel(), 
+                                     p0=initial_guess_G)
+        
+        if initial is True:
+            
+            self.x0 = poptG[1] - xmin
+            self.y0 = poptG[2] - ymin
+            
+            self.initial = False
+            print('initial')
+            
+            dataG = PSF.gaussian2D((Mx, My), *poptG)
+            dataG_2d = dataG.reshape(int(np.shape(array)[0]), int(np.shape(array)[0]))
+            
+#            plt.figure()
+#            plt.imshow(array, interpolation=None, cmap=cmaps.parula)
+#            
+#            plt.figure()
+#            plt.imshow(dataG_2d, interpolation=None, cmap=cmaps.parula)
+            
+
+        
+        self.x = poptG[1] - xmin - self.x0
+        self.y = poptG[2] - ymin - self.y0
+        
+        print(self.x, self.y)
+        
+        
+    def update(self):
+        """ Update the data displayed in the graphs
+        """
+        
+        # i counter goes from 0 to n, at n it actually does the update
+        
+        if self.i == self.n:
+            
+            self.xPosition = self.x
+            self.yPosition = self.y
+    
+            if self.ptr < self.npoints:
+                self.xData[self.ptr] = self.xPosition
+                self.yData[self.ptr] = self.yPosition
+                self.time[self.ptr] = ptime.time() - self.startTime
+                
+                self.gui.xCurve.setData(self.time[1:self.ptr + 1],
+                                        self.xData[1:self.ptr + 1])
+                self.gui.yCurve.setData(self.time[1:self.ptr + 1],
+                                        self.yData[1:self.ptr + 1])
+    
+            else:
+                self.xData[:-1] = self.xData[1:]
+                self.xData[-1] = self.xPosition
+                self.yData[:-1] = self.yData[1:]
+                self.yData[-1] = self.yPosition
+                self.time[:-1] = self.time[1:]
+                self.time[-1] = ptime.time() - self.startTime
+                
+                self.gui.xCurve.setData(self.time, self.xData)
+                self.gui.yCurve.setData(self.time, self.yData)
+    
+            self.ptr += 1
+            
+        else:
+            
+            self.i += 1
+            
+            
+    def reset(self):
+        
+        self.xData = np.zeros(self.npoints)
+        self.yData = np.zeros(self.npoints)
+        self.time = np.zeros(self.npoints)
+        self.ptr = 0
+        self.startTime = ptime.time()
+            
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])

@@ -1094,7 +1094,7 @@ class scanWidget(QtGui.QFrame):
         layout.addWidget(self.zStepEdit, 5, 6)
         
         self.positioner.setFixedHeight(200)
-        self.positioner.setFixedWidth(500)
+        self.positioner.setFixedWidth(400)
         
         # Viewbox and image item where the liveview will be displayed
 

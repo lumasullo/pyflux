@@ -59,7 +59,7 @@ class mainWindow(QtGui.QFrame):
         dockArea.addDock(scanDock)
         
         self.scanThread = QtCore.QThread(self)
-        self.scanWidget.moveToThread(self.scanThread)
+#        self.scanWidget.moveToThread(self.scanThread)
         
         # tcspc measurement
         
@@ -72,7 +72,7 @@ class mainWindow(QtGui.QFrame):
         dockArea.addDock(tcspcDock)
         
         self.tcspcThread = QtCore.QThread(self)
-        self.tcspcWidget.moveToThread(self.tcspcThread)
+#        self.tcspcWidget.moveToThread(self.tcspcThread)
         
         # focus lock
         
@@ -85,7 +85,7 @@ class mainWindow(QtGui.QFrame):
         dockArea.addDock(focusDock)
         
         self.focusThread = QtCore.QThread(self)
-        self.focusWidget.moveToThread(self.focusThread)
+#        self.focusWidget.moveToThread(self.focusThread)
         
         # xy drift
         
@@ -99,7 +99,7 @@ class mainWindow(QtGui.QFrame):
         dockArea.addDock(xyDock)
         
         self.xyThread = QtCore.QThread(self)
-        self.xyWidget.moveToThread(self.xyThread)
+        self.xyWidget.lvworker.moveToThread(self.xyThread)
         
          
     def closeEvent(self, *args, **kwargs):

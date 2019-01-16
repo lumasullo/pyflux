@@ -53,40 +53,8 @@ class FocusWidget(QtGui.QFrame):
         self.naverage = 1
         self.displayRate = 5
         self.i = 0
-
+        
         self.ProcessData = ProcessData(self.cam, self.naverage)
-
-        # Focus lock widgets
-        
-        self.kpEdit = QtGui.QLineEdit('4')
-        self.kpEdit.setFixedWidth(60)
-
-        self.kpLabel = QtGui.QLabel('kp')
-        self.kiEdit = QtGui.QLineEdit('0.01')
-        self.kiEdit.setFixedWidth(60)
-        self.kiLabel = QtGui.QLabel('ki')
-        self.lockButton = QtGui.QPushButton('Lock')
-        self.lockButton.setCheckable(True)
-        self.lockButton.setSizePolicy(QtGui.QSizePolicy.Preferred,
-                                      QtGui.QSizePolicy.Expanding)
-        moveLabel = QtGui.QLabel('Move [nm]')
-        moveLabel.setAlignment(QtCore.Qt.AlignCenter)
-        self.moveEdit = QtGui.QLineEdit('0')
-        self.moveEdit.setFixedWidth(60)
-        self.ROIbutton = QtGui.QPushButton('ROI')
-        self.selectROIbutton = QtGui.QPushButton('select ROI')
-        
-        self.kiEdit.textChanged.connect(self.unlockFocus)
-        self.kpEdit.textChanged.connect(self.unlockFocus)
-        self.moveEdit.returnPressed.connect(self.zMoveEdit)
-        self.lockButton.clicked.connect(self.toggleFocus)
-        self.ROIbutton.clicked.connect(self.ROImethod)
-        self.selectROIbutton.clicked.connect(self.selectROI)
-
-        self.focusDataBox = QtGui.QCheckBox('Save focus data')
-        self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
-
-        self.graph = FocusLockGraph(self, self.naverage)
 
         self.focusTime = 1000 / self.scansPerS
         self.focusTimer = QtCore.QTimer()
@@ -96,6 +64,10 @@ class FocusWidget(QtGui.QFrame):
         self.locked = False
         self.n = 1
         self.max_dev = 0
+        
+        self.setUpGUI()
+
+        
 
 #        self.focusCalib = FocusCalibration(self)
 #        self.focusCalibThread = QtCore.QThread(self)
@@ -103,62 +75,6 @@ class FocusWidget(QtGui.QFrame):
 #        self.focusCalibButton = QtGui.QPushButton('Calibrate')
 #        self.focusCalibButton.clicked.connect(self.focusCalib.start)
 #        self.focusCalibThread.start()
-
-        try:
-            prevCal = np.around(np.loadtxt('calibration')[0]/10)
-            text = '1 px --> {} nm'.format(prevCal)
-            self.calibrationDisplay = QtGui.QLineEdit(text)
-        except:
-            self.calibrationDisplay = QtGui.QLineEdit('0 px --> 0 nm')
-
-        self.calibrationDisplay.setReadOnly(False)
-
-        self.camDisplay = pg.GraphicsLayoutWidget()
-        self.vb = self.camDisplay.addViewBox(row=0, col=0)
-
-        self.vb.setMouseMode(pg.ViewBox.RectMode)
-        self.img = pg.ImageItem()
-        self.img.translate(-0.5, -0.5)
-        self.vb.addItem(self.img)
-        self.vb.setAspectLocked(True)
-
-        # set up histogram for the liveview image
-
-        self.hist = pg.HistogramLUTItem(image=self.img)
-        lut = viewbox_tools.generatePgColormap(cmaps.inferno)
-        self.hist.gradient.setColorMap(lut)
-        self.hist.vb.setLimits(yMin=0, yMax=10000)
-
-        for tick in self.hist.gradient.ticks:
-            tick.hide()
-        self.camDisplay.addItem(self.hist, row=0, col=1)
-
-        dockArea = DockArea()
-        graphDock = Dock("Focus laser graph", size=(400, 200))
-        graphDock.addWidget(self.graph)
-        dockArea.addDock(graphDock)
-        camDock = Dock("Focus laser view", size=(200, 200))
-        camDock.addWidget(self.camDisplay)
-        dockArea.addDock(camDock, 'right', graphDock)
-
-        # GUI layout
-        grid = QtGui.QGridLayout()
-        self.setLayout(grid)
-        grid.addWidget(dockArea, 0, 0, 1, 7)
-#        grid.addWidget(self.focusCalibButton, 1, 0)
-        grid.addWidget(self.calibrationDisplay, 2, 0)
-        grid.addWidget(self.focusDataBox, 1, 1)
-        grid.addWidget(moveLabel, 1, 2)
-        grid.addWidget(self.moveEdit, 2, 2)
-        grid.addWidget(self.kpLabel, 1, 3)
-        grid.addWidget(self.kpEdit, 1, 4)
-        grid.addWidget(self.kiLabel, 2, 3)
-        grid.addWidget(self.kiEdit, 2, 4)
-        grid.addWidget(self.lockButton, 1, 6, 2, 1)
-        grid.addWidget(self.ROIbutton, 1, 5, 1, 1)
-        grid.addWidget(self.selectROIbutton, 2, 5, 1, 1)
-
-        grid.setColumnMinimumWidth(5, 170)
 
     def zMoveEdit(self):
 #        self.zMove(float(self.moveEdit.text())/1000 * self.um)
@@ -336,8 +252,98 @@ class FocusWidget(QtGui.QFrame):
         
         self.vb.removeItem(self.roi)
         self.roi.hide()
+        
+    def setUpGUI(self):
+        
+         # Focus lock widget
+        
+        self.kpEdit = QtGui.QLineEdit('4')
+        self.kpEdit.setFixedWidth(60)
 
+        self.kpLabel = QtGui.QLabel('kp')
+        self.kiEdit = QtGui.QLineEdit('0.01')
+        self.kiEdit.setFixedWidth(60)
+        self.kiLabel = QtGui.QLabel('ki')
+        self.lockButton = QtGui.QPushButton('Lock')
+        self.lockButton.setCheckable(True)
+        self.lockButton.setSizePolicy(QtGui.QSizePolicy.Preferred,
+                                      QtGui.QSizePolicy.Expanding)
+        moveLabel = QtGui.QLabel('Move [nm]')
+        moveLabel.setAlignment(QtCore.Qt.AlignCenter)
+        self.moveEdit = QtGui.QLineEdit('0')
+        self.moveEdit.setFixedWidth(60)
+        self.ROIbutton = QtGui.QPushButton('ROI')
+        self.selectROIbutton = QtGui.QPushButton('select ROI')
+        
+        self.kiEdit.textChanged.connect(self.unlockFocus)
+        self.kpEdit.textChanged.connect(self.unlockFocus)
+        self.moveEdit.returnPressed.connect(self.zMoveEdit)
+        self.lockButton.clicked.connect(self.toggleFocus)
+        self.ROIbutton.clicked.connect(self.ROImethod)
+        self.selectROIbutton.clicked.connect(self.selectROI)
 
+        self.focusDataBox = QtGui.QCheckBox('Save focus data')
+        self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
+        
+        try:
+            prevCal = np.around(np.loadtxt('calibration')[0]/10)
+            text = '1 px --> {} nm'.format(prevCal)
+            self.calibrationDisplay = QtGui.QLineEdit(text)
+        except:
+            self.calibrationDisplay = QtGui.QLineEdit('0 px --> 0 nm')
+
+        self.calibrationDisplay.setReadOnly(False)
+
+        self.camDisplay = pg.GraphicsLayoutWidget()
+        self.vb = self.camDisplay.addViewBox(row=0, col=0)
+
+        self.vb.setMouseMode(pg.ViewBox.RectMode)
+        self.img = pg.ImageItem()
+        self.img.translate(-0.5, -0.5)
+        self.vb.addItem(self.img)
+        self.vb.setAspectLocked(True)
+
+        # set up histogram for the liveview image
+
+        self.hist = pg.HistogramLUTItem(image=self.img)
+        lut = viewbox_tools.generatePgColormap(cmaps.inferno)
+        self.hist.gradient.setColorMap(lut)
+        self.hist.vb.setLimits(yMin=0, yMax=10000)
+
+        for tick in self.hist.gradient.ticks:
+            tick.hide()
+        self.camDisplay.addItem(self.hist, row=0, col=1)
+        
+        self.graph = FocusLockGraph(self, self.naverage)
+
+        dockArea = DockArea()
+        graphDock = Dock("Focus laser graph", size=(400, 200))
+        graphDock.addWidget(self.graph)
+        dockArea.addDock(graphDock)
+        camDock = Dock("Focus laser view", size=(200, 200))
+        camDock.addWidget(self.camDisplay)
+        dockArea.addDock(camDock, 'right', graphDock)
+
+        # GUI layout
+        grid = QtGui.QGridLayout()
+        self.setLayout(grid)
+        grid.addWidget(dockArea, 0, 0, 1, 7)
+#        grid.addWidget(self.focusCalibButton, 1, 0)
+        grid.addWidget(self.calibrationDisplay, 2, 0)
+        grid.addWidget(self.focusDataBox, 1, 1)
+        grid.addWidget(moveLabel, 1, 2)
+        grid.addWidget(self.moveEdit, 2, 2)
+        grid.addWidget(self.kpLabel, 1, 3)
+        grid.addWidget(self.kpEdit, 1, 4)
+        grid.addWidget(self.kiLabel, 2, 3)
+        grid.addWidget(self.kiEdit, 2, 4)
+        grid.addWidget(self.lockButton, 1, 6, 2, 1)
+        grid.addWidget(self.ROIbutton, 1, 5, 1, 1)
+        grid.addWidget(self.selectROIbutton, 2, 5, 1, 1)
+
+        grid.setColumnMinimumWidth(5, 170)
+
+        
 class ProcessData(QtCore.QObject):
 
     def __init__(self, camera, naverage, *args, **kwargs):
