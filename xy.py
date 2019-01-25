@@ -37,7 +37,7 @@ class xyWidget(QtGui.QFrame):
         self.andor.lib.Initialize()
         print('idn:', self.andor.idn)
         
-        self.lvworker = LiveViewWorker(self, self.andor)
+        self.xyworker = xyWorker(self, self.andor)
         
         self.setUpGUI()
         
@@ -152,7 +152,7 @@ class xyWidget(QtGui.QFrame):
 
         self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
         self.liveviewButton.setCheckable(True)
-        self.liveviewButton.clicked.connect(self.lvworker.liveview)
+        self.liveviewButton.clicked.connect(self.xyworker.liveview)
         
         # create ROI button
     
@@ -191,7 +191,7 @@ class xyWidget(QtGui.QFrame):
 
         super().closeEvent(*args, **kwargs)
         
-class LiveViewWorker(QtCore.QObject):
+class xyWorker(QtCore.QObject):
     
     def __init__(self, gui, andor, *args, **kwargs):
         super().__init__(*args, **kwargs)

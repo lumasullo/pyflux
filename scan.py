@@ -49,21 +49,22 @@ def setupDevice(adw):
     BTL = "ADwin11.btl"
     PROCESS_1 = "linescan_signal_data.TB1"
     PROCESS_2 = "moveto_xyz.TB2"
-    PROCESS_6 = "trace_measurement.TB6"
+    PROCESS_3 = "actuator_z.TB3"
 
     btl = adw.ADwindir + BTL
+    adw.Boot(btl)
 
     currdir = os.getcwd()
     process_folder = os.path.join(currdir, "processes")
 
     process_1 = os.path.join(process_folder, PROCESS_1)
     process_2 = os.path.join(process_folder, PROCESS_2)
-    process_6 = os.path.join(process_folder, PROCESS_6)
-
-    adw.Boot(btl)
+    process_3 = os.path.join(process_folder, PROCESS_3)
+    
     adw.Load_Process(process_1)
     adw.Load_Process(process_2)
-    adw.Load_Process(process_6)
+    adw.Load_Process(process_3)
+
 
     
 class scanWidget(QtGui.QFrame):
@@ -172,6 +173,54 @@ class scanWidget(QtGui.QFrame):
 
             plt.plot(self.data_t_adwin[0:-1],
                      2**16 * np.ones(np.size(self.data_t_adwin[0:-1])), 'r-')
+            
+    def xMoveUp(self):
+        
+        newPos_µm = self.initialPos[0] + self.xStep
+        newPos_µm = round(newPos_µm, 3)
+        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
+                                                      self.initialPos[1],
+                                                      self.initialPos[2]))
+        
+    def xMoveDown(self):
+        
+        newPos_µm = self.initialPos[0] - self.xStep
+        newPos_µm = np.around(newPos_µm, 3)
+        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
+                                                      self.initialPos[1],
+                                                      self.initialPos[2]))
+    
+    def yMoveUp(self):
+        
+        newPos_µm = self.initialPos[1] + self.yStep
+        newPos_µm = np.around(newPos_µm, 3)       
+        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+                                                      newPos_µm,
+                                                      self.initialPos[2]))
+    
+    def yMoveDown(self):
+        
+        newPos_µm = self.initialPos[1] - self.yStep
+        newPos_µm = np.around(newPos_µm, 3)
+        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+                                                      newPos_µm,
+                                                      self.initialPos[2]))
+
+    def zMoveUp(self):
+        
+        newPos_µm = self.initialPos[2] + self.zStep
+        newPos_µm = np.around(newPos_µm, 3)
+        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+                                                      self.initialPos[1],
+                                                      newPos_µm))
+        
+    def zMoveDown(self):
+        
+        newPos_µm = self.initialPos[2] - self.zStep
+        newPos_µm = np.around(newPos_µm, 3)
+        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+                                                      self.initialPos[1],
+                                                      newPos_µm))
     
     def paramChanged(self):
 
@@ -262,333 +311,7 @@ class scanWidget(QtGui.QFrame):
 
         self.updateDeviceParameters()
 
-    def updateDeviceParameters(self):
-        
-        if self.detector == 'APD':
-            self.adw.Set_Par(30, 0)  # Digital input (APD)
 
-        if self.detector == 'photodiode':
-            self.adw.Set_Par(30, 1)  # Analog input (photodiode)
-
-        # select scan type
-
-        if self.scantype == 'xy':
-
-            self.adw.Set_FPar(10, 1)
-            self.adw.Set_FPar(11, 2)
-
-        if self.scantype == 'xz':
-
-            self.adw.Set_FPar(10, 1)
-            self.adw.Set_FPar(11, 6)
-
-        if self.scantype == 'yz':
-
-            self.adw.Set_FPar(10, 2)
-            self.adw.Set_FPar(11, 6)
-
-        #  initial positions x and y
-
-        self.x_i = self.initialPos[0]
-        self.y_i = self.initialPos[1]
-        self.z_i = self.initialPos[2]
-
-        self.x_offset = 0
-        self.y_offset = 0
-        self.z_offset = 0
-
-        #  load ADwin parameters
-
-        self.adw.Set_Par(1, self.tot_pixels)
-
-        self.data_t_adwin = tools.timeToADwin(self.data_t)
-        self.data_x_adwin = tools.convert(self.data_x, 'XtoU')
-        self.data_y_adwin = tools.convert(self.data_y, 'XtoU')
-
-        # repeat last element because time array has to have one more
-        # element than position array
-
-        dt = self.data_t_adwin[-1] - self.data_t_adwin[-2]
-
-        self.data_t_adwin = np.append(self.data_t_adwin,
-                                      (self.data_t_adwin[-1] + dt))
-
-        # prepare arrays for conversion into ADwin-readable data
-
-        self.time_range = np.size(self.data_t_adwin)
-        self.space_range = np.size(self.data_x_adwin)
-
-        self.data_t_adwin = np.array(self.data_t_adwin, dtype='int')
-        self.data_x_adwin = np.array(self.data_x_adwin, dtype='int')
-        self.data_y_adwin = np.array(self.data_y_adwin, dtype='int')
-
-        self.data_t_adwin = list(self.data_t_adwin)
-        self.data_x_adwin = list(self.data_x_adwin)
-        self.data_y_adwin = list(self.data_y_adwin)
-
-        self.adw.SetData_Long(self.data_t_adwin, 2, 1, self.time_range)
-        self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
-        self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
-
-    def moveToParameters(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
-                         n_pixels_z=128, pixeltime=2000):
-
-        x_f = tools.convert(x_f, 'XtoU')
-        y_f = tools.convert(y_f, 'XtoU')
-        z_f = tools.convert(z_f, 'XtoU')
-        
-#        print(x_f, y_f, z_f)
-
-        self.adw.Set_Par(21, n_pixels_x)
-        self.adw.Set_Par(22, n_pixels_y)
-        self.adw.Set_Par(23, n_pixels_z)
-
-        self.adw.Set_FPar(23, x_f)
-        self.adw.Set_FPar(24, y_f)
-        self.adw.Set_FPar(25, z_f)
-
-        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
-
-    def moveTo(self, x_f, y_f, z_f):
-
-        self.moveToParameters(x_f, y_f, z_f)
-        self.adw.Start_Process(2)
-
-    def moveToAction(self):
-
-        final_position = np.array(self.moveToEdit.text().split(' '),
-                                  dtype=np.float16)
-
-        self.moveTo(final_position[0], final_position[1], final_position[2])
-        
-    def getPosition(self):
-        
-        xPos = self.adw.Get_FPar(50)
-        yPos = self.adw.Get_FPar(51)
-        zPos = self.adw.Get_FPar(52)
-        
-        self.xPos = tools.convert(xPos, 'UtoX')
-        self.yPos = tools.convert(yPos, 'UtoX')
-        self.zPos = tools.convert(zPos, 'UtoX') 
-            
-    def frameAcquisition(self):
-
-        if self.acquireFrameButton.isChecked():
-            self.liveviewStop()
-            self.liveviewButton.setChecked(False)
-            self.frameAcquisitionStart()
-
-        else:
-            self.frameAcquisitionStop()
-
-    def frameAcquisitionStart(self):
-
-        self.acquisitionMode = 'frame'
-
-        # save scan plot (x vs t)
-
-        self.filename = os.path.join(self.folderEdit.text(),
-                                     self.filenameEdit.text())
-
-        plt.figure('Scan plot x vs t')
-        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
-        plt.xlabel('t (ADwin time)')
-        plt.ylabel('V (DAC units)')
-
-        fname = tools.getUniqueName(self.filename)
-        fname = fname + '_scan_plot'
-        plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
-                    orientation='portrait', papertype=None, format=None,
-                    transparent=False, bbox_inches=None, pad_inches=0.1,
-                    frameon=None)
-        
-        # restar the slow axis
-        
-        self.y_offset = 0
-
-        # move to initial position smoothly
-
-        if self.scantype == 'xy':
-
-            self.moveTo(self.x_i, self.y_i, self.z_i)
-
-        if self.scantype == 'xz':
-
-            self.moveTo(self.x_i, self.y_i + self.scanRange/2,
-                        self.z_i - self.scanRange/2)
-
-        if self.scantype == 'yz':
-
-            self.moveTo(self.x_i + self.scanRange/2, self.y_i,
-                        self.z_i - self.scanRange/2)
-
-        self.i = 0
-
-        # start updateView timer
-
-        self.viewtimer.start(self.viewtimer_time)
-
-    def frameAcquisitionStop(self):
-
-        self.viewtimer.stop()
-
-        # experiment parameters
-
-        name = tools.getUniqueName(self.filename)
-        now = time.strftime("%c")
-        tools.saveConfig(self, now, name)
-
-        # save image
-
-        data = self.image
-        result = Image.fromarray(data.astype('uint16'))
-
-        result.save(r'{}.tif'.format(name))
-
-        self.imageNumber += 1
-        self.acquireFrameButton.setChecked(False)
-    
-    def lineAcquisition(self):
-
-        # TO DO: fix problem of waiting time
-
-        self.adw.Start_Process(1)
-
-#        # flag changes when process is finished
-
-        if (((1/1000) * self.data_t[-1]) < 240):   # in ms
-
-            while self.flag == 0:
-                self.flag = self.adw.Get_Par(2)
-        
-        else:
-            
-            line_time = (1/1000) * self.data_t[-1]  # in ms
-            wait_time = line_time * 1.05
-
-            time.sleep(wait_time/1000)
-
-#        print(self.viewtimer_time)
-#        time0 = time.time()
-        line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
-#        time1 = time.time()
-#        print(time1 - time0)
-#        time.sleep(0.2)
-
-        line_data[0] = 0  # TO DO: fix the high count error on first element
-
-        return line_data
-
-    # This is the function triggered by pressing the liveview button
-    def liveview(self):
-
-        if self.liveviewButton.isChecked():
-            self.liveviewStart()
-
-        else:
-            self.liveviewStop()
-
-    def liveviewStart(self):
-
-        self.acquisitionMode = 'liveview'
-
-        if self.scantype == 'xy':
-
-            self.moveTo(self.x_i, self.y_i, self.z_i)
-
-        if self.scantype == 'xz':
-
-            self.moveTo(self.x_i, self.y_i + self.scanRange/2,
-                        self.z_i - self.scanRange/2)
-
-        if self.scantype == 'yz':
-
-            self.moveTo(self.x_i + self.scanRange/2, self.y_i,
-                        self.z_i - self.scanRange/2)
-
-        if self.roi is not None:
-
-            self.vb.removeItem(self.roi)
-            self.roi.hide()
-
-            self.ROIButton.setChecked(False)
-            
-        if self.lineROI is not None:
-
-            self.vb.removeItem(self.lineROI)
-
-            self.lineProfButton.setChecked(False)
-
-        else:
-
-            pass
-
-        self.viewtimer.start(self.viewtimer_time)
-
-    def liveviewStop(self):
-
-        self.viewtimer.stop()
-
-    def updateView(self):
-
-        if self.scantype == 'xy':
-
-            dy = tools.convert(self.dy, 'ΔXtoU')
-            self.y_offset = int(self.y_offset + dy)
-            self.adw.Set_FPar(2, self.y_offset)
-
-        if self.scantype == 'xz' or self.scantype == 'yz':
-
-            dz = tools.convert(self.dz, 'ΔXtoU')
-            self.z_offset = int(self.z_offset + dz)
-            self.adw.Set_FPar(2, self.z_offset)
-
-        self.lineData = self.lineAcquisition()
-
-        if self.edited_scan is True:
-
-            c0 = self.NofAuxPixels
-            c1 = self.NofAuxPixels + self.NofPixels
-
-            self.lineData_edited = self.lineData[c0:c1]
-            self.image[:, self.NofPixels-1-self.i] = self.lineData_edited
-
-        else:
-
-            self.image[:, self.NofPixels-1-self.i] = self.lineData
-
-        self.img.setImage(self.image, autoLevels=False)
-
-        if self.i < self.NofPixels-1:
-
-            self.i = self.i + 1
-
-        else:
-
-            print('Frame ended')
-
-            if self.acquisitionMode == 'frame':
-                self.frameAcquisitionStop()
-
-            self.i = 0
-            self.y_offset = 0
-            self.z_offset = 0
-
-            if self.scantype == 'xy':
-
-                self.moveTo(self.x_i, self.y_i, self.z_i)
-
-            if self.scantype == 'xz':
-
-                self.moveTo(self.x_i, self.y_i + self.scanRange/2,
-                            self.z_i - self.scanRange/2)
-
-            if self.scantype == 'yz':
-
-                self.moveTo(self.x_i + self.scanRange/2, self.y_i,
-                            self.z_i - self.scanRange/2)
-
-            self.updateDeviceParameters()
             
     def lineProfile(self):
         
@@ -614,58 +337,7 @@ class scanWidget(QtGui.QFrame):
         x = self.pxSize * np.arange(np.size(data))*1000
         self.linePlot.plot(x, data)
         
-    def xMoveUp(self):
-        
-        print('initialPos', self.initialPos)
-        print('xstep', self.xStep)
-        print(type(self.initialPos))
-        print(type(self.xStep))
-        
-        newPos_µm = self.initialPos[0] + self.xStep
-        newPos_µm = round(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
-                                                      self.initialPos[1],
-                                                      self.initialPos[2]))
-        
-    def xMoveDown(self):
-        
-        newPos_µm = self.initialPos[0] - self.xStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
-                                                      self.initialPos[1],
-                                                      self.initialPos[2]))
-    
-    def yMoveUp(self):
-        
-        newPos_µm = self.initialPos[1] + self.yStep
-        newPos_µm = np.around(newPos_µm, 3)       
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      newPos_µm,
-                                                      self.initialPos[2]))
-    
-    def yMoveDown(self):
-        
-        newPos_µm = self.initialPos[1] - self.yStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      newPos_µm,
-                                                      self.initialPos[2]))
 
-    def zMoveUp(self):
-        
-        newPos_µm = self.initialPos[2] + self.zStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      self.initialPos[1],
-                                                      newPos_µm))
-        
-    def zMoveDown(self):
-        
-        newPos_µm = self.initialPos[2] - self.zStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      self.initialPos[1],
-                                                      newPos_µm))
         
     def ROImethod(self):
         
@@ -1020,7 +692,7 @@ class scanWidget(QtGui.QFrame):
         subgrid.addWidget(self.moveToButton, 7, 1)
 #        subgrid.addWidget(self.driftPresMeasButton, 8, 1)
 
-        self.paramWidget.setFixedHeight(500)
+        self.paramWidget.setFixedHeight(400)
         self.paramWidget.setFixedWidth(400)
         imageWidget.setFixedHeight(700)
         imageWidget.setFixedWidth(600)
@@ -1038,7 +710,7 @@ class scanWidget(QtGui.QFrame):
         subgridEBP.addWidget(self.Llabel, 4, 1)
         subgridEBP.addWidget(self.LEdit, 5, 1)
         
-        self.EBPWidget.setFixedHeight(170)
+        self.EBPWidget.setFixedHeight(150)
         self.EBPWidget.setFixedWidth(250)
         
         # piezo navigation widget
@@ -1074,6 +746,11 @@ class scanWidget(QtGui.QFrame):
         grid.addWidget(self.positioner, 2, 0)
         layout = QtGui.QGridLayout()
         self.positioner.setLayout(layout)
+        
+        positionerTitle = QtGui.QLabel('<h2><strong>Position</strong></h2>')
+        positionerTitle.setTextFormat(QtCore.Qt.RichText)
+        
+        layout.addWidget(positionerTitle, 0, 0, 2, 3)
         layout.addWidget(self.xUpButton, 2, 4, 2, 1)
         layout.addWidget(self.xDownButton, 2, 2, 2, 1)
         
@@ -1093,8 +770,9 @@ class scanWidget(QtGui.QFrame):
         layout.addWidget(self.zStepLabel, 4, 6)        
         layout.addWidget(self.zStepEdit, 5, 6)
         
-        self.positioner.setFixedHeight(200)
+        self.positioner.setFixedHeight(150)
         self.positioner.setFixedWidth(400)
+        
         
         # Viewbox and image item where the liveview will be displayed
 
@@ -1116,7 +794,334 @@ class scanWidget(QtGui.QFrame):
             tick.hide()
         imageWidget.addItem(self.hist, row=0, col=1)
         
+    def updateDeviceParameters(self):
+        
+        if self.detector == 'APD':
+            self.adw.Set_Par(30, 0)  # Digital input (APD)
+
+        if self.detector == 'photodiode':
+            self.adw.Set_Par(30, 1)  # Analog input (photodiode)
+
+        # select scan type
+
+        if self.scantype == 'xy':
+
+            self.adw.Set_FPar(10, 1)
+            self.adw.Set_FPar(11, 2)
+
+        if self.scantype == 'xz':
+
+            self.adw.Set_FPar(10, 1)
+            self.adw.Set_FPar(11, 6)
+
+        if self.scantype == 'yz':
+
+            self.adw.Set_FPar(10, 2)
+            self.adw.Set_FPar(11, 6)
+
+        #  initial positions x and y
+
+        self.x_i = self.initialPos[0]
+        self.y_i = self.initialPos[1]
+        self.z_i = self.initialPos[2]
+
+        self.x_offset = 0
+        self.y_offset = 0
+        self.z_offset = 0
+
+        #  load ADwin parameters
+
+        self.adw.Set_Par(1, self.tot_pixels)
+
+        self.data_t_adwin = tools.timeToADwin(self.data_t)
+        self.data_x_adwin = tools.convert(self.data_x, 'XtoU')
+        self.data_y_adwin = tools.convert(self.data_y, 'XtoU')
+
+        # repeat last element because time array has to have one more
+        # element than position array
+
+        dt = self.data_t_adwin[-1] - self.data_t_adwin[-2]
+
+        self.data_t_adwin = np.append(self.data_t_adwin,
+                                      (self.data_t_adwin[-1] + dt))
+
+        # prepare arrays for conversion into ADwin-readable data
+
+        self.time_range = np.size(self.data_t_adwin)
+        self.space_range = np.size(self.data_x_adwin)
+
+        self.data_t_adwin = np.array(self.data_t_adwin, dtype='int')
+        self.data_x_adwin = np.array(self.data_x_adwin, dtype='int')
+        self.data_y_adwin = np.array(self.data_y_adwin, dtype='int')
+
+        self.data_t_adwin = list(self.data_t_adwin)
+        self.data_x_adwin = list(self.data_x_adwin)
+        self.data_y_adwin = list(self.data_y_adwin)
+
+        self.adw.SetData_Long(self.data_t_adwin, 2, 1, self.time_range)
+        self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
+        self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
+
+    def moveToParameters(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+                         n_pixels_z=128, pixeltime=2000):
+
+        x_f = tools.convert(x_f, 'XtoU')
+        y_f = tools.convert(y_f, 'XtoU')
+        z_f = tools.convert(z_f, 'XtoU')
+        
+#        print(x_f, y_f, z_f)
+
+        self.adw.Set_Par(21, n_pixels_x)
+        self.adw.Set_Par(22, n_pixels_y)
+        self.adw.Set_Par(23, n_pixels_z)
+
+        self.adw.Set_FPar(23, x_f)
+        self.adw.Set_FPar(24, y_f)
+        self.adw.Set_FPar(25, z_f)
+
+        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
+
+    def moveTo(self, x_f, y_f, z_f):
+
+        self.moveToParameters(x_f, y_f, z_f)
+        self.adw.Start_Process(2)
+
+    def moveToAction(self):
+
+        final_position = np.array(self.moveToEdit.text().split(' '),
+                                  dtype=np.float16)
+
+        self.moveTo(final_position[0], final_position[1], final_position[2])
+        
+    def getPosition(self):
+        
+        xPos = self.adw.Get_FPar(50)
+        yPos = self.adw.Get_FPar(51)
+        zPos = self.adw.Get_FPar(52)
+        
+        self.xPos = tools.convert(xPos, 'UtoX')
+        self.yPos = tools.convert(yPos, 'UtoX')
+        self.zPos = tools.convert(zPos, 'UtoX') 
             
+    def frameAcquisition(self):
+
+        if self.acquireFrameButton.isChecked():
+            self.liveviewStop()
+            self.liveviewButton.setChecked(False)
+            self.frameAcquisitionStart()
+
+        else:
+            self.frameAcquisitionStop()
+
+    def frameAcquisitionStart(self):
+
+        self.acquisitionMode = 'frame'
+
+        # save scan plot (x vs t)
+
+        self.filename = os.path.join(self.folderEdit.text(),
+                                     self.filenameEdit.text())
+
+        plt.figure('Scan plot x vs t')
+        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
+        plt.xlabel('t (ADwin time)')
+        plt.ylabel('V (DAC units)')
+
+        fname = tools.getUniqueName(self.filename)
+        fname = fname + '_scan_plot'
+        plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
+                    orientation='portrait', papertype=None, format=None,
+                    transparent=False, bbox_inches=None, pad_inches=0.1,
+                    frameon=None)
+        
+        # restar the slow axis
+        
+        self.y_offset = 0
+
+        # move to initial position smoothly
+
+        if self.scantype == 'xy':
+
+            self.moveTo(self.x_i, self.y_i, self.z_i)
+
+        if self.scantype == 'xz':
+
+            self.moveTo(self.x_i, self.y_i + self.scanRange/2,
+                        self.z_i - self.scanRange/2)
+
+        if self.scantype == 'yz':
+
+            self.moveTo(self.x_i + self.scanRange/2, self.y_i,
+                        self.z_i - self.scanRange/2)
+
+        self.i = 0
+
+        # start updateView timer
+
+        self.viewtimer.start(self.viewtimer_time)
+
+    def frameAcquisitionStop(self):
+
+        self.viewtimer.stop()
+
+        # experiment parameters
+
+        name = tools.getUniqueName(self.filename)
+        now = time.strftime("%c")
+        tools.saveConfig(self, now, name)
+
+        # save image
+
+        data = self.image
+        result = Image.fromarray(data.astype('uint16'))
+
+        result.save(r'{}.tif'.format(name))
+
+        self.imageNumber += 1
+        self.acquireFrameButton.setChecked(False)
+    
+    def lineAcquisition(self):
+
+        # TO DO: fix problem of waiting time
+
+        self.adw.Start_Process(1)
+
+#        # flag changes when process is finished
+
+        if (((1/1000) * self.data_t[-1]) < 240):   # in ms
+
+            while self.flag == 0:
+                self.flag = self.adw.Get_Par(2)
+        
+        else:
+            
+            line_time = (1/1000) * self.data_t[-1]  # in ms
+            wait_time = line_time * 1.05
+
+            time.sleep(wait_time/1000)
+
+#        print(self.viewtimer_time)
+#        time0 = time.time()
+        line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
+#        time1 = time.time()
+#        print(time1 - time0)
+#        time.sleep(0.2)
+
+        line_data[0] = 0  # TO DO: fix the high count error on first element
+
+        return line_data
+
+    # This is the function triggered by pressing the liveview button
+    def liveview(self):
+
+        if self.liveviewButton.isChecked():
+            self.liveviewStart()
+
+        else:
+            self.liveviewStop()
+
+    def liveviewStart(self):
+
+        self.acquisitionMode = 'liveview'
+
+        if self.scantype == 'xy':
+
+            self.moveTo(self.x_i, self.y_i, self.z_i)
+
+        if self.scantype == 'xz':
+
+            self.moveTo(self.x_i, self.y_i + self.scanRange/2,
+                        self.z_i - self.scanRange/2)
+
+        if self.scantype == 'yz':
+
+            self.moveTo(self.x_i + self.scanRange/2, self.y_i,
+                        self.z_i - self.scanRange/2)
+
+        if self.roi is not None:
+
+            self.vb.removeItem(self.roi)
+            self.roi.hide()
+
+            self.ROIButton.setChecked(False)
+            
+        if self.lineROI is not None:
+
+            self.vb.removeItem(self.lineROI)
+
+            self.lineProfButton.setChecked(False)
+
+        else:
+
+            pass
+
+        self.viewtimer.start(self.viewtimer_time)
+
+    def liveviewStop(self):
+
+        self.viewtimer.stop()
+
+    def updateView(self):
+
+        if self.scantype == 'xy':
+
+            dy = tools.convert(self.dy, 'ΔXtoU')
+            self.y_offset = int(self.y_offset + dy)
+            self.adw.Set_FPar(2, self.y_offset)
+
+        if self.scantype == 'xz' or self.scantype == 'yz':
+
+            dz = tools.convert(self.dz, 'ΔXtoU')
+            self.z_offset = int(self.z_offset + dz)
+            self.adw.Set_FPar(2, self.z_offset)
+
+        self.lineData = self.lineAcquisition()
+
+        if self.edited_scan is True:
+
+            c0 = self.NofAuxPixels
+            c1 = self.NofAuxPixels + self.NofPixels
+
+            self.lineData_edited = self.lineData[c0:c1]
+            self.image[:, self.NofPixels-1-self.i] = self.lineData_edited
+
+        else:
+
+            self.image[:, self.NofPixels-1-self.i] = self.lineData
+
+        self.img.setImage(self.image, autoLevels=False)
+
+        if self.i < self.NofPixels-1:
+
+            self.i = self.i + 1
+
+        else:
+
+            print('Frame ended')
+
+            if self.acquisitionMode == 'frame':
+                self.frameAcquisitionStop()
+
+            self.i = 0
+            self.y_offset = 0
+            self.z_offset = 0
+
+            if self.scantype == 'xy':
+
+                self.moveTo(self.x_i, self.y_i, self.z_i)
+
+            if self.scantype == 'xz':
+
+                self.moveTo(self.x_i, self.y_i + self.scanRange/2,
+                            self.z_i - self.scanRange/2)
+
+            if self.scantype == 'yz':
+
+                self.moveTo(self.x_i + self.scanRange/2, self.y_i,
+                            self.z_i - self.scanRange/2)
+
+            self.updateDeviceParameters()
+    
     def closeEvent(self, *args, **kwargs):
 
         # Stop running threads
@@ -1130,13 +1135,8 @@ class scanWidget(QtGui.QFrame):
         z_0 = 0
 
         self.moveTo(x_0, y_0, z_0)
-        
-#        self.xydriftWidget.andor.shutter(0, 2, 0, 0, 0)
-#        self.xydriftWidget.andor.abort_acquisition()
-#        self.xydriftWidget.andor.finalize()
 
         super().closeEvent(*args, **kwargs)
-    
 
 if __name__ == '__main__':
 

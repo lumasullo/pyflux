@@ -80,12 +80,12 @@ class mainWindow(QtGui.QFrame):
         
         uc480Camera = uc480.UC480_Camera()
         
-        self.focusWidget = focus.FocusWidget(uc480Camera)
+        self.focusWidget = focus.focusWidget(uc480Camera, self.adw)
         focusDock.addWidget(self.focusWidget)
         dockArea.addDock(focusDock)
         
         self.focusThread = QtCore.QThread(self)
-#        self.focusWidget.moveToThread(self.focusThread)
+        self.focusWidget.fworker.moveToThread(self.focusThread)
         
         # xy drift
         
@@ -99,7 +99,7 @@ class mainWindow(QtGui.QFrame):
         dockArea.addDock(xyDock)
         
         self.xyThread = QtCore.QThread(self)
-        self.xyWidget.lvworker.moveToThread(self.xyThread)
+        self.xyWidget.xyworker.moveToThread(self.xyThread)
         
          
     def closeEvent(self, *args, **kwargs):
@@ -110,6 +110,7 @@ class mainWindow(QtGui.QFrame):
 
         # TO DO: add every module close event function
 
+        self.scanWidget.closeEvent()
         super().closeEvent(*args, **kwargs)
     
 
