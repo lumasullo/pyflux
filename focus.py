@@ -61,6 +61,15 @@ class focusWidget(QtGui.QFrame):
 
     def ROImethod(self):
         
+        if self.cropped is True:  # code to go back to the (1280 x 1024) ROI
+            
+            x0 = 0
+            y0 = 0
+            x1 = 1280 
+            y1 = 1024 
+            self.fworker.camera._set_AOI(x0, y0, x1, y1)
+            self.cropped = False
+        
         ROIpen = pg.mkPen(color='y')
 
         if self.roi is None:
@@ -113,6 +122,7 @@ class focusWidget(QtGui.QFrame):
         
         self.vb.removeItem(self.roi)
         self.roi.hide()
+        self.roi = None
         
     def setUpGUI(self):
         
@@ -173,7 +183,7 @@ class focusWidget(QtGui.QFrame):
         self.focusGraph.setAntialiasing(True)
         
         self.focusGraph.statistics = pg.LabelItem(justify='right')
-        self.focusGraph.addItem(self.focusGraph.statistics, row=0, col=1)
+        self.focusGraph.addItem(self.focusGraph.statistics, row=0, col=0)
         self.focusGraph.statistics.setText('---')
         
         self.focusGraph.zPlot = self.focusGraph.addPlot(row=0, col=0)
@@ -319,14 +329,16 @@ class focusWorker(QtCore.QObject):
         self.n += 1
         
     def update(self, delay=0.000):
+        
+        time0 = time.time()
 
         time.sleep(delay)
         
         raw_image = self.camera.latest_frame()
         
-        r = raw_image[:, :, 0]
-        g = raw_image[:, :, 1]
-        b = raw_image[:, :, 2]
+#        r = raw_image[:, :, 0]
+#        g = raw_image[:, :, 1]
+#        b = raw_image[:, :, 2]
         
         image = np.sum(raw_image, axis=2)
         
@@ -373,6 +385,10 @@ class focusWorker(QtCore.QObject):
         if self.locked:
             self.updatePI()
             self.updateStats()
+            
+        time1 = time.time()
+        
+#        print('focus signal update took {}'.format(np.around(time1-time0, 6))) 
         
     def toggleFocus(self, delay=0):
         

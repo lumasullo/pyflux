@@ -117,14 +117,14 @@ def saveConfig(main, dateandtime, name, filename=None):
     config['Scanning parameters'] = {
 
         'Date and time': dateandtime,
-        'Initial Position [x0, y0, z0] (µm)': main.initialPosEdit.text(),
-        'Scan range (µm)': main.scanRangeEdit.text(),
-        'Pixel time (µs)': main.pxTimeEdit.text(),
-        'Number of pixels': main.NofPixelsEdit.text(),
+        'Initial Position [x0, y0, z0] (µm)': main.gui.initialPosEdit.text(),
+        'Scan range (µm)': main.gui.scanRangeEdit.text(),
+        'Pixel time (µs)': main.gui.pxTimeEdit.text(),
+        'Number of pixels': main.gui.NofPixelsEdit.text(),
         'a_max (µm/µs^2)': str(main.a_max),
-        'a_aux [a0, a1, a2, a3] (% of a_max)': main.auxAccelerationEdit.text(),
-        'Pixel size (nm)': main.pxSizeValue.text(),
-        'Frame time (s)': main.frameTimeValue.text(),
+        'a_aux [a0, a1, a2, a3] (% of a_max)': main.gui.auxAccelerationEdit.text(),
+        'Pixel size (nm)': main.gui.pxSizeValue.text(),
+        'Frame time (s)': main.gui.frameTimeValue.text(),
         'Scan typ': main.scantype}
 
     with open(filename + '.txt', 'w') as configfile:
@@ -136,7 +136,6 @@ def getUniqueName(name):
     while os.path.exists(name + '.txt'):
         if n > 1:
             name = name.replace('_{}'.format(n - 1), '_{}'.format(n))
-            print(name)
         else:
             name = insertSuffix(name, '_{}'.format(n))
         n += 1

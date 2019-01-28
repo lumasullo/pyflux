@@ -14,6 +14,7 @@ Created on Fri Jun  1 14:18:19 2018
 
 import numpy as np
 import time
+from datetime import date
 import os
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -69,7 +70,7 @@ def setupDevice(adw):
     
 class scanWidget(QtGui.QFrame):
 
-    def __init__(self, adwin_device, *args, **kwargs):
+    def __init__(self, adwin, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
@@ -77,9 +78,6 @@ class scanWidget(QtGui.QFrame):
 #        self.device = 'nidaq'
 #        self.device = 'ADwin'
 
-        self.adw = adwin_device
-
-        self.edited_scan = True
         self.roi = None
         self.lineROI = None
         self.EBPscatter = [None, None, None, None]
@@ -88,45 +86,35 @@ class scanWidget(QtGui.QFrame):
         self.EBPshown = True
         self.fitting = False
         self.image = np.zeros((128, 128))
-
+        
         # set up GUI
 
         self.setUpGUI()
-
-        # Create a timer for the update of the liveview
-
-        self.viewtimer = QtCore.QTimer()
-        self.viewtimer.timeout.connect(self.updateView)
-
-        # Counter for the saved images
-
-        self.imageNumber = 0
-
-        # initialize flag for the ADwin process
-
-        self.flag = 0
-
-        # update parameters
-
-        self.paramChanged()
         
-        # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
+        # set up worker
         
-        pos_zero = tools.convert(0, 'XtoU')
+        self.scworker = scanWorker(self, adwin)
         
-        self.adw.Set_FPar(50, pos_zero)
-        self.adw.Set_FPar(51, pos_zero)
-        self.adw.Set_FPar(52, pos_zero)
+        # make connections between GUI and worker functions
         
-        # move to z = 10 µm
+        self.liveviewButton.clicked.connect(self.scworker.liveview)
+        self.acquireFrameButton.clicked.connect(self.scworker.frameAcquisition)
+        self.currentFrameButton.clicked.connect(self.scworker.saveCurrentFrame)
+        
+        # connections between changes in parameters and paramChanged function
+        
+        self.NofPixelsEdit.textChanged.connect(self.scworker.paramChanged)
+        self.scanRangeEdit.textChanged.connect(self.scworker.paramChanged)
+        self.pxTimeEdit.textChanged.connect(self.scworker.paramChanged)
+        self.initialPosEdit.textChanged.connect(self.scworker.paramChanged)
+        self.auxAccelerationEdit.textChanged.connect(self.scworker.paramChanged)
+        self.waitingTimeEdit.textChanged.connect(self.scworker.paramChanged)
+        self.detectorType.activated.connect(self.scworker.paramChanged)
+        self.scanMode.activated.connect(self.scworker.paramChanged)
+        
+        self.moveToButton.clicked.connect(self.scworker.moveToAction)
 
-        self.moveTo(0, 0, 10)
 
-        # initial directory
-
-        self.initialDir = r'C:\Data'
-        
-        
     def toggleAdvanced(self):
         
         if self.advanced:
@@ -155,7 +143,7 @@ class scanWidget(QtGui.QFrame):
             root = Tk()
             root.withdraw()
             folder = filedialog.askdirectory(parent=root,
-                                             initialdir=self.initialDir)
+                                             initialdir=self.scworker.initialDir)
             root.destroy()
             if folder != '':
                 self.folderEdit.setText(folder)
@@ -176,7 +164,7 @@ class scanWidget(QtGui.QFrame):
             
     def xMoveUp(self):
         
-        newPos_µm = self.initialPos[0] + self.xStep
+        newPos_µm = self.initialPos[0] - self.xStep
         newPos_µm = round(newPos_µm, 3)
         self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
                                                       self.initialPos[1],
@@ -184,7 +172,7 @@ class scanWidget(QtGui.QFrame):
         
     def xMoveDown(self):
         
-        newPos_µm = self.initialPos[0] - self.xStep
+        newPos_µm = self.initialPos[0] + self.xStep
         newPos_µm = np.around(newPos_µm, 3)
         self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
                                                       self.initialPos[1],
@@ -221,104 +209,15 @@ class scanWidget(QtGui.QFrame):
         self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
                                                       self.initialPos[1],
                                                       newPos_µm))
-    
-    def paramChanged(self):
 
-        # updates parameters according to what is input in the GUI
-    
-        self.detector = self.detectorType.currentText()
-        self.scantype = self.scanMode.currentText()
-
-        self.scanRange = float(self.scanRangeEdit.text())
-        self.NofPixels = int(self.NofPixelsEdit.text())
-        self.pxTime = float(self.pxTimeEdit.text())
-        self.a_aux_coeff = np.array(self.auxAccelerationEdit.text().split(' '),
-                                    dtype=np.float32)/100
-        self.initialPos = np.array(self.initialPosEdit.text().split(' '),
-                                   dtype=np.float64)
-        self.pxSize = self.scanRange/self.NofPixels   # in µm
-        self.frameTime = self.NofPixels**2 * self.pxTime / 10**6
-
-        self.waitingtime = float(self.waitingTimeEdit.text())  # in µs
-
-        self.frameTimeValue.setText('{}'.format(np.around(self.frameTime, 2)))
-        self.pxSizeValue.setText('{}'.format(np.around(1000 * self.pxSize, 5))) # in nm
-
-        self.linetime = (1/1000)*self.pxTime*self.NofPixels  # in ms
-        
-        self.xStep = float(self.xStepEdit.text())
-        self.yStep = float(self.yStepEdit.text())
-        self.zStep = float(self.zStepEdit.text())
-        
-
-        #  aux scan parameters
-
-        self.a_max = 4 * 10**-6  # in µm/µs^2
-
-        if np.all(self.a_aux_coeff) <= 1:
-            self.a_aux = self.a_aux_coeff * self.a_max
-        else:
-            self.a_aux[self.a_aux > 1] = self.a_max
-
-        self.NofAuxPixels = 100
-
-        self.waiting_pixels = int(self.waitingtime/self.pxTime)
-        self.tot_pixels = (2 * self.NofPixels + 4 * self.NofAuxPixels +
-                           self.waiting_pixels)
-
-        # create scan signal
-
-        self.dy = self.pxSize
-        self.dz = self.pxSize
-
-        (self.data_t, self.data_x,
-         self.data_y) = tools.ScanSignal(self.scanRange,
-                                         self.NofPixels,
-                                         self.NofAuxPixels,
-                                         self.pxTime,
-                                         self.a_aux,
-                                         self.dy,
-                                         self.initialPos[0],
-                                         self.initialPos[1],
-                                         self.initialPos[2],
-                                         self.scantype,
-                                         self.waitingtime)
-
-#        self.viewtimer_time = (1/1000) * self.data_t[-1]    # in ms
-        
-        # TO DO: entender bien esto del timer = 0, leer documentación
-        
-        self.viewtimer_time = 0  # largar el timer lo más rápido posible
-
-        # Create blank image
-        # edited_scan = True --> size of the useful part of the scan
-        # edited_scan = False --> size of the full scan including aux parts
-
-        if self.edited_scan is True:
-
-#            size = (2 * self.NofPixels, self.NofPixels)
-            size = (self.NofPixels, self.NofPixels)
-
-        else:
-
-            size = (self.tot_pixels, self.NofPixels)
-
-        self.blankImage = np.zeros(size)
-        self.image = self.blankImage
-        self.i = 0
-
-        # load the new parameters into the ADwin system
-
-        self.updateDeviceParameters()
-
-
-            
     def lineProfile(self):
         
         if self.lineROI is None:
             
             self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
             self.vb.addItem(self.lineROI)
+            
+            self.lplotWidget.show()
             
         else:
 
@@ -331,22 +230,20 @@ class scanWidget(QtGui.QFrame):
         
     def updateLineProfile(self):
         
-#        data = self.line.getArrayRegion(self.image, self.vb.imageItem, axes=(1,2))
-        data = self.lineROI.getArrayRegion(self.image, self.img)
-        self.linePlot.clear()
-        x = self.pxSize * np.arange(np.size(data))*1000
-        self.linePlot.plot(x, data)
-        
-
+        data = self.lineROI.getArrayRegion(self.scworker.image, self.img)
+        self.lplotWidget.linePlot.clear()
+        x = self.scworker.pxSize * np.arange(np.size(data))*1000
+        self.lplotWidget.linePlot.plot(x, data)
         
     def ROImethod(self):
         
         ROIpen = pg.mkPen(color='y')
+        npixels = self.scworker.NofPixels
 
         if self.roi is None:
 
-            ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
-            self.roi = viewbox_tools.ROI(self.NofPixels/2, self.vb, ROIpos,
+            ROIpos = (0.5 * npixels - 64, 0.5 * npixels - 64)
+            self.roi = viewbox_tools.ROI(npixels/2, self.vb, ROIpos,
                                          handlePos=(1, 0),
                                          handleCenter=(0, 1),
                                          scaleSnap=True,
@@ -358,8 +255,8 @@ class scanWidget(QtGui.QFrame):
             self.vb.removeItem(self.roi)
             self.roi.hide()
 
-            ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
-            self.roi = viewbox_tools.ROI(self.NofPixels/2, self.vb, ROIpos,
+            ROIpos = (0.5 * npixels - 64, 0.5 * npixels - 64)
+            self.roi = viewbox_tools.ROI(self.npixels/2, self.vb, ROIpos,
                                          handlePos=(1, 0),
                                          handleCenter=(0, 1),
                                          scaleSnap=True,
@@ -371,25 +268,25 @@ class scanWidget(QtGui.QFrame):
             
     def selectROI(self):
 
-        self.liveviewStop()
+        self.scworker.liveviewStop()
 
-        array = self.roi.getArrayRegion(self.image, self.img)
+        array = self.roi.getArrayRegion(self.scworker.image, self.img)
         ROIpos = np.array(self.roi.pos())
 
         newPos_px = tools.ROIscanRelativePOS(ROIpos,
-                                             self.NofPixels,
+                                             self.scworker.NofPixels,
                                              np.shape(array)[1])
 
-        newPos_µm = newPos_px * self.pxSize + self.initialPos[0:2]
+        newPos_µm = newPos_px * self.scworker.pxSize + self.scworker.initialPos[0:2]
 
         newPos_µm = np.around(newPos_µm, 2)
 
         self.initialPosEdit.setText('{} {} {}'.format(newPos_µm[0],
                                                       newPos_µm[1],
-                                                      self.initialPos[2]))
+                                                      self.scworker.initialPos[2]))
 
         newRange_px = np.shape(array)[0]
-        newRange_µm = self.pxSize * newRange_px
+        newRange_µm = self.scworker.pxSize * newRange_px
         newRange_µm = np.around(newRange_µm, 2)
         self.scanRangeEdit.setText('{}'.format(newRange_µm))
         
@@ -402,7 +299,7 @@ class scanWidget(QtGui.QFrame):
                 
                 self.vb.removeItem(self.EBPscatter[i])
         
-        array = self.roi.getArrayRegion(self.image, self.img)
+        array = self.roi.getArrayRegion(self.scworker.image, self.img)
         ROIpos_µm = np.array(self.roi.pos()) * self.pxSize
             
         xmin = ROIpos_µm[0]
@@ -480,20 +377,51 @@ class scanWidget(QtGui.QFrame):
         
     def setUpGUI(self):
         
-                # Create widget where the liveview image will be displayed
+        self.setMinimumSize(1000, 550)
+        
+        # widget where the liveview image will be displayed
 
         imageWidget = pg.GraphicsLayoutWidget()
         self.vb = imageWidget.addViewBox(row=0, col=0)
-        self.linePlot = imageWidget.addPlot(row=1, col=0, title="Intensity line profile")
-        self.linePlot.setLabels(bottom=('nm'),
-                                left=('counts'))
+        self.lplotWidget = linePlotWidget()
+        
+        # Viewbox and image item where the liveview will be displayed
+
+        self.vb.setMouseMode(pg.ViewBox.RectMode)
+        self.img = pg.ImageItem()
+        self.img.translate(-0.5, -0.5)
+        self.vb.addItem(self.img)
+        self.vb.setAspectLocked(True)
+        imageWidget.setAspectLocked(True)
+
+        # set up histogram for the liveview image
+
+        self.hist = pg.HistogramLUTItem(image=self.img)
+        lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        self.hist.gradient.setColorMap(lut)
+        self.hist.vb.setLimits(yMin=0, yMax=10000)
+
+        for tick in self.hist.gradient.ticks:
+            tick.hide()
+        imageWidget.addItem(self.hist, row=0, col=1)
+        
+        # widget with scanning parameters
+
+        self.paramWidget = QtGui.QFrame()
+        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+        
+        scanParamTitle = QtGui.QLabel('<h2><strong>Scan settings</strong></h2>')
+        scanParamTitle.setTextFormat(QtCore.Qt.RichText)
 
         # LiveView Button
 
-        self.liveviewButton = QtGui.QPushButton('confocal LIVEVIEW')
+        self.liveviewButton = QtGui.QPushButton('confocal liveview')
+        self.liveviewButton.setFont(QtGui.QFont('Helvetica', weight=QtGui.QFont.Bold))
         self.liveviewButton.setCheckable(True)
-        self.liveviewButton.clicked.connect(self.liveview)
+        self.liveviewButton.setStyleSheet("font-size: 12px; background-color:rgb(180, 180, 180)")
 
+        
         # ROI buttons
 
         self.ROIButton = QtGui.QPushButton('ROI')
@@ -505,9 +433,13 @@ class scanWidget(QtGui.QFrame):
 
         # Acquire frame button
 
-        self.acquireFrameButton = QtGui.QPushButton('Acquire frame')
+        self.acquireFrameButton = QtGui.QPushButton('Acquire new frame')
         self.acquireFrameButton.setCheckable(True)
-        self.acquireFrameButton.clicked.connect(self.frameAcquisition)
+        
+        # Save current frame button
+
+        self.currentFrameButton = QtGui.QPushButton('Save current frame')
+        self.currentFrameButton.setCheckable(True)
 
         # preview scan button
 
@@ -520,6 +452,10 @@ class scanWidget(QtGui.QFrame):
         self.lineProfButton = QtGui.QPushButton('Line profile')
         self.lineProfButton.setCheckable(True)
         self.lineProfButton.clicked.connect(self.lineProfile)
+        
+        # no-display checkbox
+        
+        self.nodisplayCheckBox = QtGui.QCheckBox('No-display scan')
 
         # Scanning parameters
 
@@ -530,17 +466,15 @@ class scanWidget(QtGui.QFrame):
         self.scanRangeEdit = QtGui.QLineEdit('8')
         self.pxTimeLabel = QtGui.QLabel('Pixel time (µs)')
         self.pxTimeEdit = QtGui.QLineEdit('500')
+        self.maxCountsLabel = QtGui.QLabel('')
         self.NofPixelsLabel = QtGui.QLabel('Number of pixels')
-        self.NofPixelsEdit = QtGui.QLineEdit('128')
-        self.pxSizeLabel = QtGui.QLabel('Pixel size (nm)')
+        self.NofPixelsEdit = QtGui.QLineEdit('80')
         self.pxSizeValue = QtGui.QLabel('')
-        self.frameTimeLabel = QtGui.QLabel('Frame time (s)')
         self.frameTimeValue = QtGui.QLabel('')
 
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
         self.advancedButton.clicked.connect(self.toggleAdvanced)
-        
         
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
@@ -550,35 +484,29 @@ class scanWidget(QtGui.QFrame):
         
         self.toggleAdvanced()
 
-        # Connections between changes in parameters and paramChanged function
-
-        self.NofPixelsEdit.textChanged.connect(self.paramChanged)
-        self.scanRangeEdit.textChanged.connect(self.paramChanged)
-        self.pxTimeEdit.textChanged.connect(self.paramChanged)
-        self.initialPosEdit.textChanged.connect(self.paramChanged)
-        self.auxAccelerationEdit.textChanged.connect(self.paramChanged)
-        self.waitingTimeEdit.textChanged.connect(self.paramChanged)
-
         # filename
 
         self.filenameLabel = QtGui.QLabel('File name')
         self.filenameEdit = QtGui.QLineEdit('filename')
 
         # folder
-
+        
+        today = str(date.today()).replace('-', '')
+        root = r'C:\\Data\\'
+        folder = root + today
+        
+        try:  
+            os.mkdir(folder)
+        except OSError:  
+            print ("Creation of the directory %s failed" % folder)
+        else:  
+            print ("Successfully created the directory %s " % folder)
+        
         self.folderLabel = QtGui.QLabel('Folder')
-        self.folderEdit = QtGui.QLineEdit(r'C:\Data')
+        self.folderEdit = QtGui.QLineEdit(folder)
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
         self.browseFolderButton.clicked.connect(self.loadFolder)
-
-        # move to button
-
-        self.moveToButton = QtGui.QPushButton('Move to')
-        self.moveToLabel = QtGui.QLabel('Move to [x0, y0, z0] (µm)')
-        self.moveToEdit = QtGui.QLineEdit('0 0 10')
-
-        self.moveToButton.clicked.connect(self.moveToAction)
 
         # scan selection
 
@@ -591,19 +519,6 @@ class scanWidget(QtGui.QFrame):
         self.detectorType = QtGui.QComboBox()
         self.dettypes = ['APD','photodiode']
         self.detectorType.addItems(self.dettypes)
-        
-        self.detectorType.activated.connect(self.paramChanged)
-
-        self.scanMode.activated.connect(self.paramChanged)
-
-        # widget with scanning parameters
-
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-        
-        scanParamTitle = QtGui.QLabel('<h2><strong>Scan settings</strong></h2>')
-        scanParamTitle.setTextFormat(QtCore.Qt.RichText)
         
         # widget with EBP parameters and buttons
         
@@ -636,83 +551,6 @@ class scanWidget(QtGui.QFrame):
         self.Llabel = QtGui.QLabel('L (nm)')
         self.LEdit = QtGui.QLineEdit('100')
         
-        # GUI layout
-
-        grid = QtGui.QGridLayout()
-        self.setLayout(grid)
-        grid.addWidget(imageWidget, 0, 1, 3, 1)
-        grid.addWidget(self.paramWidget, 0, 0)
-        grid.addWidget(self.EBPWidget, 1, 0)
-
-        subgrid = QtGui.QGridLayout()
-        self.paramWidget.setLayout(subgrid)
-
-        subgrid.addWidget(self.liveviewButton, 10, 1)
-        subgrid.addWidget(self.ROIButton, 11, 1)
-        subgrid.addWidget(self.selectROIButton, 12, 1)
-        subgrid.addWidget(self.acquireFrameButton, 13, 1)
-        subgrid.addWidget(self.lineProfButton, 15, 1)
-
-        subgrid.addWidget(scanParamTitle, 0, 0, 2, 3)
-        
-        subgrid.addWidget(self.initialPosLabel, 2, 0)
-        subgrid.addWidget(self.initialPosEdit, 3, 0)
-        subgrid.addWidget(self.scanRangeLabel, 4, 0)
-        subgrid.addWidget(self.scanRangeEdit, 5, 0)
-        subgrid.addWidget(self.pxTimeLabel, 6, 0)
-        subgrid.addWidget(self.pxTimeEdit, 7, 0)
-        subgrid.addWidget(self.NofPixelsLabel, 8, 0)
-        subgrid.addWidget(self.NofPixelsEdit, 9, 0)
-        subgrid.addWidget(self.pxSizeLabel, 10, 0)
-        subgrid.addWidget(self.pxSizeValue, 11, 0)
-        subgrid.addWidget(self.frameTimeLabel, 12, 0)
-        subgrid.addWidget(self.frameTimeValue, 13, 0)
-        
-        subgrid.addWidget(self.advancedButton, 14, 0)
-        
-        subgrid.addWidget(self.auxAccelerationLabel, 15, 0)
-        subgrid.addWidget(self.auxAccelerationEdit, 16, 0)
-        subgrid.addWidget(self.waitingTimeLabel, 17, 0)
-        subgrid.addWidget(self.waitingTimeEdit, 18, 0)
-        subgrid.addWidget(self.previewScanButton, 19, 0)
-
-
-        subgrid.addWidget(self.filenameLabel, 2, 2)
-        subgrid.addWidget(self.filenameEdit, 3, 2)
-        subgrid.addWidget(self.folderLabel, 4, 2)
-        subgrid.addWidget(self.folderEdit, 5, 2)
-        subgrid.addWidget(self.browseFolderButton, 6, 2)
-        
-        subgrid.addWidget(self.scanModeLabel, 2, 1)
-        subgrid.addWidget(self.scanMode, 3, 1)
-        subgrid.addWidget(self.detectorType, 4, 1)
-
-        subgrid.addWidget(self.moveToLabel, 5, 1)
-        subgrid.addWidget(self.moveToEdit, 6, 1)
-        subgrid.addWidget(self.moveToButton, 7, 1)
-#        subgrid.addWidget(self.driftPresMeasButton, 8, 1)
-
-        self.paramWidget.setFixedHeight(400)
-        self.paramWidget.setFixedWidth(400)
-        imageWidget.setFixedHeight(700)
-        imageWidget.setFixedWidth(600)
-        
-        subgridEBP = QtGui.QGridLayout()
-        self.EBPWidget.setLayout(subgridEBP)
-        
-        subgridEBP.addWidget(EBPparamTitle, 0, 0, 2, 4)
-        
-        subgridEBP.addWidget(self.EBProiButton, 2, 0, 1, 1)
-        subgridEBP.addWidget(self.setEBPButton, 3, 0, 1, 1)
-        subgridEBP.addWidget(self.showEBPButton, 4, 0, 2, 1)
-        subgridEBP.addWidget(self.EBPtypeLabel, 2, 1)
-        subgridEBP.addWidget(self.EBPtype, 3, 1)
-        subgridEBP.addWidget(self.Llabel, 4, 1)
-        subgridEBP.addWidget(self.LEdit, 5, 1)
-        
-        self.EBPWidget.setFixedHeight(150)
-        self.EBPWidget.setFixedWidth(250)
-        
         # piezo navigation widget
         
         self.positioner = QtGui.QFrame()
@@ -742,8 +580,111 @@ class scanWidget(QtGui.QFrame):
         
         self.zStepLabel = QtGui.QLabel('z step (µm)')
         self.zStepEdit = QtGui.QLineEdit('0.050')
+        
+        # move to button
 
-        grid.addWidget(self.positioner, 2, 0)
+        self.moveToButton = QtGui.QPushButton('Move to')
+        self.moveToLabel = QtGui.QLabel('Move to [x0, y0, z0] (µm)')
+        self.moveToEdit = QtGui.QLineEdit('0 0 10')
+        
+        # scan GUI layout
+
+        grid = QtGui.QGridLayout()
+        self.setLayout(grid)
+
+        dockArea = DockArea() 
+        grid.addWidget(dockArea, 0, 0)
+        
+        EBPDock = Dock('EBP')
+        EBPDock.addWidget(self.EBPWidget)
+        dockArea.addDock(EBPDock)
+        
+        positionerDock = Dock('Positioner')
+        positionerDock.addWidget(self.positioner)
+        dockArea.addDock(positionerDock, 'above', EBPDock)
+        
+        paramDock = Dock('Scan parameters')
+        paramDock.addWidget(self.paramWidget)
+        dockArea.addDock(paramDock, 'above', positionerDock)
+        
+        imageDock = Dock('Confocal view')
+        imageDock.addWidget(imageWidget)
+        dockArea.addDock(imageDock, 'right', paramDock)
+
+        # paramwidget layout
+
+        subgrid = QtGui.QGridLayout()
+        self.paramWidget.setLayout(subgrid)
+        
+        subgrid.addWidget(self.scanModeLabel, 2, 1)
+        subgrid.addWidget(self.scanMode, 3, 1)
+        subgrid.addWidget(self.detectorType, 4, 1)
+
+        subgrid.addWidget(self.liveviewButton, 6, 1, 2, 1)
+        subgrid.addWidget(self.ROIButton, 8, 1)
+        subgrid.addWidget(self.selectROIButton, 9, 1)
+        subgrid.addWidget(self.acquireFrameButton, 10, 1)
+        subgrid.addWidget(self.currentFrameButton, 11, 1)
+        subgrid.addWidget(self.lineProfButton, 13, 1)
+
+        subgrid.addWidget(scanParamTitle, 0, 0, 2, 3)
+        
+        subgrid.addWidget(self.initialPosLabel, 2, 0)
+        subgrid.addWidget(self.initialPosEdit, 3, 0)
+        subgrid.addWidget(self.scanRangeLabel, 4, 0)
+        subgrid.addWidget(self.scanRangeEdit, 5, 0)
+        subgrid.addWidget(self.pxTimeLabel, 6, 0)
+        subgrid.addWidget(self.pxTimeEdit, 7, 0)
+        subgrid.addWidget(self.NofPixelsLabel, 8, 0)
+        subgrid.addWidget(self.NofPixelsEdit, 9, 0)
+        subgrid.addWidget(self.pxSizeValue, 10, 0)
+        subgrid.addWidget(self.frameTimeValue, 11, 0)
+        subgrid.addWidget(self.maxCountsLabel, 12, 0)
+        subgrid.addWidget(self.nodisplayCheckBox, 13, 0)
+        
+        subgrid.addWidget(self.advancedButton, 14, 0)
+        
+        subgrid.addWidget(self.auxAccelerationLabel, 15, 0)
+        subgrid.addWidget(self.auxAccelerationEdit, 16, 0)
+        subgrid.addWidget(self.waitingTimeLabel, 17, 0)
+        subgrid.addWidget(self.waitingTimeEdit, 18, 0)
+        subgrid.addWidget(self.previewScanButton, 19, 0)
+        
+        subgrid.addWidget(self.filenameLabel, 2, 2)
+        subgrid.addWidget(self.filenameEdit, 3, 2)
+        subgrid.addWidget(self.folderLabel, 4, 2)
+        subgrid.addWidget(self.folderEdit, 5, 2)
+        subgrid.addWidget(self.browseFolderButton, 6, 2)
+    
+
+        self.paramWidget.setFixedHeight(500)
+        self.paramWidget.setFixedWidth(450)
+        
+        subgrid.setColumnMinimumWidth(1, 130)
+        
+        imageWidget.setFixedHeight(500)
+        imageWidget.setFixedWidth(500)
+        
+        # EBP widget layout
+        
+        subgridEBP = QtGui.QGridLayout()
+        self.EBPWidget.setLayout(subgridEBP)
+        
+        subgridEBP.addWidget(EBPparamTitle, 0, 0, 2, 4)
+        
+        subgridEBP.addWidget(self.EBProiButton, 2, 0, 1, 1)
+        subgridEBP.addWidget(self.setEBPButton, 3, 0, 1, 1)
+        subgridEBP.addWidget(self.showEBPButton, 4, 0, 2, 1)
+        subgridEBP.addWidget(self.EBPtypeLabel, 2, 1)
+        subgridEBP.addWidget(self.EBPtype, 3, 1)
+        subgridEBP.addWidget(self.Llabel, 4, 1)
+        subgridEBP.addWidget(self.LEdit, 5, 1)
+        
+        self.EBPWidget.setFixedHeight(150)
+        self.EBPWidget.setFixedWidth(250)
+        
+        # piezo navigation layout
+
         layout = QtGui.QGridLayout()
         self.positioner.setLayout(layout)
         
@@ -763,36 +704,176 @@ class scanWidget(QtGui.QFrame):
         layout.addWidget(self.yStepLabel, 2, 6)        
         layout.addWidget(self.yStepEdit, 3, 6)
 
-
         layout.addWidget(self.zUpButton, 1, 5, 2, 1)
         layout.addWidget(self.zDownButton, 3, 5, 2, 1)
         
         layout.addWidget(self.zStepLabel, 4, 6)        
         layout.addWidget(self.zStepEdit, 5, 6)
         
-        self.positioner.setFixedHeight(150)
+        layout.addWidget(self.moveToLabel, 6, 1, 1, 3)
+        layout.addWidget(self.moveToEdit, 7, 1, 1, 1)
+        layout.addWidget(self.moveToButton, 8, 1, 1, 2)
+        
+        self.positioner.setFixedHeight(250)
         self.positioner.setFixedWidth(400)
         
+    def closeEvent(self, *args, **kwargs):
+
+        # Stop running threads
+
+        self.scworker.viewtimer.stop()
+
+        # Go back to 0 position
+
+        x_0 = 0
+        y_0 = 0
+        z_0 = 0
+
+        self.scworker.moveTo(x_0, y_0, z_0)
+
+        super().closeEvent(*args, **kwargs)
+    
         
-        # Viewbox and image item where the liveview will be displayed
+class scanWorker(QtCore.QObject):
+    
+    def __init__(self, gui, adwin, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.gui = gui
+        self.adw = adwin
+        
+        self.edited_scan = True  
+        
+        # edited_scan = True --> size of the useful part of the scan
+        # edited_scan = False --> size of the full scan including aux parts
+        
+        self.APDmaxCounts = 5*10**6   # 5MHz is max count rate of the P. Elmer APD
 
-        self.vb.setMouseMode(pg.ViewBox.RectMode)
-        self.img = pg.ImageItem()
-        self.img.translate(-0.5, -0.5)
-        self.vb.addItem(self.img)
-        self.vb.setAspectLocked(True)
-        imageWidget.setAspectLocked(True)
+        # Create a timer for the update of the liveview
 
-        # set up histogram for the liveview image
+        self.viewtimer = QtCore.QTimer()
+        self.viewtimer.timeout.connect(self.updateView)
 
-        self.hist = pg.HistogramLUTItem(image=self.img)
-        lut = viewbox_tools.generatePgColormap(cmaps.parula)
-        self.hist.gradient.setColorMap(lut)
-        self.hist.vb.setLimits(yMin=0, yMax=10000)
+        # Counter for the saved images
 
-        for tick in self.hist.gradient.ticks:
-            tick.hide()
-        imageWidget.addItem(self.hist, row=0, col=1)
+        self.imageNumber = 0
+
+        # initialize flag for the ADwin process
+
+        self.flag = 0
+
+        # update parameters
+
+        self.paramChanged()
+        
+        # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
+        
+        pos_zero = tools.convert(0, 'XtoU')
+        
+        self.adw.Set_FPar(50, pos_zero)
+        self.adw.Set_FPar(51, pos_zero)
+        self.adw.Set_FPar(52, pos_zero)
+        
+        # move to z = 10 µm
+
+        self.moveTo(0, 0, 10)
+
+        # initial directory
+
+        self.initialDir = r'C:\Data'
+        
+        
+    def paramChanged(self):
+
+        # updates parameters according to what is input in the GUI
+    
+        self.detector = self.gui.detectorType.currentText()
+        self.scantype = self.gui.scanMode.currentText()
+
+        self.scanRange = float(self.gui.scanRangeEdit.text())
+        self.NofPixels = int(self.gui.NofPixelsEdit.text())
+        self.pxTime = float(self.gui.pxTimeEdit.text())
+        self.a_aux_coeff = np.array(self.gui.auxAccelerationEdit.text().split(' '),
+                                    dtype=np.float32)/100
+        self.initialPos = np.array(self.gui.initialPosEdit.text().split(' '),
+                                   dtype=np.float64)
+        self.pxSize = self.scanRange/self.NofPixels   # in µm
+        self.frameTime = self.NofPixels**2 * self.pxTime / 10**6
+
+        self.waitingtime = float(self.gui.waitingTimeEdit.text())  # in µs
+
+        self.gui.frameTimeValue.setText('Frame time = {} s'.format(np.around(self.frameTime, 2)))
+        self.gui.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * self.pxSize, 5))) # in nm
+
+        self.linetime = (1/1000)*self.pxTime*self.NofPixels  # in ms
+        
+        self.xStep = float(self.gui.xStepEdit.text())
+        self.yStep = float(self.gui.yStepEdit.text())
+        self.zStep = float(self.gui.zStepEdit.text())
+        
+        self.maxCounts = int(self.APDmaxCounts/(1/(self.pxTime*10**-6)))
+        self.gui.maxCountsLabel.setText('Counts limit per pixel = {}'.format(self.maxCounts))
+        
+
+        #  aux scan parameters
+
+        self.a_max = 4 * 10**-6  # in µm/µs^2
+
+        if np.all(self.a_aux_coeff) <= 1:
+            self.a_aux = self.a_aux_coeff * self.a_max
+        else:
+            self.a_aux[self.a_aux > 1] = self.a_max
+
+        self.NofAuxPixels = 100
+
+        self.waiting_pixels = int(self.waitingtime/self.pxTime)
+        self.tot_pixels = (2 * self.NofPixels + 4 * self.NofAuxPixels +
+                           self.waiting_pixels)
+
+        # create scan signal
+
+        self.dy = self.pxSize
+        self.dz = self.pxSize
+
+        (self.data_t, self.data_x,
+         self.data_y) = tools.ScanSignal(self.scanRange,
+                                         self.NofPixels,
+                                         self.NofAuxPixels,
+                                         self.pxTime,
+                                         self.a_aux,
+                                         self.dy,
+                                         self.initialPos[0],
+                                         self.initialPos[1],
+                                         self.initialPos[2],
+                                         self.scantype,
+                                         self.waitingtime)
+
+#        self.viewtimer_time = (1/1000) * self.data_t[-1]    # in ms
+        
+        # TO DO: entender bien esto del timer = 0, leer documentación
+        
+        self.viewtimer_time = 0  # largar el timer lo más rápido posible
+
+        # Create blank image
+        # edited_scan = True --> size of the useful part of the scan
+        # edited_scan = False --> size of the full scan including aux parts
+
+        if self.edited_scan is True:
+
+#            size = (2 * self.NofPixels, self.NofPixels)
+            size = (self.NofPixels, self.NofPixels)
+
+        else:
+
+            size = (self.tot_pixels, self.NofPixels)
+
+        self.blankImage = np.zeros(size)
+        self.image = self.blankImage
+        self.i = 0
+
+        # load the new parameters into the ADwin system
+
+        self.updateDeviceParameters()
         
     def updateDeviceParameters(self):
         
@@ -919,8 +1000,8 @@ class scanWidget(QtGui.QFrame):
 
         # save scan plot (x vs t)
 
-        self.filename = os.path.join(self.folderEdit.text(),
-                                     self.filenameEdit.text())
+        self.filename = os.path.join(self.gui.folderEdit.text(),
+                                     self.gui.filenameEdit.text())
 
         plt.figure('Scan plot x vs t')
         plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
@@ -976,9 +1057,33 @@ class scanWidget(QtGui.QFrame):
         result = Image.fromarray(data.astype('uint16'))
 
         result.save(r'{}.tif'.format(name))
+        print(name)
 
         self.imageNumber += 1
         self.acquireFrameButton.setChecked(False)
+        
+    def saveCurrentFrame(self):
+        
+        self.filename = os.path.join(self.gui.folderEdit.text(),
+                                     self.gui.filenameEdit.text())
+        
+        # experiment parameters
+
+        name = tools.getUniqueName(self.filename)
+        now = time.strftime("%c")
+        tools.saveConfig(self, now, name)
+
+        # save image
+
+        data = self.image
+        result = Image.fromarray(data.astype('uint16'))
+
+        result.save(r'{}.tif'.format(name))
+        print(name)
+
+        self.imageNumber += 1
+        self.gui.currentFrameButton.setChecked(False)
+        
     
     def lineAcquisition(self):
 
@@ -1014,7 +1119,7 @@ class scanWidget(QtGui.QFrame):
     # This is the function triggered by pressing the liveview button
     def liveview(self):
 
-        if self.liveviewButton.isChecked():
+        if self.gui.liveviewButton.isChecked():
             self.liveviewStart()
 
         else:
@@ -1038,18 +1143,19 @@ class scanWidget(QtGui.QFrame):
             self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                         self.z_i - self.scanRange/2)
 
-        if self.roi is not None:
+        if self.gui.roi is not None:
 
-            self.vb.removeItem(self.roi)
-            self.roi.hide()
+            self.gui.vb.removeItem(self.gui.roi)
+            self.gui.roi.hide()
 
-            self.ROIButton.setChecked(False)
+            self.gui.ROIButton.setChecked(False)
             
-        if self.lineROI is not None:
+        if self.gui.lineROI is not None:
 
-            self.vb.removeItem(self.lineROI)
-
-            self.lineProfButton.setChecked(False)
+            self.gui.vb.removeItem(self.gui.lineROI)
+            self.gui.lplotWidget.hide()
+            self.gui.lineProfButton.setChecked(False)
+            self.gui.lineROI = None
 
         else:
 
@@ -1062,7 +1168,7 @@ class scanWidget(QtGui.QFrame):
         self.viewtimer.stop()
 
     def updateView(self):
-
+        
         if self.scantype == 'xy':
 
             dy = tools.convert(self.dy, 'ΔXtoU')
@@ -1089,7 +1195,11 @@ class scanWidget(QtGui.QFrame):
 
             self.image[:, self.NofPixels-1-self.i] = self.lineData
 
-        self.img.setImage(self.image, autoLevels=False)
+        if self.gui.nodisplayCheckBox.isChecked() is False:
+            
+            # display image after every scanned line
+            
+            self.gui.img.setImage(self.image, autoLevels=False)
 
         if self.i < self.NofPixels-1:
 
@@ -1121,22 +1231,25 @@ class scanWidget(QtGui.QFrame):
                             self.z_i - self.scanRange/2)
 
             self.updateDeviceParameters()
-    
-    def closeEvent(self, *args, **kwargs):
-
-        # Stop running threads
-
-        self.viewtimer.stop()
-
-        # Go back to 0 position
-
-        x_0 = 0
-        y_0 = 0
-        z_0 = 0
-
-        self.moveTo(x_0, y_0, z_0)
-
-        super().closeEvent(*args, **kwargs)
+        
+       
+class linePlotWidget(QtGui.QWidget):
+        
+    def __init__(self, *args, **kwargs):
+        
+        super().__init__(*args, **kwargs)
+        
+        graphicsLayout = pg.GraphicsLayoutWidget()
+        grid = QtGui.QGridLayout()
+        
+        self.setLayout(grid)
+        self.linePlot = graphicsLayout.addPlot(row=0, col=0, 
+                                               title="Intensity line profile")
+        self.linePlot.setLabels(bottom=('nm'),
+                                left=('counts'))
+        
+        grid.addWidget(graphicsLayout, 0, 0)
+        
 
 if __name__ == '__main__':
 

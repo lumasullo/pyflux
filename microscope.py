@@ -35,6 +35,7 @@ class mainWindow(QtGui.QFrame):
         super().__init__(*args, **kwargs)
 
         self.setWindowTitle('PyFLUX')
+#        self.resize(1200, 2780)
 
         # GUI layout
 
@@ -56,10 +57,7 @@ class mainWindow(QtGui.QFrame):
         
         self.scanWidget = scan.scanWidget(self.adw)
         scanDock.addWidget(self.scanWidget)
-        dockArea.addDock(scanDock)
-        
-        self.scanThread = QtCore.QThread(self)
-#        self.scanWidget.moveToThread(self.scanThread)
+        dockArea.addDock(scanDock, 'left')
         
         # tcspc measurement
         
@@ -69,10 +67,7 @@ class mainWindow(QtGui.QFrame):
         
         self.tcspcWidget = tcspc.tcspcWidget(ph)
         tcspcDock.addWidget(self.tcspcWidget)
-        dockArea.addDock(tcspcDock)
-        
-        self.tcspcThread = QtCore.QThread(self)
-#        self.tcspcWidget.moveToThread(self.tcspcThread)
+        dockArea.addDock(tcspcDock, 'bottom', scanDock)
         
         # focus lock
         
@@ -82,10 +77,7 @@ class mainWindow(QtGui.QFrame):
         
         self.focusWidget = focus.focusWidget(uc480Camera, self.adw)
         focusDock.addWidget(self.focusWidget)
-        dockArea.addDock(focusDock)
-        
-        self.focusThread = QtCore.QThread(self)
-        self.focusWidget.fworker.moveToThread(self.focusThread)
+        dockArea.addDock(focusDock, 'right')
         
         # xy drift
         
@@ -96,10 +88,25 @@ class mainWindow(QtGui.QFrame):
         self.xyWidget = xy.xyWidget(andorCamera)
         xyDock.addWidget(self.xyWidget)
         xyDock.addWidget(self.xyWidget)
-        dockArea.addDock(xyDock)
+        dockArea.addDock(xyDock, 'top', focusDock)
+        
+        # threads
+        
+        self.scanThread = QtCore.QThread(self)
+        self.scanWidget.scworker.moveToThread(self.scanThread)
+        self.scanThread.start()
+        
+        self.focusThread = QtCore.QThread(self)
+        self.focusWidget.fworker.moveToThread(self.focusThread)
+        self.focusThread.start()
         
         self.xyThread = QtCore.QThread(self)
         self.xyWidget.xyworker.moveToThread(self.xyThread)
+        self.xyThread.start()
+        
+        self.tcspcThread = QtCore.QThread(self)
+        self.tcspcWidget.moveToThread(self.tcspcThread)
+        self.tcspcThread.start() 
         
          
     def closeEvent(self, *args, **kwargs):
