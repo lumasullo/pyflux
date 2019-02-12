@@ -256,7 +256,7 @@ class scanWidget(QtGui.QFrame):
             self.roi.hide()
 
             ROIpos = (0.5 * npixels - 64, 0.5 * npixels - 64)
-            self.roi = viewbox_tools.ROI(self.npixels/2, self.vb, ROIpos,
+            self.roi = viewbox_tools.ROI(npixels/2, self.vb, ROIpos,
                                          handlePos=(1, 0),
                                          handleCenter=(0, 1),
                                          scaleSnap=True,
@@ -376,9 +376,7 @@ class scanWidget(QtGui.QFrame):
         self.showEBPButton.setChecked(False)
         
     def setUpGUI(self):
-        
-        self.setMinimumSize(1000, 550)
-        
+                
         # widget where the liveview image will be displayed
 
         imageWidget = pg.GraphicsLayoutWidget()

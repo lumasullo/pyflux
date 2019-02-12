@@ -7,8 +7,6 @@ Created on Tue Jan 15 11:59:13 2019
 
 import numpy as np
 import time
-import scipy.ndimage as ndi
-import matplotlib.pyplot as plt
 import ctypes as ct
 
 import pyqtgraph as pg
@@ -84,6 +82,7 @@ class xyWidget(QtGui.QFrame):
             
         
     def setUpGUI(self):
+        
         
         # GUI layout
         

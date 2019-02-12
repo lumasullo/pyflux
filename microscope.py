@@ -19,6 +19,7 @@ from instrumental.drivers.cameras import uc480
 import lantz.drivers.legacy.andor.ccd as ccd
 
 import drivers
+
 import focus
 import scan
 import tcspc
@@ -28,19 +29,36 @@ import xy
 
 π = np.pi
 
-class mainWindow(QtGui.QFrame):
+class mainWindow(QtGui.QMainWindow):
 
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
         self.setWindowTitle('PyFLUX')
-#        self.resize(1200, 2780)
+        
+        self.cwidget = QtGui.QWidget()
+        self.setCentralWidget(self.cwidget)
+
+        # Actions in menubar
+        
+        menubar = self.menuBar()
+        fileMenu = menubar.addMenu('Measurement')
+        
+        self.psfMeasAction = QtGui.QAction('PSF measurement', self)
+        self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
+        fileMenu.addAction(self.psfMeasAction)
+        
+        self.psfMeasAction.triggered.connect(self.psfMeasurement)
+                
+        self.minfluxMeasAction = QtGui.QAction('MINFLUX measurement', self)
+        self.minfluxMeasAction.setStatusTip('Routine to perform a tcspc-MINFLUX measurement')
+        fileMenu.addAction(self.minfluxMeasAction)
 
         # GUI layout
 
         grid = QtGui.QGridLayout()
-        self.setLayout(grid)
+        self.cwidget.setLayout(grid)
 
         # Dock Area
         
@@ -49,7 +67,7 @@ class mainWindow(QtGui.QFrame):
         
         # Scan
         
-        scanDock = Dock('Confocal scan')
+        scanDock = Dock('Confocal scan', size=(1,1))
         
         DEVICENUMBER = 0x1
         self.adw = drivers.ADwin.ADwin(DEVICENUMBER, 1)
@@ -93,32 +111,57 @@ class mainWindow(QtGui.QFrame):
         # threads
         
         self.scanThread = QtCore.QThread(self)
-        self.scanWidget.scworker.moveToThread(self.scanThread)
         self.scanThread.start()
+        self.scanWidget.scworker.moveToThread(self.scanThread)
         
         self.focusThread = QtCore.QThread(self)
-        self.focusWidget.fworker.moveToThread(self.focusThread)
         self.focusThread.start()
-        
+        self.focusWidget.fworker.moveToThread(self.focusThread)
+
         self.xyThread = QtCore.QThread(self)
-        self.xyWidget.xyworker.moveToThread(self.xyThread)
         self.xyThread.start()
+        self.xyWidget.xyworker.moveToThread(self.xyThread)
+
+#        self.tcspcThread = QtCore.QThread(self)
+#        self.tcspcThread.start() 
+#        self.tcspcWidget.tcspcworker.moveToThread(self.tcspcThread)
+
+        # sizes to fit my screen properly
         
-        self.tcspcThread = QtCore.QThread(self)
-        self.tcspcWidget.moveToThread(self.tcspcThread)
-        self.tcspcThread.start() 
+        self.scanWidget.setMinimumSize(1000, 550)
+        self.xyWidget.setMinimumSize(800, 300)
+        self.move(1, 1)
+
+    def psfMeasurement(self):
         
-         
+        self.psfWidget = psfMeasWidget()
+        self.psfWidget.show()
+
     def closeEvent(self, *args, **kwargs):
-        
-#        self.xydriftWidget.andor.shutter(0, 2, 0, 0, 0)
-#        self.xydriftWidget.andor.abort_acquisition()
-#        self.xydriftWidget.andor.finalize()
 
         # TO DO: add every module close event function
-
+        
+        self.focusThread.terminate()
+#        self.tcspcThread.terminate()
+        self.xyThread.terminate()
+        self.scanThread.terminate()
         self.scanWidget.closeEvent()
         super().closeEvent(*args, **kwargs)
+        
+class psfMeasWidget(QtGui.QWidget):
+        
+    def __init__(self, *args, **kwargs):
+        
+        super().__init__(*args, **kwargs)
+        
+        grid = QtGui.QGridLayout()
+        
+        self.setLayout(grid)
+        self.paramWidget = QtGui.QFrame()
+        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+        
+        grid.addWidget(self.paramWidget, 0, 0)
     
 
 if __name__ == '__main__':

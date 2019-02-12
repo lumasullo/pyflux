@@ -204,7 +204,7 @@ class focusWidget(QtGui.QFrame):
                                        QtGui.QFrame.Raised)
         
         self.paramWidget.setFixedHeight(150)
-#        self.paramWidget.setFixedWidth(150)
+        self.paramWidget.setFixedWidth(200)
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
