@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
-Created on Wed Oct  1 13:41:48 2014
+Created on Wed Oct  1 13:41:48 2018
 
-@authors: Federico Barabas, Luciano Masullo
+@authors: Luciano Masullo
 """
 
 import numpy as np
@@ -20,7 +20,6 @@ from instrumental.drivers.cameras import uc480
 import tools.viewbox_tools as viewbox_tools
 import tools.tools as tools
 import tools.colormaps as cmaps
-import tools.PSF as PSF
 import tools.pi as pi
 import scan
 import drivers.ADwin as ADwin
