@@ -16,6 +16,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
 
+# install from https://instrumental-lib.readthedocs.io/en/stable/install.html
 from instrumental.drivers.cameras import uc480
 import tools.viewbox_tools as viewbox_tools
 import tools.tools as tools

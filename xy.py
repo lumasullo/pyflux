@@ -20,6 +20,7 @@ from scipy import optimize as opt
 
 import lantz.drivers.legacy.andor.ccd as ccd
 
+
 class xyWidget(QtGui.QFrame):
     
     def __init__(self, camera, *args, **kwargs):
