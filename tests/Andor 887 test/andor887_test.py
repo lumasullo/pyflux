@@ -5,10 +5,8 @@ Created on Wed Oct 24 17:04:29 2018
 @author: USUARIO
 """
 
-import os 
-os.environ["QT_API"] = "pyqt"
-
-import lantz.drivers.legacy.andor.ccd as ccd
+#import lantz.drivers.legacy.andor.ccd as ccd
+import lantz.drivers.andor.ccd as ccd
 import ctypes as ct
 import time
 import numpy as np

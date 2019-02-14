@@ -6,7 +6,8 @@ Created on Mon Dec 14 19:52:49 2015
 """
 
 import numpy as np
-from PyQt4 import QtCore, QtGui
+from PyQt5 import QtCore, QtGui
+#from PyQt4 import QtCore, QtGui
 import pyqtgraph as pg
 import matplotlib.pyplot as plt
 

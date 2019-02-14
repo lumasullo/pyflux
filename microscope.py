@@ -16,7 +16,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 from instrumental.drivers.cameras import uc480
-import lantz.drivers.legacy.andor.ccd as ccd
+import lantz.drivers.andor.ccd as ccd
 
 import drivers
 
@@ -24,8 +24,6 @@ import focus
 import scan
 import tcspc
 import xy
-
-
 
 π = np.pi
 

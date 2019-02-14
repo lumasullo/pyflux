@@ -7,11 +7,10 @@ Created on Tue Nov 20 14:46:50 2018
 
 import ctypes
 from ctypes import byref, POINTER
-from lantz.foreign import LibraryDriver
+from lantz import LibraryDriver
 from lantz import Driver, Feat, Action
 import time
 import numpy as np
-import sys
 
 LIB_VERSION = "3.0"
 MAXDEVNUM = 8

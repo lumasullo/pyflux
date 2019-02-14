@@ -16,6 +16,9 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
 
+
+import sys
+sys.path.append('C:\Program Files\Thorlabs\Scientific Imaging\ThorCam')
 # install from https://instrumental-lib.readthedocs.io/en/stable/install.html
 from instrumental.drivers.cameras import uc480
 import tools.viewbox_tools as viewbox_tools
@@ -24,6 +27,8 @@ import tools.colormaps as cmaps
 import tools.pi as pi
 import scan
 import drivers.ADwin as ADwin
+
+
 
 def actuatorParameters(adwin, z_f, n_pixels_z=50, pixeltime=1000):
 

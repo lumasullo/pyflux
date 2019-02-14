@@ -33,13 +33,9 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 import drivers.ADwin as ADwin
-from instrumental.drivers.cameras import uc480
 import tools.viewbox_tools as viewbox_tools
-import drivers.picoharp as picoharp
-import PicoHarp.Read_PTU as Read_PTU
-import tools.pyqtsubclass as pyqtsc
 import tools.colormaps as cmaps
-import lantz.drivers.legacy.andor.ccd as ccd
+
 
 
 π = np.pi
@@ -728,8 +724,6 @@ class scanWidget(QtGui.QFrame):
         z_0 = 0
 
         self.scworker.moveTo(x_0, y_0, z_0)
-
-        super().closeEvent(*args, **kwargs)
     
         
 class scanWorker(QtCore.QObject):
@@ -1052,6 +1046,9 @@ class scanWorker(QtCore.QObject):
         # save image
 
         data = self.image
+        
+        # TO DO: fix image saving problem with something else than PIL
+        
         result = Image.fromarray(data.astype('uint16'))
 
         result.save(r'{}.tif'.format(name))
@@ -1074,6 +1071,10 @@ class scanWorker(QtCore.QObject):
         # save image
 
         data = self.image
+        
+        
+        # TO DO: fix image saving problem with something else than PIL
+        
         result = Image.fromarray(data.astype('uint16'))
 
         result.save(r'{}.tif'.format(name))

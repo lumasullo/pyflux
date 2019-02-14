@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import tools.tools as tools
 import ctypes as ct
-from PIL import Image
 from tkinter import Tk, filedialog
 import tifffile as tiff
 import scipy.optimize as opt
@@ -25,7 +24,6 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 import drivers.ADwin as ADwin
-from instrumental.drivers.cameras import uc480
 import tools.viewbox_tools as viewbox_tools
 import drivers.picoharp as picoharp
 import PicoHarp.Read_PTU as Read_PTU

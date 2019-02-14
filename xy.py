@@ -18,7 +18,8 @@ import tools.colormaps as cmaps
 import tools.PSF as PSF
 from scipy import optimize as opt
 
-import lantz.drivers.legacy.andor.ccd as ccd
+#from lantz.drivers.legacy.andor import ccd 
+from lantz.drivers.andor import ccd 
 
 
 class xyWidget(QtGui.QFrame):
