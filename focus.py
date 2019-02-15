@@ -46,7 +46,7 @@ def zMoveTo(adwin, z_f):
     adwin.Start_Process(3)
 
 
-class focusWidget(QtGui.QFrame):
+class focusFrontend(QtGui.QFrame):
 
     def __init__(self, camera, actuator=None, *args, **kwargs):
 
@@ -238,7 +238,7 @@ class focusWidget(QtGui.QFrame):
         
         
 
-class focusWorker(QtCore.QObject):
+class focusBackend(QtCore.QObject):
 
     def __init__(self, gui, camera, actuator, *args, **kwargs):
         super().__init__(*args, **kwargs)
