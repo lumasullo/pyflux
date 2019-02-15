@@ -16,6 +16,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
 
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 
 import sys
 sys.path.append('C:\Program Files\Thorlabs\Scientific Imaging\ThorCam')
@@ -46,22 +47,20 @@ def zMoveTo(adwin, z_f):
     adwin.Start_Process(3)
 
 
-class focusFrontend(QtGui.QFrame):
-
-    def __init__(self, camera, actuator=None, *args, **kwargs):
+class Frontend(QtGui.QFrame):
+    
+    changedROI = pyqtSignal(np.ndarray)  # oass new roi size
+    closeSignal = pyqtSignal()
+    lockFocusSignal = pyqtSignal(bool)
+    changedPIparam = pyqtSignal(np.ndarray)
+    
+    def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
         
-        self.setMinimumSize(2, 200)
-
-        self.cam = camera
         self.roi = None
         self.cropped = False
 
-        self.setFrameStyle(QtGui.QFrame.Panel | QtGui.QFrame.Raised)
-
-        self.fworker = focusWorker(self, camera, actuator)
-        
         self.setUpGUI()
 
     def ROImethod(self):
@@ -72,7 +71,9 @@ class focusFrontend(QtGui.QFrame):
             y0 = 0
             x1 = 1280 
             y1 = 1024 
-            self.fworker.camera._set_AOI(x0, y0, x1, y1)
+            
+            value = np.array([x0, y0, x1, y1])
+            self.changedROI.emit(value)
             self.cropped = False
         
         ROIpen = pg.mkPen(color='y')
@@ -104,34 +105,72 @@ class focusFrontend(QtGui.QFrame):
         
         self.cropped = True
         self.getStats = True
-        
-        array = self.roi.getArrayRegion(self.fworker.image, self.img)
+    
         ROIpos = np.array(self.roi.pos())
+               
+        roisize = np.array(self.roi.size())
         
-        print('max image size', self.cam._get_max_img_size())
-        print('initial ROI size', self.cam._get_AOI())
-        
-        print('ROIpos', ROIpos)
-        print('array', np.shape(array))
-        
+    
         y0 = int(ROIpos[0])
         x0 = int(ROIpos[1])
-        y1 = int(ROIpos[0] + np.shape(array)[0])
-        x1 = int(ROIpos[1] + np.shape(array)[1])
-
+        y1 = int(ROIpos[0] + roisize[0])
+        x1 = int(ROIpos[1] + roisize[1])
         
-        print('setpoint ROI', [x0, y0, x1, y1])
-
-        self.fworker.camera._set_AOI(x0, y0, x1, y1)
-        print('focus lock ROI changed to', self.fworker.camera._get_AOI())
+        value = np.array([x0, y0, x1, y1])
         
+        self.changedROI.emit(value)
+    
         self.vb.removeItem(self.roi)
         self.roi.hide()
         self.roi = None
         
+    def toggleFocus(self):
+        
+        params = np.array([self.kpEdit.text(), self.kiEdit.text()], 
+                           dtype=np.float)
+        self.changedPIparam.emit(params)
+        
+        if self.lockButton.isChecked():
+            
+            self.lockFocusSignal.emit(True)
+
+#            self.setpointLine = self.focusGraph.zPlot.addLine(y=self.setPoint, pen='r')
+            
+        else:
+            
+            self.lockFocusSignal.emit(False)
+            
+        
+    @pyqtSlot(np.ndarray)
+    def get_image(self, img):
+        
+        #  The croppingis done because otherwise the displayed image will be
+        #  300 x 1024. It doesn't affect the performance of the system
+        
+        if self.cropped is False: 
+            
+            self.img.setImage(img, autoLevels=False)
+        
+        else:
+
+            croppedimg = img[0:300, 0:300]
+            self.img.setImage(croppedimg)
+            
+    @pyqtSlot(np.ndarray, np.ndarray)
+    def get_data(self, time, position):
+        self.focusCurve.setData(time, position)
+            
+    def make_connection(self, backend):
+            
+        backend.changedImage.connect(self.get_image)
+        backend.changedData.connect(self.get_data)
+        
     def setUpGUI(self):
         
          # Focus lock widget
+         
+        self.setFrameStyle(QtGui.QFrame.Panel | QtGui.QFrame.Raised)
+        self.setMinimumSize(2, 200)
         
         self.kpEdit = QtGui.QLineEdit('-0.3')
         self.kpEdit.setFixedWidth(60)
@@ -152,12 +191,12 @@ class focusFrontend(QtGui.QFrame):
         self.selectROIbutton = QtGui.QPushButton('select ROI')
         self.calibrationButton = QtGui.QPushButton('Calibrate')
         
-        self.kiEdit.textChanged.connect(self.fworker.unlockFocus)
-        self.kpEdit.textChanged.connect(self.fworker.unlockFocus)
-        self.lockButton.clicked.connect(self.fworker.toggleFocus)
+#        self.kiEdit.textChanged.connect(self.fworker.unlockFocus)
+#        self.kpEdit.textChanged.connect(self.fworker.unlockFocus)
+        self.lockButton.clicked.connect(self.toggleFocus)
         self.ROIbutton.clicked.connect(self.ROImethod)
         self.selectROIbutton.clicked.connect(self.selectROI)
-        self.calibrationButton.clicked.connect(self.fworker.calibrate)
+#        self.calibrationButton.clicked.connect(self.fworker.calibrate)
 
         self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
 
@@ -232,21 +271,25 @@ class focusFrontend(QtGui.QFrame):
         
     def closeEvent(self, *args, **kwargs):
         
-        self.fworker.closeEvent()
+        self.closeSignal.emit()
         
         super().closeEvent(*args, **kwargs)
         
         
 
-class focusBackend(QtCore.QObject):
+class Backend(QtCore.QObject):
+    
+    changedImage = pyqtSignal(np.ndarray)
+    changedData = pyqtSignal(np.ndarray, np.ndarray)
+    changedSetPoint = pyqtSignal(np.ndarray)
 
-    def __init__(self, gui, camera, actuator, *args, **kwargs):
+    def __init__(self, camera, actuator, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.gui = gui
         self.camera = camera
         self.actuator = actuator
         self.locked = False
+        self.cropped = False
         self.standAlone = False
     
         self.npoints = 400
@@ -278,8 +321,7 @@ class focusBackend(QtCore.QObject):
     def setupPI(self):
         
         self.setPoint = self.focusSignal
-        self.PI = pi.PI(self.setPoint, 0.001, np.float(self.gui.kpEdit.text()),
-                        np.float(self.gui.kiEdit.text()))
+        self.PI = pi.PI(self.setPoint, 0.001, self.kp, self.ki)
 
         self.initialZ = self.currentZ
         
@@ -300,12 +342,12 @@ class focusBackend(QtCore.QObject):
         
         if abs(self.distance) > 1  or abs(out) > 3 or self.currentZ < 0:  # in µm
         
-            self.unlockFocus()
+            self.lockFocus(False)
             
         else:
             
             self.currentZ = self.currentZ + out
-#            print('moved to', self.currentZ, 'µm')
+            print('moved to', self.currentZ, 'µm')
             
         zMoveTo(self.actuator, self.currentZ)
             
@@ -334,8 +376,6 @@ class focusBackend(QtCore.QObject):
         self.n += 1
         
     def update(self, delay=0.000):
-        
-        time0 = time.time()
 
         time.sleep(delay)
         
@@ -347,19 +387,7 @@ class focusBackend(QtCore.QObject):
         
         image = np.sum(raw_image, axis=2)
         
-        self.image = image
-        
-        #  The croppingis done because otherwise the displayed image will be
-        #  300 x 1024. It doesn't affect the performance of the system
-        
-        if self.gui.cropped is False: 
-            
-            self.gui.img.setImage(self.image, autoLevels=False)
-        
-        else:
-
-            croppedimg = self.image[0:300, 0:300]
-            self.gui.img.setImage(croppedimg, autoLevels=False)
+        self.changedImage.emit(image)
             
         # get mass center
             
@@ -372,8 +400,8 @@ class focusBackend(QtCore.QObject):
             self.data[self.ptr] = self.focusSignal
             self.time[self.ptr] = ptime.time() - self.startTime
             
-            self.gui.focusCurve.setData(self.time[1:self.ptr + 1],
-                                        self.data[1:self.ptr + 1])
+            self.changedData.emit(self.time[1:self.ptr + 1],
+                                  self.data[1:self.ptr + 1])
 
         else:
             self.data[:-1] = self.data[1:]
@@ -381,7 +409,7 @@ class focusBackend(QtCore.QObject):
             self.time[:-1] = self.time[1:]
             self.time[-1] = ptime.time() - self.startTime
 
-            self.gui.focusCurve.setData(self.time, self.data)
+            self.changedData.emit(self.time, self.data)
 
         self.ptr += 1
         
@@ -389,33 +417,24 @@ class focusBackend(QtCore.QObject):
         
         if self.locked:
             self.updatePI()
-            self.updateStats()
+#            self.updateStats()
             
-        time1 = time.time()
-        
-#        print('focus signal update took {}'.format(np.around(time1-time0, 6))) 
-        
-    def toggleFocus(self, delay=0):
-        
-        if self.gui.lockButton.isChecked():
 
+        
+    def lockFocus(self, lockbool):
+        
+        if lockbool:
+        
             self.reset()
             self.setupPI()
-            self.update(delay)
-            
-            self.setpointLine = self.gui.focusGraph.zPlot.addLine(y=self.setPoint, pen='r')
-            
+            self.update()
             self.locked = True
-
-        else:
-            self.unlockFocus()
-
-    def unlockFocus(self):
         
-        if self.locked is True:
-            self.locked = False
-            self.gui.lockButton.setChecked(False)
-            self.gui.focusGraph.zPlot.removeItem(self.setpointLine)
+        else:
+        
+            if self.locked is True:
+                self.locked = False
+
             
     def calibrate(self):
         
@@ -445,7 +464,7 @@ class focusBackend(QtCore.QObject):
         time.sleep(0.200)
         
         self.focusTimer.start(self.focusTime)
-            
+    
             
     def reset(self):
         
@@ -459,7 +478,30 @@ class focusBackend(QtCore.QObject):
         self.std = 0
         self.n = 1
         
-    def closeEvent(self, *args, **kwargs):
+    @pyqtSlot(bool)
+    def get_lock(self, lockbool):
+        self.lockFocus(lockbool)
+            
+    @pyqtSlot(np.ndarray)
+    def get_newROI(self, val):
+
+        self.cropped = True
+        self.camera._set_AOI(*val)
+        print('focus lock ROI changed to', self.camera._get_AOI())
+        
+    @pyqtSlot(np.ndarray)
+    def get_PIparam(self, param):
+        self.kp, self.ki = param
+        
+    def make_connection(self, frontend):
+            
+        frontend.changedROI.connect(self.get_newROI)
+        frontend.closeSignal.connect(self.stop)
+        frontend.lockFocusSignal.connect(self.lockFocus)
+        frontend.changedPIparam.connect(self.get_PIparam)
+        frontend.calibrationButton.clicked.connect(self.calibrate)
+        
+    def stop(self):
         
         self.focusTimer.stop()
         self.camera.close()
@@ -467,14 +509,18 @@ class focusBackend(QtCore.QObject):
         if self.standAlone is True:
             zMoveTo(self.actuator, 0)
             
-
+        print('Focus lock stopped')
+            
     
 
 if __name__ == '__main__':
     
+    app = QtGui.QApplication([])
+    
     print('Focus lock module running in stand-alone mode')
 
-    app = QtGui.QApplication([])
+    # initialize devices
+    
     cam = uc480.UC480_Camera()
     
     DEVICENUMBER = 0x1
@@ -484,17 +530,18 @@ if __name__ == '__main__':
     # initialize fpar_52 (z) ADwin position parameters
         
     pos_zero = tools.convert(0, 'XtoU')
-        
-    adw.Set_FPar(52, pos_zero)
-    
+    adw.Set_FPar(52, pos_zero)  
     zMoveTo(adw, 10)
 
-    win = focusWidget(cam, adw)
-    win.fworker.standAlone = True
+    gui = Frontend()   
+    worker = Backend(cam, adw)
+    
+    worker.make_connection(gui)
+    gui.make_connection(worker)
 
-    win.setWindowTitle('Focus lock')
-    win.resize(1500, 500)
+    gui.setWindowTitle('Focus lock')
+    gui.resize(1500, 500)
 
-    win.show()
+    gui.show()
     app.exec_()
         
