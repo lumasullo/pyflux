@@ -25,18 +25,17 @@ from tkinter import Tk, filedialog
 import tifffile as tiff
 import scipy.optimize as opt
 
-
 from threading import Thread
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+import qdarkstyle
 
 import drivers.ADwin as ADwin
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
-
-
 
 π = np.pi
 
@@ -64,9 +63,9 @@ def setupDevice(adw):
 
 
     
-class scanWidget(QtGui.QFrame):
+class Frontend(QtGui.QFrame):
 
-    def __init__(self, adwin, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
@@ -87,9 +86,9 @@ class scanWidget(QtGui.QFrame):
 
         self.setUpGUI()
         
-        # set up worker
-        
-        self.scworker = scanWorker(self, adwin)
+#        # set up worker
+#        
+#        self.scworker = scanWorker(self, adwin)
         
         # make connections between GUI and worker functions
         
@@ -108,7 +107,7 @@ class scanWidget(QtGui.QFrame):
         self.detectorType.activated.connect(self.scworker.paramChanged)
         self.scanMode.activated.connect(self.scworker.paramChanged)
         
-        self.moveToButton.clicked.connect(self.scworker.moveToAction)
+        self.moveToButton.clicked.connect(self.scworker.moveTo_action)
 
 
     def toggleAdvanced(self):
@@ -725,16 +724,15 @@ class scanWidget(QtGui.QFrame):
 
         self.scworker.moveTo(x_0, y_0, z_0)
     
-        
-class scanWorker(QtCore.QObject):
+      
+class Backend(QtCore.QObject):
     
-    def __init__(self, gui, adwin, *args, **kwargs):
+    def __init__(self, adwin, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        self.gui = gui
         self.adw = adwin
-        
-        self.edited_scan = True  
+        self.edited_scan = True
+        self.saveScanData = False
         
         # edited_scan = True --> size of the useful part of the scan
         # edited_scan = False --> size of the full scan including aux parts
@@ -744,7 +742,7 @@ class scanWorker(QtCore.QObject):
         # Create a timer for the update of the liveview
 
         self.viewtimer = QtCore.QTimer()
-        self.viewtimer.timeout.connect(self.updateView)
+        self.viewtimer.timeout.connect(self.update_view)
 
         # Counter for the saved images
 
@@ -754,9 +752,9 @@ class scanWorker(QtCore.QObject):
 
         self.flag = 0
 
-        # update parameters
-
-        self.paramChanged()
+#        # update parameters
+#
+#        self.paramChanged()
         
         # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
         
@@ -774,39 +772,60 @@ class scanWorker(QtCore.QObject):
 
         self.initialDir = r'C:\Data'
         
+    @pyqtSlot(dict)
+    def get_frontend_param(self, params):
         
-    def paramChanged(self):
-
         # updates parameters according to what is input in the GUI
     
-        self.detector = self.gui.detectorType.currentText()
-        self.scantype = self.gui.scanMode.currentText()
+#        self.detector = self.gui.detectorType.currentText()
+#        self.scantype = self.gui.scanMode.currentText()
+#
+#        self.scanRange = float(self.gui.scanRangeEdit.text())
+#        self.NofPixels = int(self.gui.NofPixelsEdit.text())
+#        self.pxTime = float(self.gui.pxTimeEdit.text())
+#        self.a_aux_coeff = np.array(self.gui.auxAccelerationEdit.text().split(' '),
+#                                    dtype=np.float32)/100
+#        self.initialPos = np.array(self.gui.initialPosEdit.text().split(' '),
+#                                   dtype=np.float64)
+#        self.waitingtime = float(self.gui.waitingTimeEdit.text())  # in µs
+#        
+#        self.xStep = float(self.gui.xStepEdit.text())
+#        self.yStep = float(self.gui.yStepEdit.text())
+#        self.zStep = float(self.gui.zStepEdit.text())
+#        
+#        self.filename = os.path.join(self.gui.folderEdit.text(),
+#                                     self.gui.filenameEdit.text())
+#        
+#        self.moveToPos = np.array(self.moveToEdit.text().split(' '),
+#                                   dtype=np.float16)
+        
+        self.detector = params['detectorType']
+        self.scantype = params['scanType']
+        self.scanRange = params['scanRange']
+        self.NofPixels = params['NofPixels']
+        self.pxTime = params['pxTime']
+        self.initialPos = params['initialPos']
+        
+        self.waitingTime = params['waitingTime']
+        
+        self.filename = params['fileName']
+        
+        self.moveToPos = params['moveToPos']
+        
+        self.xStep = params['xStep']
+        self.yStep = params['yStep']
+        self.zStep = params['zStep']
+        
+        self.calculate_derived_param()
+        
+        
+    def calculate_derived_param(self):
 
-        self.scanRange = float(self.gui.scanRangeEdit.text())
-        self.NofPixels = int(self.gui.NofPixelsEdit.text())
-        self.pxTime = float(self.gui.pxTimeEdit.text())
-        self.a_aux_coeff = np.array(self.gui.auxAccelerationEdit.text().split(' '),
-                                    dtype=np.float32)/100
-        self.initialPos = np.array(self.gui.initialPosEdit.text().split(' '),
-                                   dtype=np.float64)
         self.pxSize = self.scanRange/self.NofPixels   # in µm
         self.frameTime = self.NofPixels**2 * self.pxTime / 10**6
-
-        self.waitingtime = float(self.gui.waitingTimeEdit.text())  # in µs
-
-        self.gui.frameTimeValue.setText('Frame time = {} s'.format(np.around(self.frameTime, 2)))
-        self.gui.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * self.pxSize, 5))) # in nm
-
+        self.maxCounts = int(self.APDmaxCounts/(1/(self.pxTime*10**-6)))
         self.linetime = (1/1000)*self.pxTime*self.NofPixels  # in ms
         
-        self.xStep = float(self.gui.xStepEdit.text())
-        self.yStep = float(self.gui.yStepEdit.text())
-        self.zStep = float(self.gui.zStepEdit.text())
-        
-        self.maxCounts = int(self.APDmaxCounts/(1/(self.pxTime*10**-6)))
-        self.gui.maxCountsLabel.setText('Counts limit per pixel = {}'.format(self.maxCounts))
-        
-
         #  aux scan parameters
 
         self.a_max = 4 * 10**-6  # in µm/µs^2
@@ -867,7 +886,14 @@ class scanWorker(QtCore.QObject):
 
         self.updateDeviceParameters()
         
-    def updateDeviceParameters(self):
+    def emit_param(self):
+        
+        self.gui.frameTimeValue.setText('Frame time = {} s'.format(np.around(self.frameTime, 2)))
+        self.gui.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * self.pxSize, 5))) # in nm
+        self.gui.maxCountsLabel.setText('Counts limit per pixel = {}'.format(self.maxCounts))
+
+        
+    def update_device_param(self):
         
         if self.detector == 'APD':
             self.adw.Set_Par(30, 0)  # Digital input (APD)
@@ -935,13 +961,13 @@ class scanWorker(QtCore.QObject):
         self.adw.SetData_Long(self.data_x_adwin, 3, 1, self.space_range)
         self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
 
-    def moveToParameters(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
 
         x_f = tools.convert(x_f, 'XtoU')
         y_f = tools.convert(y_f, 'XtoU')
         z_f = tools.convert(z_f, 'XtoU')
-        
+
 #        print(x_f, y_f, z_f)
 
         self.adw.Set_Par(21, n_pixels_x)
@@ -956,27 +982,24 @@ class scanWorker(QtCore.QObject):
 
     def moveTo(self, x_f, y_f, z_f):
 
-        self.moveToParameters(x_f, y_f, z_f)
+        self.set_moveTo_param(x_f, y_f, z_f)
         self.adw.Start_Process(2)
 
-    def moveToAction(self):
+    def moveTo_action(self):
 
-        final_position = np.array(self.moveToEdit.text().split(' '),
-                                  dtype=np.float16)
+        self.moveTo(*self.moveToPos)
+   
+    def read_position(self):
 
-        self.moveTo(final_position[0], final_position[1], final_position[2])
-        
-    def getPosition(self):
-        
         xPos = self.adw.Get_FPar(50)
         yPos = self.adw.Get_FPar(51)
         zPos = self.adw.Get_FPar(52)
-        
+
         self.xPos = tools.convert(xPos, 'UtoX')
         self.yPos = tools.convert(yPos, 'UtoX')
         self.zPos = tools.convert(zPos, 'UtoX') 
             
-    def frameAcquisition(self):
+    def frame_acquisition(self):
 
         if self.acquireFrameButton.isChecked():
             self.liveviewStop()
@@ -986,26 +1009,25 @@ class scanWorker(QtCore.QObject):
         else:
             self.frameAcquisitionStop()
 
-    def frameAcquisitionStart(self):
+    def frame_acquisition_start(self):
 
         self.acquisitionMode = 'frame'
 
         # save scan plot (x vs t)
 
-        self.filename = os.path.join(self.gui.folderEdit.text(),
-                                     self.gui.filenameEdit.text())
+        if self.saveScanData:
 
-        plt.figure('Scan plot x vs t')
-        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
-        plt.xlabel('t (ADwin time)')
-        plt.ylabel('V (DAC units)')
-
-        fname = tools.getUniqueName(self.filename)
-        fname = fname + '_scan_plot'
-        plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
-                    orientation='portrait', papertype=None, format=None,
-                    transparent=False, bbox_inches=None, pad_inches=0.1,
-                    frameon=None)
+            plt.figure('Scan plot x vs t')
+            plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
+            plt.xlabel('t (ADwin time)')
+            plt.ylabel('V (DAC units)')
+    
+            fname = tools.getUniqueName(self.filename)
+            fname = fname + '_scan_plot'
+            plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
+                        orientation='portrait', papertype=None, format=None,
+                        transparent=False, bbox_inches=None, pad_inches=0.1,
+                        frameon=None)
         
         # restar the slow axis
         
@@ -1033,7 +1055,7 @@ class scanWorker(QtCore.QObject):
 
         self.viewtimer.start(self.viewtimer_time)
 
-    def frameAcquisitionStop(self):
+    def frame_acquisition_stop(self):
 
         self.viewtimer.stop()
 
@@ -1046,21 +1068,16 @@ class scanWorker(QtCore.QObject):
         # save image
 
         data = self.image
-        
-        # TO DO: fix image saving problem with something else than PIL
-        
-        result = Image.fromarray(data.astype('uint16'))
 
+        result = Image.fromarray(data.astype('uint16'))
         result.save(r'{}.tif'.format(name))
+        
         print(name)
 
         self.imageNumber += 1
         self.acquireFrameButton.setChecked(False)
         
-    def saveCurrentFrame(self):
-        
-        self.filename = os.path.join(self.gui.folderEdit.text(),
-                                     self.gui.filenameEdit.text())
+    def save_current_frame(self):
         
         # experiment parameters
 
@@ -1071,20 +1088,15 @@ class scanWorker(QtCore.QObject):
         # save image
 
         data = self.image
-        
-        
-        # TO DO: fix image saving problem with something else than PIL
-        
         result = Image.fromarray(data.astype('uint16'))
-
         result.save(r'{}.tif'.format(name))
+        
         print(name)
 
         self.imageNumber += 1
         self.gui.currentFrameButton.setChecked(False)
         
-    
-    def lineAcquisition(self):
+    def line_acquisition(self):
 
         # TO DO: fix problem of waiting time
 
@@ -1092,30 +1104,22 @@ class scanWorker(QtCore.QObject):
 
 #        # flag changes when process is finished
 
-        if (((1/1000) * self.data_t[-1]) < 240):   # in ms
+        if (((1/1000) * self.data_t[-1]) < 240):   # in ms 
 
             while self.flag == 0:
                 self.flag = self.adw.Get_Par(2)
         
-        else:
+        else: # only for lines longer than 240 ms
             
             line_time = (1/1000) * self.data_t[-1]  # in ms
             wait_time = line_time * 1.05
-
             time.sleep(wait_time/1000)
 
-#        print(self.viewtimer_time)
-#        time0 = time.time()
         line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
-#        time1 = time.time()
-#        print(time1 - time0)
-#        time.sleep(0.2)
-
         line_data[0] = 0  # TO DO: fix the high count error on first element
 
         return line_data
 
-    # This is the function triggered by pressing the liveview button
     def liveview(self):
 
         if self.gui.liveviewButton.isChecked():
@@ -1124,7 +1128,7 @@ class scanWorker(QtCore.QObject):
         else:
             self.liveviewStop()
 
-    def liveviewStart(self):
+    def liveview_start(self):
 
         self.acquisitionMode = 'liveview'
 
@@ -1162,11 +1166,11 @@ class scanWorker(QtCore.QObject):
 
         self.viewtimer.start(self.viewtimer_time)
 
-    def liveviewStop(self):
+    def liveview_stop(self):
 
         self.viewtimer.stop()
 
-    def updateView(self):
+    def update_view(self):
         
         if self.scantype == 'xy':
 
@@ -1229,8 +1233,7 @@ class scanWorker(QtCore.QObject):
                 self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                             self.z_i - self.scanRange/2)
 
-            self.updateDeviceParameters()
-        
+            self.updateDeviceParameters()      
        
 class linePlotWidget(QtGui.QWidget):
         
@@ -1253,13 +1256,16 @@ class linePlotWidget(QtGui.QWidget):
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     DEVICENUMBER = 0x1
     adw = ADwin.ADwin(DEVICENUMBER, 1)
     setupDevice(adw)
     
-    win = scanWidget(adw)
-    win.setWindowTitle('Confocal scan')
-    win.show()
+    worker = Backend(adw)
+    gui = Frontend()
+    
+    gui.setWindowTitle('Confocal scan')
+    gui.show()
 
     app.exec_()

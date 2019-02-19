@@ -18,28 +18,36 @@ import tools.colormaps as cmaps
 import tools.PSF as PSF
 from scipy import optimize as opt
 
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+import qdarkstyle
+
+
+
 #from lantz.drivers.legacy.andor import ccd 
 from lantz.drivers.andor import ccd 
 
 
-class xyWidget(QtGui.QFrame):
+class Frontend(QtGui.QFrame):
     
-    def __init__(self, camera, *args, **kwargs):
+    liveviewSignal = pyqtSignal(bool)
+    roiInfoSignal = pyqtSignal(int, np.ndarray)
+    
+    def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
         
         # TO DO: finish gaussian fit calculation and plot
         # TO DO: fix multithreading
         
-        self.andor = camera
-        cam = 0
-        self.andor.current_camera = self.andor.camera_handle(cam)
-        self.andor.lib.Initialize()
-        print('idn:', self.andor.idn)
+#        self.andor = camera
+#        cam = 0
+#        self.andor.current_camera = self.andor.camera_handle(cam)
+#        self.andor.lib.Initialize()
+#        print('idn:', self.andor.idn)
         
-        self.xyworker = xyWorker(self, self.andor)
+#        self.xyworker = xyWorker(self, self.andor)
         
-        self.setUpGUI()
+        self.setup_gui()
         
         # initial ROI parameters        
         
@@ -48,7 +56,7 @@ class xyWidget(QtGui.QFrame):
         self.ROInumber = 0
         self.roilist = []
 
-    def createROI(self):
+    def craete_roi(self):
         
         ROIpen = pg.mkPen(color='r')
 
@@ -70,8 +78,27 @@ class xyWidget(QtGui.QFrame):
 #
 #            self.vb.removeItem(self.roi)
 #            self.roi.hide()
+        
+    def emit_roi_info(self):
+        
+#        print('Set ROIs function')
+        
+        roinumber = len(self.roilist)
+        roicoordinates = np.zeros((roinumber, 4))
+        
+        for i in range(len(self.roilist)):
+            
+#            print(self.roilist[i].pos())
+#            print(self.roilist[i].size())
+            xmin, ymin = self.roilist[i].pos()
+            xmax, ymax = self.roilist[i].pos() + self.roilist[i].size()
 
-    def deleteROIs(self):
+            coordinates = np.array([xmin, xmax, ymin, ymax])  
+            roicoordinates[i] = coordinates
+            
+        self.roiInfoSignal.emit(roinumber, roicoordinates)
+
+    def delete_roi(self):
         
         for i in range(len(self.roilist)):
             
@@ -79,11 +106,38 @@ class xyWidget(QtGui.QFrame):
             self.roilist[i].hide()
             
         self.roilist = []
-        self.deleteROIsButton.setChecked(False)
+        self.delete_roiButton.setChecked(False)
         self.ROInumber = 0
-            
         
-    def setUpGUI(self):
+    def toggle_liveview(self):
+        
+        if self.liveviewButton.isChecked():
+            
+            self.liveviewSignal.emit(True)
+        
+        else:
+            
+            self.liveviewSignal.emit(False)
+            self.liveviewButton.setChecked(False)
+        
+        
+    @pyqtSlot(np.ndarray)
+    def get_image(self, img):
+        
+        self.img.setImage(img, autoLevels=False)
+        
+    @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
+    def get_data(self, time, xPosition, yPosition):
+        
+        self.xCurve.setData(time, xPosition)
+        self.yCurve.setData(time, yPosition)
+        
+    def make_connection(self, backend):
+            
+        backend.changedImage.connect(self.get_image)
+        backend.changedData.connect(self.get_data)
+        
+    def setup_gui(self):
         
         
         # GUI layout
@@ -153,23 +207,23 @@ class xyWidget(QtGui.QFrame):
 
         self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
         self.liveviewButton.setCheckable(True)
-        self.liveviewButton.clicked.connect(self.xyworker.liveview)
         
         # create ROI button
     
         self.ROIButton = QtGui.QPushButton('add ROI')
         self.ROIButton.setCheckable(True)
-        self.ROIButton.clicked.connect(self.createROI)
+        self.ROIButton.clicked.connect(self.craete_roi)
         
         # delete ROI button
         
-        self.deleteROIsButton = QtGui.QPushButton('delete ROIs')
-        self.deleteROIsButton.setCheckable(True)
-        self.deleteROIsButton.clicked.connect(self.deleteROIs)
+        self.delete_roiButton = QtGui.QPushButton('delete ROIs')
+        self.delete_roiButton.setCheckable(True)
+        self.delete_roiButton.clicked.connect(self.delete_roi)
         
         # position tracking checkbox
         
         self.trackingBeadsBox = QtGui.QCheckBox('track beads positions')
+        self.trackingBeadsBox.stateChanged.connect(self.emit_roi_info)
         
         # buttons and param layout
         
@@ -178,39 +232,44 @@ class xyWidget(QtGui.QFrame):
 
         subgrid.addWidget(self.liveviewButton, 0, 0)
         subgrid.addWidget(self.ROIButton, 1, 0)
-        subgrid.addWidget(self.deleteROIsButton, 2, 0)
+        subgrid.addWidget(self.delete_roiButton, 2, 0)
         subgrid.addWidget(self.trackingBeadsBox, 3, 0)
         
         grid.addWidget(self.xyGraph, 1, 0)
         
         
-    def closeEvent(self, *args, **kwargs):
+#    def closeEvent(self, *args, **kwargs):
+#        
+#        self.andor.shutter(0, 2, 0, 0, 0)
+#        self.andor.abort_acquisition()
+#        self.andor.finalize()
+#
+#        super().closeEvent(*args, **kwargs)
         
-        self.andor.shutter(0, 2, 0, 0, 0)
-        self.andor.abort_acquisition()
-        self.andor.finalize()
-
-        super().closeEvent(*args, **kwargs)
-        
-class xyWorker(QtCore.QObject):
+class Backend(QtCore.QObject):
     
-    def __init__(self, gui, andor, *args, **kwargs):
+    changedImage = pyqtSignal(np.ndarray)
+    changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
+
+    
+    def __init__(self, andor, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
         self.andor = andor
-        self.gui = gui
-        self.setUpCamera()
+        self.initialize_camera()
+        self.setup_camera()
         
         self.viewtimer = QtCore.QTimer()
-        self.viewtimer.timeout.connect(self.updateView)
+        self.viewtimer.timeout.connect(self.update_view)
         
+        self.tracking_value = False
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
         
         self.reset()
         
-    def setUpCamera(self):
+    def setup_camera(self):
         
         self.pxSize = 80  # in nm
         self.shape = (512, 512)
@@ -262,24 +321,32 @@ class xyWorker(QtCore.QObject):
         vspeed = self.andor.true_vert_shift_speed(4)
         print('Vertical shift speed = {} µs'.format(np.round(vspeed.magnitude,
                                                              1)))
+        
+    def initialize_camera(self):
+        
+        cam = 0
+        self.andor.current_camera = self.andor.camera_handle(cam)
+        self.andor.lib.Initialize()
+        print('idn:', self.andor.idn)
     
-    def liveview(self):
+    @pyqtSlot(bool)
+    def liveview(self, value):
 
-        if self.gui.liveviewButton.isChecked():
-            self.liveviewStart()
+        if value:
+            self.liveview_start()
 
         else:
-            self.liveviewStop()
+            self.liveview_stop()
 
         
-    def liveviewStart(self):
+    def liveview_start(self):
         
         self.initial = True
         
         print('Temperature = {} °C'.format(self.andor.temperature))
         print(self.andor.temperature_status)
 
-#        # Initial image
+        # Initial image
         
         self.andor.acquisition_mode = 'Run till abort'
         print('Acquisition mode:', self.andor.acquisition_mode)
@@ -288,65 +355,69 @@ class xyWorker(QtCore.QObject):
         
         time.sleep(self.expTime * 2)
         self.image = self.andor.most_recent_image16(self.shape)
-#
-#        self.gui.img.setImage(np.transpose(self.image), autoLevels=False)
-        self.gui.img.setImage(self.image, autoLevels=False)
-#
-##        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
-#
+
+        self.changedImage.emit(self.image)
+
         self.viewtimer.start(50)
     
-    def liveviewStop(self):
+    def liveview_stop(self):
         
         self.viewtimer.stop()
         self.andor.abort_acquisition()
         self.andor.shutter(0, 2, 0, 0, 0)
-        
-        self.gui.liveviewButton.setChecked(False)
-            
-    def updateView(self):
+                    
+    def update_view(self):
         """ Image update while in Liveview mode
         """
         
         self.image = self.andor.most_recent_image16(self.shape)
+        self.changedImage.emit(self.image)
 
-#        self.gui.img.setImage(np.transpose(self.image), autoLevels=False)
-        self.gui.img.setImage(self.image, autoLevels=False)
-
-        if self.gui.trackingBeadsBox.isChecked():
+        if self.tracking_value:
             
-            for i in range(len(self.gui.roilist)):
+            print('About to track beads')
+            
+            for i in range(self.numberOfROIs):
                 
-                self.trackBead(i, self.initial)
+                self.tracking(i, self.initial)
                 self.update()
-                
+    
+    @pyqtSlot()
+    def toggle_tracking(self):
+        
+        if self.tracking_value is False:
+            self.tracking_value = True
+        
+        else:
+        
+            self.tracking_value = False
             
-    def trackBead(self, i, initial=False):
+    def tracking(self, i, initial=False):
         
         # gaussian fit for every selected particle
     
-        array = self.gui.roilist[i].getArrayRegion(self.image, self.gui.img)
+#        array = self.gui.roilist[i].getArrayRegion(self.image, self.gui.img)
         
-        ROIpos_nm = np.array(self.gui.roilist[i].pos()) * self.pxSize
+        xmin, xmax, ymin, ymax = self.ROIcoordinates[i]
+        print('self.ROIcoordinates[i]', self.ROIcoordinates[i])
+        array = self.image[xmin:xmax, ymin:ymax]
         
-        ymin = ROIpos_nm[1]
-        ymax = ROIpos_nm[1] + np.shape(array)[1] * self.pxSize
+#        ROIpos_nm = np.array(self.gui.roilist[i].pos()) * self.pxSize
+    
+        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates[i] * self.pxSize
         
-        xmin = ROIpos_nm[0]
-        xmax = ROIpos_nm[0] + np.shape(array)[0] * self.pxSize
+        print('xmin', xmin_nm)
+        print('ymin', ymin_nm)
         
-        print('xmin', xmin)
-        print('ymin', ymin)
-        
-        x = np.arange(xmin, xmax, self.pxSize)
-        y = np.arange(ymin, ymax, self.pxSize)
+        x = np.arange(xmin_nm, xmax_nm, self.pxSize)
+        y = np.arange(ymin_nm, ymax_nm, self.pxSize)
         
         (Mx, My) = np.meshgrid(x, y)
         
         bkg = np.min(array)
         A = np.max(array) - bkg
-        x0 = (xmax+xmin)/2
-        y0 = (ymax+ymin)/2
+        x0 = (xmax_nm + xmin_nm)/2
+        y0 = (ymax_nm + ymin_nm)/2
 
         σ = 130   # in nm
         
@@ -359,8 +430,8 @@ class xyWorker(QtCore.QObject):
         
         if initial is True:
             
-            self.x0 = poptG[1] - xmin
-            self.y0 = poptG[2] - ymin
+            self.x0 = poptG[1] - xmin_nm
+            self.y0 = poptG[2] - ymin_nm
             
             self.initial = False
             print('initial')
@@ -374,10 +445,8 @@ class xyWorker(QtCore.QObject):
 #            plt.figure()
 #            plt.imshow(dataG_2d, interpolation=None, cmap=cmaps.parula)
             
-
-        
-        self.x = poptG[1] - xmin - self.x0
-        self.y = poptG[2] - ymin - self.y0
+        self.x = poptG[1] - xmin_nm - self.x0
+        self.y = poptG[2] - ymin_nm - self.y0
         
         print(self.x, self.y)
         
@@ -398,10 +467,9 @@ class xyWorker(QtCore.QObject):
                 self.yData[self.ptr] = self.yPosition
                 self.time[self.ptr] = ptime.time() - self.startTime
                 
-                self.gui.xCurve.setData(self.time[1:self.ptr + 1],
-                                        self.xData[1:self.ptr + 1])
-                self.gui.yCurve.setData(self.time[1:self.ptr + 1],
-                                        self.yData[1:self.ptr + 1])
+                self.changedData.emit(self.time[1:self.ptr + 1],
+                                      self.xData[1:self.ptr + 1],
+                                      self.yData[1:self.ptr + 1])
     
             else:
                 self.xData[:-1] = self.xData[1:]
@@ -411,8 +479,7 @@ class xyWorker(QtCore.QObject):
                 self.time[:-1] = self.time[1:]
                 self.time[-1] = ptime.time() - self.startTime
                 
-                self.gui.xCurve.setData(self.time, self.xData)
-                self.gui.yCurve.setData(self.time, self.yData)
+                self.changedData.emit(self.time, self.xData, self.yData)
     
             self.ptr += 1
             
@@ -428,14 +495,40 @@ class xyWorker(QtCore.QObject):
         self.time = np.zeros(self.npoints)
         self.ptr = 0
         self.startTime = ptime.time()
+        
+    @pyqtSlot(int, np.ndarray)
+    def get_roi_info(self, N, coordinates_array):
+        
+        self.numberOfROIs = N
+        self.ROIcoordinates = coordinates_array.astype(int)
+        
+    def make_connection(self, frontend):
+            
+        frontend.liveviewButton.clicked.connect(self.liveview)
+        frontend.trackingBeadsBox.stateChanged.connect(self.toggle_tracking)
+        frontend.roiInfoSignal.connect(self.get_roi_info)
+        
+    def stop(self):
+        
+        self.andor.shutter(0, 2, 0, 0, 0)
+        self.andor.abort_acquisition()
+        self.andor.finalize()
+        
             
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    
     andor = ccd.CCD()
-
-    win = xyWidget(andor)
-    win.setWindowTitle('xy drift correction')
-    win.show()
+    
+    gui = Frontend()
+    worker = Backend(andor)
+    
+    gui.make_connection(worker)
+    worker.make_connection(gui)
+    
+    gui.setWindowTitle('xy drift correction')
+    gui.show()
     app.exec_()
         

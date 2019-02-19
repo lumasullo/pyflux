@@ -15,6 +15,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
+import qdarkstyle # see https://stackoverflow.com/questions/48256772/dark-theme-for-in-qt-widgets
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 
@@ -28,7 +29,6 @@ import tools.colormaps as cmaps
 import tools.pi as pi
 import scan
 import drivers.ADwin as ADwin
-
 
 
 def actuatorParameters(adwin, z_f, n_pixels_z=50, pixeltime=1000):
@@ -276,7 +276,6 @@ class Frontend(QtGui.QFrame):
         super().closeEvent(*args, **kwargs)
         
         
-
 class Backend(QtCore.QObject):
     
     changedImage = pyqtSignal(np.ndarray)
@@ -516,9 +515,11 @@ class Backend(QtCore.QObject):
 if __name__ == '__main__':
     
     app = QtGui.QApplication([])
+#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     print('Focus lock module running in stand-alone mode')
-
+    
     # initialize devices
     
     cam = uc480.UC480_Camera()
