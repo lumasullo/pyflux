@@ -64,6 +64,9 @@ def setupDevice(adw):
 
     
 class Frontend(QtGui.QFrame):
+    
+    paramSignal = pyqtSignal(dict)
+    closeSignal = pyqtSignal()
 
     def __init__(self, *args, **kwargs):
 
@@ -85,37 +88,64 @@ class Frontend(QtGui.QFrame):
         # set up GUI
 
         self.setUpGUI()
+                
+        # connections between changes in parameters and emit_param function
         
-#        # set up worker
-#        
-#        self.scworker = scanWorker(self, adwin)
+        self.NofPixelsEdit.textChanged.connect(self.emit_param)
+        self.scanRangeEdit.textChanged.connect(self.emit_param)
+        self.pxTimeEdit.textChanged.connect(self.emit_param)
+        self.initialPosEdit.textChanged.connect(self.emit_param)
+        self.auxAccEdit.textChanged.connect(self.emit_param)
+        self.waitingTimeEdit.textChanged.connect(self.emit_param)
+        self.detectorType.activated.connect(self.emit_param)
+        self.scanMode.activated.connect(self.emit_param)
         
-        # make connections between GUI and worker functions
+        self.emit_param()
         
-        self.liveviewButton.clicked.connect(self.scworker.liveview)
-        self.acquireFrameButton.clicked.connect(self.scworker.frameAcquisition)
-        self.currentFrameButton.clicked.connect(self.scworker.saveCurrentFrame)
+    def emit_param(self):
         
-        # connections between changes in parameters and paramChanged function
+        params = dict()
         
-        self.NofPixelsEdit.textChanged.connect(self.scworker.paramChanged)
-        self.scanRangeEdit.textChanged.connect(self.scworker.paramChanged)
-        self.pxTimeEdit.textChanged.connect(self.scworker.paramChanged)
-        self.initialPosEdit.textChanged.connect(self.scworker.paramChanged)
-        self.auxAccelerationEdit.textChanged.connect(self.scworker.paramChanged)
-        self.waitingTimeEdit.textChanged.connect(self.scworker.paramChanged)
-        self.detectorType.activated.connect(self.scworker.paramChanged)
-        self.scanMode.activated.connect(self.scworker.paramChanged)
+        params['detectorType'] = self.detectorType.currentText()
+        params['scanType'] = self.scanMode.currentText()
+        params['scanRange'] = float(self.scanRangeEdit.text())
+        params['scanRange'] = int(self.NofPixelsEdit.text())
+        params['NofPixels'] = float(self.pxTimeEdit.text())
+        params['pxTime'] = float(self.pxTimeEdit.text())
+        params['initialPos'] = np.array(self.initialPosEdit.text().split(' '),
+                                        dtype=np.float64)
+        params['a_aux_coeff'] = np.array(self.auxAccEdit.text().split(' '),
+                                              dtype=np.float32)/100
         
-        self.moveToButton.clicked.connect(self.scworker.moveTo_action)
+        params['waitingTime'] = float(self.waitingTimeEdit.text())  # in µs
+        params['fileName'] = os.path.join(self.folderEdit.text(),
+                                          self.filenameEdit.text())
+        params['moveToPos'] = np.array(self.moveToEdit.text().split(' '),
+                                       dtype=np.float16)
+        
+        params['xStep'] = float(self.xStepEdit.text())
+        params['yStep'] = float(self.yStepEdit.text())
+        params['zStep'] = float(self.zStepEdit.text())
 
+        self.paramSignal.emit(self.params)
+        
+    @pyqtSlot(dict)
+    def get_backend_param(self, params):
+        
+        frameTime = params['frameTime']
+        pxSize = params['pxSize']
+        maxCounts = params['maxCounts']
+        
+        self.frameTimeValue.setText('Frame time = {} s'.format(np.around(frameTime, 2)))
+        self.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * pxSize, 5))) # in nm
+        self.maxCountsLabel.setText('Counts limit per pixel = {}'.format(maxCounts))
 
     def toggleAdvanced(self):
         
         if self.advanced:
             
             self.auxAccelerationLabel.show()
-            self.auxAccelerationEdit.show()
+            self.auxAccEdit.show()
             self.waitingTimeLabel.show()
             self.waitingTimeEdit.show() 
             self.previewScanButton.show()
@@ -125,7 +155,7 @@ class Frontend(QtGui.QFrame):
         else:
             
             self.auxAccelerationLabel.hide()
-            self.auxAccelerationEdit.hide()
+            self.auxAccEdit.hide()
             self.waitingTimeLabel.hide()
             self.waitingTimeEdit.hide() 
             self.previewScanButton.hide()
@@ -471,7 +501,7 @@ class Frontend(QtGui.QFrame):
         
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
-        self.auxAccelerationEdit = QtGui.QLineEdit('1 1 1 1')
+        self.auxAccEdit = QtGui.QLineEdit('1 1 1 1')
         self.waitingTimeLabel = QtGui.QLabel('Scan waiting time (µs)')
         self.waitingTimeEdit = QtGui.QLineEdit('0')
         
@@ -589,14 +619,20 @@ class Frontend(QtGui.QFrame):
         grid.addWidget(dockArea, 0, 0)
         
         EBPDock = Dock('EBP')
+        EBPDock.setOrientation(o="vertical", force=True)
+        EBPDock.updateStyle()
         EBPDock.addWidget(self.EBPWidget)
         dockArea.addDock(EBPDock)
         
         positionerDock = Dock('Positioner')
+        positionerDock.setOrientation(o="vertical", force=True)
+        positionerDock.updateStyle()
         positionerDock.addWidget(self.positioner)
         dockArea.addDock(positionerDock, 'above', EBPDock)
         
         paramDock = Dock('Scan parameters')
+        paramDock.setOrientation(o="vertical", force=True)
+        paramDock.updateStyle()
         paramDock.addWidget(self.paramWidget)
         dockArea.addDock(paramDock, 'above', positionerDock)
         
@@ -638,7 +674,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.advancedButton, 14, 0)
         
         subgrid.addWidget(self.auxAccelerationLabel, 15, 0)
-        subgrid.addWidget(self.auxAccelerationEdit, 16, 0)
+        subgrid.addWidget(self.auxAccEdit, 16, 0)
         subgrid.addWidget(self.waitingTimeLabel, 17, 0)
         subgrid.addWidget(self.waitingTimeEdit, 18, 0)
         subgrid.addWidget(self.previewScanButton, 19, 0)
@@ -710,22 +746,23 @@ class Frontend(QtGui.QFrame):
         self.positioner.setFixedHeight(250)
         self.positioner.setFixedWidth(400)
         
+            # make connections between GUI and worker functions
+            
+    def make_connection(self, backend):
+        
+        backend.paramSignal.connect()
+        
     def closeEvent(self, *args, **kwargs):
 
-        # Stop running threads
+        # Emit close signal
 
-        self.scworker.viewtimer.stop()
-
-        # Go back to 0 position
-
-        x_0 = 0
-        y_0 = 0
-        z_0 = 0
-
-        self.scworker.moveTo(x_0, y_0, z_0)
-    
+        self.closeSignal.emit()
+        
+        
       
 class Backend(QtCore.QObject):
+    
+    paramSignal = pyqtSignal(dict)
     
     def __init__(self, adwin, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -776,28 +813,6 @@ class Backend(QtCore.QObject):
     def get_frontend_param(self, params):
         
         # updates parameters according to what is input in the GUI
-    
-#        self.detector = self.gui.detectorType.currentText()
-#        self.scantype = self.gui.scanMode.currentText()
-#
-#        self.scanRange = float(self.gui.scanRangeEdit.text())
-#        self.NofPixels = int(self.gui.NofPixelsEdit.text())
-#        self.pxTime = float(self.gui.pxTimeEdit.text())
-#        self.a_aux_coeff = np.array(self.gui.auxAccelerationEdit.text().split(' '),
-#                                    dtype=np.float32)/100
-#        self.initialPos = np.array(self.gui.initialPosEdit.text().split(' '),
-#                                   dtype=np.float64)
-#        self.waitingtime = float(self.gui.waitingTimeEdit.text())  # in µs
-#        
-#        self.xStep = float(self.gui.xStepEdit.text())
-#        self.yStep = float(self.gui.yStepEdit.text())
-#        self.zStep = float(self.gui.zStepEdit.text())
-#        
-#        self.filename = os.path.join(self.gui.folderEdit.text(),
-#                                     self.gui.filenameEdit.text())
-#        
-#        self.moveToPos = np.array(self.moveToEdit.text().split(' '),
-#                                   dtype=np.float16)
         
         self.detector = params['detectorType']
         self.scantype = params['scanType']
@@ -888,10 +903,11 @@ class Backend(QtCore.QObject):
         
     def emit_param(self):
         
-        self.gui.frameTimeValue.setText('Frame time = {} s'.format(np.around(self.frameTime, 2)))
-        self.gui.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * self.pxSize, 5))) # in nm
-        self.gui.maxCountsLabel.setText('Counts limit per pixel = {}'.format(self.maxCounts))
-
+        params = dict()
+        
+        params['frameTime'] = self.frameTime
+        params['pxSize'] = self.pxSize
+        params['maxCounts'] = self.maxCounts
         
     def update_device_param(self):
         
@@ -1233,7 +1249,25 @@ class Backend(QtCore.QObject):
                 self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                             self.z_i - self.scanRange/2)
 
-            self.updateDeviceParameters()      
+            self.updateDeviceParameters()    
+            
+    def make_connection(self, frontend):
+        
+        frontend.liveviewButton.clicked.connect(self.liveview)
+        frontend.acquireFrameButton.clicked.connect(self.frameAcquisition)
+        frontend.currentFrameButton.clicked.connect(self.saveCurrentFrame)
+        frontend.moveToButton.clicked.connect(self.moveTo_action)
+            
+    def stop(self):
+        
+        # Go back to 0 position
+
+        x_0 = 0
+        y_0 = 0
+        z_0 = 0
+
+        self.moveTo(x_0, y_0, z_0)
+        
        
 class linePlotWidget(QtGui.QWidget):
         
@@ -1256,7 +1290,10 @@ class linePlotWidget(QtGui.QWidget):
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
+#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    
+
     
     DEVICENUMBER = 0x1
     adw = ADwin.ADwin(DEVICENUMBER, 1)
@@ -1264,6 +1301,9 @@ if __name__ == '__main__':
     
     worker = Backend(adw)
     gui = Frontend()
+    
+    worker.make_connection(gui)
+    gui.make_connection(worker)
     
     gui.setWindowTitle('Confocal scan')
     gui.show()

@@ -31,6 +31,7 @@ class Frontend(QtGui.QFrame):
     
     liveviewSignal = pyqtSignal(bool)
     roiInfoSignal = pyqtSignal(int, np.ndarray)
+    closeSignal = pyqtSignal()
     
     def __init__(self, *args, **kwargs):
 
@@ -238,13 +239,11 @@ class Frontend(QtGui.QFrame):
         grid.addWidget(self.xyGraph, 1, 0)
         
         
-#    def closeEvent(self, *args, **kwargs):
-#        
-#        self.andor.shutter(0, 2, 0, 0, 0)
-#        self.andor.abort_acquisition()
-#        self.andor.finalize()
-#
-#        super().closeEvent(*args, **kwargs)
+    def closeEvent(self, *args, **kwargs):
+        
+        self.closeSignal.emit()
+        
+        super().closeEvent(*args, **kwargs)
         
 class Backend(QtCore.QObject):
     
@@ -507,6 +506,7 @@ class Backend(QtCore.QObject):
         frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.trackingBeadsBox.stateChanged.connect(self.toggle_tracking)
         frontend.roiInfoSignal.connect(self.get_roi_info)
+        frontend.closeSignal.connect(self.stop)
         
     def stop(self):
         
