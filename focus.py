@@ -515,8 +515,8 @@ class Backend(QtCore.QObject):
 if __name__ == '__main__':
     
     app = QtGui.QApplication([])
-#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     print('Focus lock module running in stand-alone mode')
     

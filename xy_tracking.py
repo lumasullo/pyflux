@@ -262,9 +262,14 @@ class Backend(QtCore.QObject):
         self.viewtimer.timeout.connect(self.update_view)
         
         self.tracking_value = False
+        self.saveData = False
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
+        
+        self.time_array = []
+        self.x_array = []
+        self.y_array = []
         
         self.reset()
         
@@ -460,11 +465,18 @@ class Backend(QtCore.QObject):
             
             self.xPosition = self.x
             self.yPosition = self.y
+            self.currentTime = ptime.time() - self.startTime
+            
+            if self.saveData:
+                
+                self.time_array.append(self.currentTime)
+                self.x_array.append(self.x)
+                self.y_array.append(self.y)
     
             if self.ptr < self.npoints:
                 self.xData[self.ptr] = self.xPosition
                 self.yData[self.ptr] = self.yPosition
-                self.time[self.ptr] = ptime.time() - self.startTime
+                self.time[self.ptr] = self.currentTime
                 
                 self.changedData.emit(self.time[1:self.ptr + 1],
                                       self.xData[1:self.ptr + 1],
@@ -476,7 +488,7 @@ class Backend(QtCore.QObject):
                 self.yData[:-1] = self.yData[1:]
                 self.yData[-1] = self.yPosition
                 self.time[:-1] = self.time[1:]
-                self.time[-1] = ptime.time() - self.startTime
+                self.time[-1] = self.currentTime
                 
                 self.changedData.emit(self.time, self.xData, self.yData)
     
@@ -484,8 +496,7 @@ class Backend(QtCore.QObject):
             
         else:
             
-            self.i += 1
-            
+            self.i += 1  
             
     def reset(self):
         
@@ -494,6 +505,18 @@ class Backend(QtCore.QObject):
         self.time = np.zeros(self.npoints)
         self.ptr = 0
         self.startTime = ptime.time()
+        
+    def reset_data_arrays(self):
+        
+        self.time_array = []
+        self.x_array = []
+        self.y_array = []
+        
+    def export_data(self, filename):
+        
+        size = np.size(self.x_array)
+        savedData = np.zeros(3, size)
+        np.savetxt(filename + '_xydata', savedData)
         
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
@@ -518,7 +541,8 @@ class Backend(QtCore.QObject):
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     andor = ccd.CCD()
     

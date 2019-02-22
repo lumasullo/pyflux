@@ -284,8 +284,8 @@ class Backend(QtCore.QObject):
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-#    app.setFont(QtGui.QFont('Helvetica', 10))
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 
     ph = picoharp.PicoHarp300()
     worker = Backend(ph)

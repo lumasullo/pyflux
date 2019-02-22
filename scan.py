@@ -832,6 +832,7 @@ class Backend(QtCore.QObject):
     imageSignal = pyqtSignal(np.ndarray)
     
     def __init__(self, adwin, *args, **kwargs):
+        
         super().__init__(*args, **kwargs)
         
         self.adw = adwin
