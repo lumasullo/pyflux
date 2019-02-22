@@ -205,13 +205,13 @@ class Backend(QtCore.QObject):
           
         self.ph = ph_device 
         
-    def measureCountRate(self):
+    def measure_count_rate(self):
         
         # TO DO: fix this method to update cts0 and cts1 automatically
         
         pass
           
-    def preparePH(self):
+    def prepare_ph(self):
         
         self.ph.open()
         self.ph.initialize()
@@ -236,8 +236,7 @@ class Backend(QtCore.QObject):
     @pyqtSlot()           
     def measure(self):
          
-        self.preparePH()
-#        time.sleep(0.050)
+        self.prepare_ph()
         print('Measurement started')
         self.ph.startTTTR(self.fname)
 

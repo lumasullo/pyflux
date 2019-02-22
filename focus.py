@@ -308,7 +308,7 @@ class Backend(QtCore.QObject):
 
         self.focusTime = 1000 / self.scansPerS
         self.focusTimer = QtCore.QTimer()
-        self.focusTimer.timeout.connect(self.update)
+#        self.focusTimer.timeout.connect(self.update)
         self.focusTimer.start(self.focusTime)
         
         self.currentZ = tools.convert(self.actuator.Get_FPar(52), 'UtoX')
@@ -539,6 +539,13 @@ if __name__ == '__main__':
     
     worker.make_connection(gui)
     gui.make_connection(worker)
+    
+    focusThread = QtCore.QThread()
+    worker.moveToThread(focusThread)
+    worker.focusTimer.moveToThread(focusThread)
+    worker.focusTimer.timeout.connect(worker.update)
+    
+    focusThread.start()
 
     gui.setWindowTitle('Focus lock')
     gui.resize(1500, 500)

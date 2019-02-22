@@ -846,7 +846,7 @@ class Backend(QtCore.QObject):
         # Create a timer for the update of the liveview
 
         self.viewtimer = QtCore.QTimer()
-        self.viewtimer.timeout.connect(self.update_view)
+#        self.viewtimer.timeout.connect(self.update_view)
 
         # Counter for the saved images
 
@@ -946,7 +946,7 @@ class Backend(QtCore.QObject):
         
         # TO DO: entender bien esto del timer = 0, leer documentación
         
-        self.viewtimer_time = 0  # largar el timer lo más rápido posible
+        self.viewtimer_time = 0  # start timer as soon as possible
 
         # Create blank image
         # edited_scan = True --> size of the useful part of the scan
@@ -1231,6 +1231,8 @@ class Backend(QtCore.QObject):
         
         else: # only for lines longer than 240 ms
             
+            print('linetime longer than 240 ms')
+            
             line_time = (1/1000) * self.data_t[-1]  # in ms
             wait_time = line_time * 1.05
             time.sleep(wait_time/1000)
@@ -1383,10 +1385,14 @@ if __name__ == '__main__':
     gui.emit_param()
     worker.emit_param()
     
-#    scanThread = QtCore.QThread()
-#    worker.moveToThread(scanThread)
-#    scanThread.start()
-#    worker.viewtimer.timeout.connect(worker.update_view)
+#
+    scanThread = QtCore.QThread()
+    worker.moveToThread(scanThread)
+    worker.viewtimer.moveToThread(scanThread)
+    worker.viewtimer.timeout.connect(worker.update_view)
+    
+    scanThread.start()
+
     
     gui.setWindowTitle('Confocal scan')
     gui.show()
