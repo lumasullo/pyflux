@@ -117,15 +117,15 @@ def saveConfig(main, dateandtime, name, filename=None):
     config['Scanning parameters'] = {
 
         'Date and time': dateandtime,
-        'Initial Position [x0, y0, z0] (µm)': main.gui.initialPosEdit.text(),
-        'Scan range (µm)': main.gui.scanRangeEdit.text(),
-        'Pixel time (µs)': main.gui.pxTimeEdit.text(),
-        'Number of pixels': main.gui.NofPixelsEdit.text(),
+        'Initial Position [x0, y0, z0] (µm)': main.initialPos,
+        'Scan range (µm)': main.scanRange,
+        'Pixel time (µs)': main.pxTime,
+        'Number of pixels': main.NofPixels,
         'a_max (µm/µs^2)': str(main.a_max),
-        'a_aux [a0, a1, a2, a3] (% of a_max)': main.gui.auxAccelerationEdit.text(),
-        'Pixel size (nm)': main.gui.pxSizeValue.text(),
-        'Frame time (s)': main.gui.frameTimeValue.text(),
-        'Scan typ': main.scantype}
+        'a_aux [a0, a1, a2, a3] (% of a_max)': main.a_aux_coeff,
+        'Pixel size (nm)': main.pxSize,
+        'Frame time (s)': main.frameTime,
+        'Scan type': main.scantype}
 
     with open(filename + '.txt', 'w') as configfile:
         config.write(configfile)
@@ -157,7 +157,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     if np.all(a_aux == np.flipud(a_aux)) or np.all(a_aux[0:2] == a_aux[2:4]):
         
-        print('Scan signal OK')
+        pass
         
     else:
         
@@ -171,6 +171,8 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     if total_range > 20:
         print('Warning: scan + aux scan excede DAC/piezo range! ' 
               'Scan signal will be saturated')
+    else:
+        print('Scan signal OK')
         
     signal_time = np.zeros(size)
     signal_x = np.zeros(size)

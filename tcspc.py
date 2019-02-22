@@ -9,22 +9,16 @@ import numpy as np
 import time
 import os
 import matplotlib.pyplot as plt
-from matplotlib import cm
 import tools.tools as tools
-import ctypes as ct
 from tkinter import Tk, filedialog
 import tifffile as tiff
 import scipy.optimize as opt
-
-
-from threading import Thread
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from pyqtgraph.dockarea import Dock, DockArea
 
-import drivers.ADwin as ADwin
 import tools.viewbox_tools as viewbox_tools
 import drivers.picoharp as picoharp
 import PicoHarp.Read_PTU as Read_PTU
@@ -36,7 +30,7 @@ import qdarkstyle
 class Frontend(QtGui.QFrame):
     
     paramSignal = pyqtSignal(list)
-    measureSignal = pyqtSignal
+    measureSignal = pyqtSignal()
         
     def __init__(self, *args, **kwargs):
 
@@ -45,7 +39,7 @@ class Frontend(QtGui.QFrame):
         # initial directory
 
         self.initialDir = r'C:\Data'
-        self.setUpGUI()
+        self.setup_gui()
         
     def start_measurement(self):
         
@@ -57,11 +51,14 @@ class Frontend(QtGui.QFrame):
         tacq = int(self.acqtimeEdit.text())
         folder = self.folderEdit.text()
         
-        self.paramSignal.emit([name, res, tacq, folder])
+        paramlist = [name, res, tacq, folder]
+
+        self.paramSignal.emit(paramlist)
         self.measureSignal.emit()
+        
         self.measureButton.setChecked(False)
     
-    def loadFolder(self):
+    def load_folder(self):
 
         try:
             root = Tk()
@@ -74,11 +71,38 @@ class Frontend(QtGui.QFrame):
         except OSError:
             pass
         
+    @pyqtSlot(float, float)
+    def get_backend_parameters(self, cts0, cts1):
+        
+        self.channel0Label.setText(('Input0 (sync) = {} c/s'.format(cts0)))
+        self.channel1Label.setText(('Input0 (sync) = {} c/s'.format(cts1)))
+    
+    @pyqtSlot(np.ndarray, np.ndarray)    
+    def plot_data(self, relTime, absTime):
+        
+        counts, bins = np.histogram(relTime, bins=100) # TO DO: choose proper binning
+        self.histPlot.plot(bins[0:-1], counts)
+
+#        plt.hist(relTime, bins=300)
+#        plt.xlabel('time (ns)')
+#        plt.ylabel('ocurrences')
+
+        timetrace, time = np.histogram(absTime, bins=50) # timetrace with 10 ms bins
+
+        self.tracePlot.plot(time[0:-1], timetrace)
+
+#        plt.plot(time[0:-1], timetrace)
+#        plt.xlabel('time (ms)')
+#        plt.ylabel('counts')
+        
+        self.readButton.setChecked(False)
+        
     def make_connection(self, backend):
         
-        pass
+        backend.ctRatesSignal.connect(self.get_backend_parameters)
+        backend.readDataSignal.connect(self.plot_data)
         
-    def  setUpGUI(self):
+    def  setup_gui(self):
         
         # widget with tcspc parameters
 
@@ -139,7 +163,7 @@ class Frontend(QtGui.QFrame):
         self.folderEdit = QtGui.QLineEdit(self.initialDir)
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
-        self.browseFolderButton.clicked.connect(self.loadFolder)
+        self.browseFolderButton.clicked.connect(self.load_folder)
         
         # GUI layout
 
@@ -173,8 +197,11 @@ class Frontend(QtGui.QFrame):
 class Backend(QtCore.QObject):
 
     ctRatesSignal = pyqtSignal(float, float)
+    readDataSignal = pyqtSignal(np.ndarray, np.ndarray)
     
-    def __init__(self, ph_device, *args, **kwargs):  
+    def __init__(self, ph_device, *args, **kwargs): 
+        
+        super().__init__(*args, **kwargs)
           
         self.ph = ph_device 
         
@@ -191,9 +218,9 @@ class Backend(QtCore.QObject):
         self.ph.setup()
 
         self.ph.syncDivider = 4 # this parameter must be set such that the count rate at channel 0 (sync) is equal or lower than 10MHz
-        self.ph.resolution = int(self.resolutionEdit.text()) # desired resolution in ps
+        self.ph.resolution = self.resolution # desired resolution in ps
         self.ph.offset = 0
-        self.ph.tacq = int(self.acqtimeEdit.text()) * 1000 # time in ms
+        self.ph.tacq = self.tacq * 1000 # time in ms
         
         self.cts0 = self.ph.countrate(0)
         self.cts1 = self.ph.countrate(1)
@@ -205,14 +232,16 @@ class Backend(QtCore.QObject):
   
         print('Resolution = {} ps'.format(self.ph.resolution))
         print('Acquisition time = {} s'.format(self.ph.tacq))
-                
+     
+    @pyqtSlot()           
     def measure(self):
-        
+         
         self.preparePH()
-        time.sleep(0.050)
+#        time.sleep(0.050)
+        print('Measurement started')
         self.ph.startTTTR(self.fname)
-        
-    def read(self):
+
+    def read_data(self):
         
         inputfile = open(self.fname, "rb")
         
@@ -226,55 +255,52 @@ class Backend(QtCore.QObject):
         
         relTime = relTime * timeRes # in real time units (s)
         relTime = relTime * 1e9  # in (ns)
-        
-        counts, bins = np.histogram(relTime, bins=100) # TO DO: choose proper binning
-        self.histPlot.plot(bins[0:-1], counts)
-        
-        self.readButton.setChecked(False)
-
-#        plt.hist(relTime, bins=300)
-#        plt.xlabel('time (ns)')
-#        plt.ylabel('ocurrences')
 
         absTime = absTime * globRes * 1e9  # true time in (ns), 4 comes from syncDivider, 10 Mhz = 40 MHz / syncDivider 
         absTime = absTime / 1e6 # in ms
+        
+        self.readDataSignal.emit(relTime, absTime)
 
-#        plt.figure()
-        timetrace, time = np.histogram(absTime, bins=50) # timetrace with 10 ms bins
-        
-        self.tracePlot.plot(time[0:-1], timetrace)
+    @pyqtSlot(list)
+    def get_frontend_parameters(self, paramlist):
 
-#        plt.plot(time[0:-1], timetrace)
-#        plt.xlabel('time (ms)')
-#        plt.ylabel('counts')
-#        
-#        inputfile.close()
-    
-    @pyqtSlot(list)    
-    def get_parameters(self, name, res, tacq, folder):
-        
-        self.resolution = res
-        self.tacq = tacq
-        self.folder = folder
-        self.fname = name
-        
+        self.fname = paramlist[0]
+        self.resolution = paramlist[1]
+        self.tacq = paramlist[2]
+        self.folder = paramlist[3]
+
+
     def make_connection(self, frontend):
-        
+
+        frontend.paramSignal.connect(self.get_frontend_parameters)
         frontend.measureSignal.connect(self.measure)
-        fronend.paramSignal.connect(self.get_parameters)
-        
-        
+        frontend.readButton.clicked.connect(self.read_data)
+
+
+    def stop(self):
+  
+        pass
+
+
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
 #    app.setFont(QtGui.QFont('Helvetica', 10))
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
-    
+
     ph = picoharp.PicoHarp300()
     worker = Backend(ph)
     gui = Frontend()
     
+    workerThread = QtCore.QThread()
+    workerThread.start()
+    worker.moveToThread(workerThread)
+
+    worker.make_connection(gui)
+    gui.make_connection(worker)
+
     gui.setWindowTitle('Time-correlated single-photon counting')
     gui.show()
 
     app.exec_()
+    

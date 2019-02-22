@@ -1,12 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Jan 15 14:31:06 2019
-
-@author: USUARIO
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Created on Fri Jun  1 14:18:19 2018
 
 @author: Luciano A. Masullo
@@ -36,6 +29,7 @@ import qdarkstyle
 import drivers.ADwin as ADwin
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
+from tools.lineprofile import linePlotWidget
 
 π = np.pi
 
@@ -67,6 +61,8 @@ class Frontend(QtGui.QFrame):
     
     paramSignal = pyqtSignal(dict)
     closeSignal = pyqtSignal()
+    liveviewSignal = pyqtSignal(bool)
+    frameacqSignal = pyqtSignal(bool)
 
     def __init__(self, *args, **kwargs):
 
@@ -85,9 +81,11 @@ class Frontend(QtGui.QFrame):
         self.fitting = False
         self.image = np.zeros((128, 128))
         
+        self.initialDir = r'C:\Data'
+        
         # set up GUI
 
-        self.setUpGUI()
+        self.setup_gui()
                 
         # connections between changes in parameters and emit_param function
         
@@ -100,8 +98,6 @@ class Frontend(QtGui.QFrame):
         self.detectorType.activated.connect(self.emit_param)
         self.scanMode.activated.connect(self.emit_param)
         
-        self.emit_param()
-        
     def emit_param(self):
         
         params = dict()
@@ -109,15 +105,14 @@ class Frontend(QtGui.QFrame):
         params['detectorType'] = self.detectorType.currentText()
         params['scanType'] = self.scanMode.currentText()
         params['scanRange'] = float(self.scanRangeEdit.text())
-        params['scanRange'] = int(self.NofPixelsEdit.text())
-        params['NofPixels'] = float(self.pxTimeEdit.text())
+        params['NofPixels'] = int(self.NofPixelsEdit.text())
         params['pxTime'] = float(self.pxTimeEdit.text())
         params['initialPos'] = np.array(self.initialPosEdit.text().split(' '),
                                         dtype=np.float64)
         params['a_aux_coeff'] = np.array(self.auxAccEdit.text().split(' '),
                                               dtype=np.float32)/100
         
-        params['waitingTime'] = float(self.waitingTimeEdit.text())  # in µs
+        params['waitingTime'] = int(self.waitingTimeEdit.text())  # in µs
         params['fileName'] = os.path.join(self.folderEdit.text(),
                                           self.filenameEdit.text())
         params['moveToPos'] = np.array(self.moveToEdit.text().split(' '),
@@ -127,7 +122,7 @@ class Frontend(QtGui.QFrame):
         params['yStep'] = float(self.yStepEdit.text())
         params['zStep'] = float(self.zStepEdit.text())
 
-        self.paramSignal.emit(self.params)
+        self.paramSignal.emit(params)
         
     @pyqtSlot(dict)
     def get_backend_param(self, params):
@@ -138,9 +133,17 @@ class Frontend(QtGui.QFrame):
         
         self.frameTimeValue.setText('Frame time = {} s'.format(np.around(frameTime, 2)))
         self.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * pxSize, 5))) # in nm
-        self.maxCountsLabel.setText('Counts limit per pixel = {}'.format(maxCounts))
-
-    def toggleAdvanced(self):
+        self.maxCountsLabel.setText('Counts limit per pixel = {}'.format(maxCounts)) 
+        
+        self.pxSize = pxSize
+     
+    @pyqtSlot(np.ndarray)
+    def get_image(self, image):
+        
+        self.img.setImage(image, autoLevels=False)
+        self.image = image
+    
+    def toggle_advanced(self):
         
         if self.advanced:
             
@@ -148,7 +151,7 @@ class Frontend(QtGui.QFrame):
             self.auxAccEdit.show()
             self.waitingTimeLabel.show()
             self.waitingTimeEdit.show() 
-            self.previewScanButton.show()
+            self.preview_scanButton.show()
             
             self.advanced = False
             
@@ -158,34 +161,28 @@ class Frontend(QtGui.QFrame):
             self.auxAccEdit.hide()
             self.waitingTimeLabel.hide()
             self.waitingTimeEdit.hide() 
-            self.previewScanButton.hide()
+            self.preview_scanButton.hide()
             
             self.advanced = True
 
-    def loadFolder(self):
+    def load_folder(self):
 
         try:
             root = Tk()
             root.withdraw()
             folder = filedialog.askdirectory(parent=root,
-                                             initialdir=self.scworker.initialDir)
+                                             initialdir=self.initialDir)
             root.destroy()
             if folder != '':
                 self.folderEdit.setText(folder)
         except OSError:
             pass
-
-    def previewScan(self):
-
-        plt.figure('Preview scan plot x vs t')
-        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
-        plt.xlabel('t (ADwin time)')
-        plt.ylabel('V (DAC units)')
-
-        if np.max(self.data_x_adwin) > 2**16:
-
-            plt.plot(self.data_t_adwin[0:-1],
-                     2**16 * np.ones(np.size(self.data_t_adwin[0:-1])), 'r-')
+        
+    def single_move(self, axis, direction):
+        
+        # TO DO: put here all the "xMoveUp" functions
+        
+        pass
             
     def xMoveUp(self):
         
@@ -234,8 +231,73 @@ class Frontend(QtGui.QFrame):
         self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
                                                       self.initialPos[1],
                                                       newPos_µm))
+    
+    def preview_scan(self):
 
-    def lineProfile(self):
+        plt.figure('Preview scan plot x vs t')
+        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
+        plt.xlabel('t (ADwin time)')
+        plt.ylabel('V (DAC units)')
+
+        if np.max(self.data_x_adwin) > 2**16:
+
+            plt.plot(self.data_t_adwin[0:-1],
+                     2**16 * np.ones(np.size(self.data_t_adwin[0:-1])), 'r-')
+
+    def toggle_liveview(self):
+
+        if self.liveviewButton.isChecked():
+            self.liveviewSignal.emit(True)
+            
+            if self.roi is not None:
+
+                self.vb.removeItem(self.roi)
+                self.roi.hide()
+    
+                self.ROIButton.setChecked(False)
+            
+            if self.lineROI is not None:
+
+                self.vb.removeItem(self.lineROI)
+                self.lplotWidget.hide()
+                self.lineProfButton.setChecked(False)
+                self.lineROI = None
+
+            else:
+    
+                pass
+
+        else:
+            self.liveviewSignal.emit(False)   
+            
+    def toggle_frame_acq(self):
+
+        if self.acquireFrameButton.isChecked():
+            self.frameacqSignal.emit(True)
+            
+            if self.roi is not None:
+
+                self.vb.removeItem(self.roi)
+                self.roi.hide()
+    
+                self.ROIButton.setChecked(False)
+                self.liveviewButton.setChecked(False)
+            
+            if self.lineROI is not None:
+
+                self.vb.removeItem(self.lineROI)
+                self.lplotWidget.hide()
+                self.lineProfButton.setChecked(False)
+                self.lineROI = None
+
+            else:
+    
+                pass
+
+        else:
+            self.frameacqSignal.emit(False)   
+
+    def line_profile(self):
         
         if self.lineROI is None:
             
@@ -251,19 +313,19 @@ class Frontend(QtGui.QFrame):
             self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
             self.vb.addItem(self.lineROI)
             
-        self.lineROI.sigRegionChanged.connect(self.updateLineProfile)
+        self.lineROI.sigRegionChanged.connect(self.update_line_profile)
         
-    def updateLineProfile(self):
+    def update_line_profile(self):
         
-        data = self.lineROI.getArrayRegion(self.scworker.image, self.img)
+        data = self.lineROI.getArrayRegion(self.image, self.img)
         self.lplotWidget.linePlot.clear()
-        x = self.scworker.pxSize * np.arange(np.size(data))*1000
+        x = self.pxSize * np.arange(np.size(data))*1000
         self.lplotWidget.linePlot.plot(x, data)
         
-    def ROImethod(self):
+    def toggle_ROI(self):
         
         ROIpen = pg.mkPen(color='y')
-        npixels = self.scworker.NofPixels
+        npixels = int(self.NofPixelsEdit.text())
 
         if self.roi is None:
 
@@ -291,32 +353,40 @@ class Frontend(QtGui.QFrame):
         if self.EBProiButton.isChecked:
             self.EBProiButton.setChecked(False)
             
-    def selectROI(self):
+    def select_ROI(self):
 
-        self.scworker.liveviewStop()
-
-        array = self.roi.getArrayRegion(self.scworker.image, self.img)
+        self.liveviewSignal.emit(False)
+        
+        ROIsize = np.array(self.roi.size())
         ROIpos = np.array(self.roi.pos())
+        
+        npixels = int(self.NofPixelsEdit.text())
+        pxSize = self.pxSize
+        initialPos = np.array(self.initialPosEdit.text().split(' '),
+                              dtype=np.float64)
 
-        newPos_px = tools.ROIscanRelativePOS(ROIpos,
-                                             self.scworker.NofPixels,
-                                             np.shape(array)[1])
+        newPos_px = tools.ROIscanRelativePOS(ROIpos, npixels, ROIsize[1])
 
-        newPos_µm = newPos_px * self.scworker.pxSize + self.scworker.initialPos[0:2]
+        newPos_µm = newPos_px * pxSize + initialPos[0:2]
 
         newPos_µm = np.around(newPos_µm, 2)
 
         self.initialPosEdit.setText('{} {} {}'.format(newPos_µm[0],
                                                       newPos_µm[1],
-                                                      self.scworker.initialPos[2]))
+                                                      initialPos[2]))
 
-        newRange_px = np.shape(array)[0]
-        newRange_µm = self.scworker.pxSize * newRange_px
+        newRange_px = ROIsize[1]
+        newRange_µm = pxSize * newRange_px
         newRange_µm = np.around(newRange_µm, 2)
         self.scanRangeEdit.setText('{}'.format(newRange_µm))
         
+        self.emit_param()
         
-    def setEBP(self):
+        
+    def set_EBP(self):
+        
+        pxSize = self.pxSize
+        ROIsize = np.array(self.roi.size())
         
         for i in range(4):
         
@@ -324,19 +394,18 @@ class Frontend(QtGui.QFrame):
                 
                 self.vb.removeItem(self.EBPscatter[i])
         
-        array = self.roi.getArrayRegion(self.scworker.image, self.img)
-        ROIpos_µm = np.array(self.roi.pos()) * self.pxSize
+#        array = self.roi.getArrayRegion(self.scworker.image, self.img)
+        ROIsize = np.array(self.roi.size())
+        ROIpos_µm = np.array(self.roi.pos()) * pxSize
             
         xmin = ROIpos_µm[0]
-        xmax = ROIpos_µm[0] + np.shape(array)[0] * self.pxSize
+        xmax = ROIpos_µm[0] + ROIsize[0] * pxSize
         
         ymin = ROIpos_µm[1]
-        ymax = ROIpos_µm[1] + np.shape(array)[1] * self.pxSize
+        ymax = ROIpos_µm[1] + ROIsize[1] * pxSize
         
         x0 = (xmax+xmin)/2
         y0 = (ymax+ymin)/2
-        
-        
         
         if self.EBPtype.currentText() == 'triangle':
         
@@ -346,7 +415,7 @@ class Frontend(QtGui.QFrame):
                                  [np.cos(θ[1]), np.sin(θ[1])], 
                                  [np.cos(θ[2]), np.sin(θ[2])]])
             
-            self.EBP = (ebp + np.array([x0, y0]))/self.pxSize
+            self.EBP = (ebp + np.array([x0, y0]))/pxSize
                                        
         print('EBP px', self.EBP)
             
@@ -372,9 +441,9 @@ class Frontend(QtGui.QFrame):
 
             self.vb.addItem(self.EBPscatter[i])
         
-        self.setEBPButton.setChecked(False)
+        self.set_EBPButton.setChecked(False)
         
-    def toggleEBP(self):
+    def toggle_EBP(self):
         
         if self.EBPshown:
         
@@ -400,7 +469,7 @@ class Frontend(QtGui.QFrame):
     
         self.showEBPButton.setChecked(False)
         
-    def setUpGUI(self):
+    def setup_gui(self):
                 
         # widget where the liveview image will be displayed
 
@@ -443,21 +512,22 @@ class Frontend(QtGui.QFrame):
         self.liveviewButton.setFont(QtGui.QFont('Helvetica', weight=QtGui.QFont.Bold))
         self.liveviewButton.setCheckable(True)
         self.liveviewButton.setStyleSheet("font-size: 12px; background-color:rgb(180, 180, 180)")
-
+        self.liveviewButton.clicked.connect(self.toggle_liveview)
         
         # ROI buttons
 
         self.ROIButton = QtGui.QPushButton('ROI')
         self.ROIButton.setCheckable(True)
-        self.ROIButton.clicked.connect(self.ROImethod)
+        self.ROIButton.clicked.connect(self.toggle_ROI)
 
-        self.selectROIButton = QtGui.QPushButton('select ROI')
-        self.selectROIButton.clicked.connect(self.selectROI)
+        self.select_ROIButton = QtGui.QPushButton('select ROI')
+        self.select_ROIButton.clicked.connect(self.select_ROI)
 
         # Acquire frame button
 
         self.acquireFrameButton = QtGui.QPushButton('Acquire new frame')
         self.acquireFrameButton.setCheckable(True)
+        self.acquireFrameButton.clicked.connect(self.toggle_frame_acq)
         
         # Save current frame button
 
@@ -466,19 +536,15 @@ class Frontend(QtGui.QFrame):
 
         # preview scan button
 
-        self.previewScanButton = QtGui.QPushButton('Scan preview')
-        self.previewScanButton.setCheckable(True)
-        self.previewScanButton.clicked.connect(self.previewScan)
+        self.preview_scanButton = QtGui.QPushButton('Scan preview')
+        self.preview_scanButton.setCheckable(True)
+        self.preview_scanButton.clicked.connect(self.preview_scan)
         
         # line profile button
         
         self.lineProfButton = QtGui.QPushButton('Line profile')
         self.lineProfButton.setCheckable(True)
-        self.lineProfButton.clicked.connect(self.lineProfile)
-        
-        # no-display checkbox
-        
-        self.nodisplayCheckBox = QtGui.QCheckBox('No-display scan')
+        self.lineProfButton.clicked.connect(self.line_profile)
 
         # Scanning parameters
 
@@ -497,7 +563,7 @@ class Frontend(QtGui.QFrame):
 
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
-        self.advancedButton.clicked.connect(self.toggleAdvanced)
+        self.advancedButton.clicked.connect(self.toggle_advanced)
         
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
@@ -505,7 +571,7 @@ class Frontend(QtGui.QFrame):
         self.waitingTimeLabel = QtGui.QLabel('Scan waiting time (µs)')
         self.waitingTimeEdit = QtGui.QLineEdit('0')
         
-        self.toggleAdvanced()
+        self.toggle_advanced()
 
         # filename
 
@@ -529,7 +595,7 @@ class Frontend(QtGui.QFrame):
         self.folderEdit = QtGui.QLineEdit(folder)
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
-        self.browseFolderButton.clicked.connect(self.loadFolder)
+        self.browseFolderButton.clicked.connect(self.load_folder)
 
         # scan selection
 
@@ -554,14 +620,14 @@ class Frontend(QtGui.QFrame):
         
         self.EBProiButton = QtGui.QPushButton('EBP ROI')
         self.EBProiButton.setCheckable(True)
-        self.EBProiButton.clicked.connect(self.ROImethod)
+        self.EBProiButton.clicked.connect(self.toggle_ROI)
         
         self.showEBPButton = QtGui.QPushButton('show/hide EBP')
         self.showEBPButton.setCheckable(True)
-        self.showEBPButton.clicked.connect(self.toggleEBP)
+        self.showEBPButton.clicked.connect(self.toggle_EBP)
 
-        self.setEBPButton = QtGui.QPushButton('set EBP')
-        self.setEBPButton.clicked.connect(self.setEBP)
+        self.set_EBPButton = QtGui.QPushButton('set EBP')
+        self.set_EBPButton.clicked.connect(self.set_EBP)
         
         # EBP selection
 
@@ -651,7 +717,7 @@ class Frontend(QtGui.QFrame):
 
         subgrid.addWidget(self.liveviewButton, 6, 1, 2, 1)
         subgrid.addWidget(self.ROIButton, 8, 1)
-        subgrid.addWidget(self.selectROIButton, 9, 1)
+        subgrid.addWidget(self.select_ROIButton, 9, 1)
         subgrid.addWidget(self.acquireFrameButton, 10, 1)
         subgrid.addWidget(self.currentFrameButton, 11, 1)
         subgrid.addWidget(self.lineProfButton, 13, 1)
@@ -669,7 +735,6 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.pxSizeValue, 10, 0)
         subgrid.addWidget(self.frameTimeValue, 11, 0)
         subgrid.addWidget(self.maxCountsLabel, 12, 0)
-        subgrid.addWidget(self.nodisplayCheckBox, 13, 0)
         
         subgrid.addWidget(self.advancedButton, 14, 0)
         
@@ -677,7 +742,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.auxAccEdit, 16, 0)
         subgrid.addWidget(self.waitingTimeLabel, 17, 0)
         subgrid.addWidget(self.waitingTimeEdit, 18, 0)
-        subgrid.addWidget(self.previewScanButton, 19, 0)
+        subgrid.addWidget(self.preview_scanButton, 19, 0)
         
         subgrid.addWidget(self.filenameLabel, 2, 2)
         subgrid.addWidget(self.filenameEdit, 3, 2)
@@ -702,7 +767,7 @@ class Frontend(QtGui.QFrame):
         subgridEBP.addWidget(EBPparamTitle, 0, 0, 2, 4)
         
         subgridEBP.addWidget(self.EBProiButton, 2, 0, 1, 1)
-        subgridEBP.addWidget(self.setEBPButton, 3, 0, 1, 1)
+        subgridEBP.addWidget(self.set_EBPButton, 3, 0, 1, 1)
         subgridEBP.addWidget(self.showEBPButton, 4, 0, 2, 1)
         subgridEBP.addWidget(self.EBPtypeLabel, 2, 1)
         subgridEBP.addWidget(self.EBPtype, 3, 1)
@@ -746,11 +811,12 @@ class Frontend(QtGui.QFrame):
         self.positioner.setFixedHeight(250)
         self.positioner.setFixedWidth(400)
         
-            # make connections between GUI and worker functions
+    # make connections between GUI and worker functions
             
     def make_connection(self, backend):
         
-        backend.paramSignal.connect()
+        backend.paramSignal.connect(self.get_backend_param)
+        backend.imageSignal.connect(self.get_image)
         
     def closeEvent(self, *args, **kwargs):
 
@@ -763,6 +829,7 @@ class Frontend(QtGui.QFrame):
 class Backend(QtCore.QObject):
     
     paramSignal = pyqtSignal(dict)
+    imageSignal = pyqtSignal(np.ndarray)
     
     def __init__(self, adwin, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -817,11 +884,12 @@ class Backend(QtCore.QObject):
         self.detector = params['detectorType']
         self.scantype = params['scanType']
         self.scanRange = params['scanRange']
-        self.NofPixels = params['NofPixels']
+        self.NofPixels = int(params['NofPixels'])
         self.pxTime = params['pxTime']
         self.initialPos = params['initialPos']
         
         self.waitingTime = params['waitingTime']
+        self.a_aux_coeff = params['a_aux_coeff']
         
         self.filename = params['fileName']
         
@@ -852,7 +920,7 @@ class Backend(QtCore.QObject):
 
         self.NofAuxPixels = 100
 
-        self.waiting_pixels = int(self.waitingtime/self.pxTime)
+        self.waiting_pixels = int(self.waitingTime/self.pxTime)
         self.tot_pixels = (2 * self.NofPixels + 4 * self.NofAuxPixels +
                            self.waiting_pixels)
 
@@ -872,7 +940,7 @@ class Backend(QtCore.QObject):
                                          self.initialPos[1],
                                          self.initialPos[2],
                                          self.scantype,
-                                         self.waitingtime)
+                                         self.waitingTime)
 
 #        self.viewtimer_time = (1/1000) * self.data_t[-1]    # in ms
         
@@ -899,7 +967,9 @@ class Backend(QtCore.QObject):
 
         # load the new parameters into the ADwin system
 
-        self.updateDeviceParameters()
+        self.update_device_param()
+        
+        self.emit_param()
         
     def emit_param(self):
         
@@ -908,6 +978,8 @@ class Backend(QtCore.QObject):
         params['frameTime'] = self.frameTime
         params['pxSize'] = self.pxSize
         params['maxCounts'] = self.maxCounts
+        
+        self.paramSignal.emit(params)
         
     def update_device_param(self):
         
@@ -1014,16 +1086,47 @@ class Backend(QtCore.QObject):
         self.xPos = tools.convert(xPos, 'UtoX')
         self.yPos = tools.convert(yPos, 'UtoX')
         self.zPos = tools.convert(zPos, 'UtoX') 
+        
+        
+    def plot_scan_signal(self):
+        
+        # save scan plot (x vs t)
+        plt.figure()
+        plt.title('Scan plot x vs t')
+        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
+        plt.xlabel('t (ADwin time)')
+        plt.ylabel('V (DAC units)')
+
+        fname = tools.getUniqueName(self.filename)
+        fname = fname + '_scan_plot'
+        plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
+                    orientation='portrait', papertype=None, format=None,
+                    transparent=False, bbox_inches=None, pad_inches=0.1,
+                    frameon=None)
             
-    def frame_acquisition(self):
-
-        if self.acquireFrameButton.isChecked():
-            self.liveviewStop()
-            self.liveviewButton.setChecked(False)
-            self.frameAcquisitionStart()
-
+#    def frame_acquisition(self):
+#
+#        if self.acquireFrameButton.isChecked():
+#            self.liveviewStop()
+#            self.liveviewButton.setChecked(False)
+#            self.frameAcquisitionStart()
+#
+#        else:
+#            self.frameAcquisitionStop()
+        
+        
+    @pyqtSlot(bool)
+    def frame_acquisition(self, fabool):
+        
+        if fabool:
+            
+            self.liveview_stop()
+            self.frame_acquisition_start()
+            
         else:
-            self.frameAcquisitionStop()
+            
+            self.frame_acquisition_stop()
+
 
     def frame_acquisition_start(self):
 
@@ -1091,7 +1194,7 @@ class Backend(QtCore.QObject):
         print(name)
 
         self.imageNumber += 1
-        self.acquireFrameButton.setChecked(False)
+#        self.gui.acquireFrameButton.setChecked(False)
         
     def save_current_frame(self):
         
@@ -1110,7 +1213,8 @@ class Backend(QtCore.QObject):
         print(name)
 
         self.imageNumber += 1
-        self.gui.currentFrameButton.setChecked(False)
+
+#        self.gui.currentFrameButton.setChecked(False)
         
     def line_acquisition(self):
 
@@ -1136,15 +1240,20 @@ class Backend(QtCore.QObject):
 
         return line_data
 
-    def liveview(self):
-
-        if self.gui.liveviewButton.isChecked():
-            self.liveviewStart()
-
+    @pyqtSlot(bool)
+    def liveview(self, lvbool):
+        
+        if lvbool:
+            
+            self.liveview_start()
+            
         else:
-            self.liveviewStop()
+            
+            self.liveview_stop()
 
     def liveview_start(self):
+        
+#        self.plot_scan_signal()
 
         self.acquisitionMode = 'liveview'
 
@@ -1161,24 +1270,6 @@ class Backend(QtCore.QObject):
 
             self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                         self.z_i - self.scanRange/2)
-
-        if self.gui.roi is not None:
-
-            self.gui.vb.removeItem(self.gui.roi)
-            self.gui.roi.hide()
-
-            self.gui.ROIButton.setChecked(False)
-            
-        if self.gui.lineROI is not None:
-
-            self.gui.vb.removeItem(self.gui.lineROI)
-            self.gui.lplotWidget.hide()
-            self.gui.lineProfButton.setChecked(False)
-            self.gui.lineROI = None
-
-        else:
-
-            pass
 
         self.viewtimer.start(self.viewtimer_time)
 
@@ -1200,7 +1291,7 @@ class Backend(QtCore.QObject):
             self.z_offset = int(self.z_offset + dz)
             self.adw.Set_FPar(2, self.z_offset)
 
-        self.lineData = self.lineAcquisition()
+        self.lineData = self.line_acquisition()
 
         if self.edited_scan is True:
 
@@ -1213,12 +1304,10 @@ class Backend(QtCore.QObject):
         else:
 
             self.image[:, self.NofPixels-1-self.i] = self.lineData
-
-        if self.gui.nodisplayCheckBox.isChecked() is False:
+          
+#            # display image after every scanned line
             
-            # display image after every scanned line
-            
-            self.gui.img.setImage(self.image, autoLevels=False)
+        self.imageSignal.emit(self.image)
 
         if self.i < self.NofPixels-1:
 
@@ -1229,7 +1318,7 @@ class Backend(QtCore.QObject):
             print('Frame ended')
 
             if self.acquisitionMode == 'frame':
-                self.frameAcquisitionStop()
+                self.frame_acquisition_stop()
 
             self.i = 0
             self.y_offset = 0
@@ -1249,16 +1338,22 @@ class Backend(QtCore.QObject):
                 self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                             self.z_i - self.scanRange/2)
 
-            self.updateDeviceParameters()    
+            self.update_device_param()    
             
     def make_connection(self, frontend):
         
-        frontend.liveviewButton.clicked.connect(self.liveview)
-        frontend.acquireFrameButton.clicked.connect(self.frameAcquisition)
-        frontend.currentFrameButton.clicked.connect(self.saveCurrentFrame)
+#        frontend.liveviewButton.clicked.connect(self.liveview)
+        frontend.liveviewSignal.connect(self.liveview)
+        frontend.frameacqSignal.connect(self.frame_acquisition)
+        frontend.acquireFrameButton.clicked.connect(self.frame_acquisition)
+        frontend.currentFrameButton.clicked.connect(self.save_current_frame)
         frontend.moveToButton.clicked.connect(self.moveTo_action)
+        frontend.paramSignal.connect(self.get_frontend_param)
+        frontend.closeSignal.connect(self.stop)
             
     def stop(self):
+
+        self.liveview_stop()
         
         # Go back to 0 position
 
@@ -1268,42 +1363,30 @@ class Backend(QtCore.QObject):
 
         self.moveTo(x_0, y_0, z_0)
         
-       
-class linePlotWidget(QtGui.QWidget):
-        
-    def __init__(self, *args, **kwargs):
-        
-        super().__init__(*args, **kwargs)
-        
-        graphicsLayout = pg.GraphicsLayoutWidget()
-        grid = QtGui.QGridLayout()
-        
-        self.setLayout(grid)
-        self.linePlot = graphicsLayout.addPlot(row=0, col=0, 
-                                               title="Intensity line profile")
-        self.linePlot.setLabels(bottom=('nm'),
-                                left=('counts'))
-        
-        grid.addWidget(graphicsLayout, 0, 0)
-        
 
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
-    
-
+    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     DEVICENUMBER = 0x1
     adw = ADwin.ADwin(DEVICENUMBER, 1)
     setupDevice(adw)
     
-    worker = Backend(adw)
+    worker = Backend(adw)    
     gui = Frontend()
     
     worker.make_connection(gui)
     gui.make_connection(worker)
+    
+    gui.emit_param()
+    worker.emit_param()
+    
+#    scanThread = QtCore.QThread()
+#    worker.moveToThread(scanThread)
+#    scanThread.start()
+#    worker.viewtimer.timeout.connect(worker.update_view)
     
     gui.setWindowTitle('Confocal scan')
     gui.show()
