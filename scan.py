@@ -121,6 +121,7 @@ class Frontend(QtGui.QFrame):
         params['xStep'] = float(self.xStepEdit.text())
         params['yStep'] = float(self.yStepEdit.text())
         params['zStep'] = float(self.zStepEdit.text())
+        params['Nframes'] = float(self.NframesEdit.text())
 
         self.paramSignal.emit(params)
         
@@ -525,7 +526,7 @@ class Frontend(QtGui.QFrame):
 
         # Acquire frame button
 
-        self.acquireFrameButton = QtGui.QPushButton('Acquire new frame')
+        self.acquireFrameButton = QtGui.QPushButton('Acquire frames')
         self.acquireFrameButton.setCheckable(True)
         self.acquireFrameButton.clicked.connect(self.toggle_frame_acq)
         
@@ -560,6 +561,9 @@ class Frontend(QtGui.QFrame):
         self.NofPixelsEdit = QtGui.QLineEdit('80')
         self.pxSizeValue = QtGui.QLabel('')
         self.frameTimeValue = QtGui.QLabel('')
+        
+        self.NframesLabel = QtGui.QLabel('Number of frames')
+        self.NframesEdit = QtGui.QLineEdit('10')
 
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
@@ -716,10 +720,11 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.detectorType, 4, 1)
 
         subgrid.addWidget(self.liveviewButton, 6, 1, 2, 1)
-        subgrid.addWidget(self.ROIButton, 8, 1)
-        subgrid.addWidget(self.select_ROIButton, 9, 1)
-        subgrid.addWidget(self.acquireFrameButton, 10, 1)
-        subgrid.addWidget(self.currentFrameButton, 11, 1)
+        subgrid.addWidget(self.currentFrameButton, 8, 1)
+        subgrid.addWidget(self.ROIButton, 9, 1)
+        subgrid.addWidget(self.select_ROIButton, 10, 1)
+        subgrid.addWidget(self.acquireFrameButton, 11, 1)
+
         subgrid.addWidget(self.lineProfButton, 13, 1)
 
         subgrid.addWidget(scanParamTitle, 0, 0, 2, 3)
@@ -732,9 +737,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.pxTimeEdit, 7, 0)
         subgrid.addWidget(self.NofPixelsLabel, 8, 0)
         subgrid.addWidget(self.NofPixelsEdit, 9, 0)
-        subgrid.addWidget(self.pxSizeValue, 10, 0)
-        subgrid.addWidget(self.frameTimeValue, 11, 0)
-        subgrid.addWidget(self.maxCountsLabel, 12, 0)
+        subgrid.addWidget(self.NframesLabel, 10, 0)
+        subgrid.addWidget(self.NframesEdit, 11, 0)
         
         subgrid.addWidget(self.advancedButton, 14, 0)
         
@@ -749,6 +753,10 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.folderLabel, 4, 2)
         subgrid.addWidget(self.folderEdit, 5, 2)
         subgrid.addWidget(self.browseFolderButton, 6, 2)
+        
+        subgrid.addWidget(self.pxSizeValue, 11, 2)
+        subgrid.addWidget(self.frameTimeValue, 12, 2)
+        subgrid.addWidget(self.maxCountsLabel, 13, 2)
     
 
         self.paramWidget.setFixedHeight(500)
@@ -899,6 +907,8 @@ class Backend(QtCore.QObject):
         self.xStep = params['xStep']
         self.yStep = params['yStep']
         self.zStep = params['zStep']
+        
+        self.Nframes = params['Nframes']
         
         self.calculate_derived_param()
         

@@ -14,6 +14,7 @@ from threading import Thread
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
+import qdarkstyle
 
 from instrumental.drivers.cameras import uc480
 import lantz.drivers.andor.ccd as ccd
@@ -41,20 +42,20 @@ class Frontend(QtGui.QMainWindow):
         self.cwidget = QtGui.QWidget()
         self.setCentralWidget(self.cwidget)
 
-#        # Actions in menubar
-#
-#        menubar = self.menuBar()
-#        fileMenu = menubar.addMenu('Measurement')
-#
-#        self.psfMeasAction = QtGui.QAction('PSF measurement', self)
-#        self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
-#        fileMenu.addAction(self.psfMeasAction)
-#
-#        self.psfMeasAction.triggered.connect(self.psfMeasurement)
-#
-#        self.minfluxMeasAction = QtGui.QAction('MINFLUX measurement', self)
-#        self.minfluxMeasAction.setStatusTip('Routine to perform a tcspc-MINFLUX measurement')
-#        fileMenu.addAction(self.minfluxMeasAction)
+        # Actions in menubar
+
+        menubar = self.menuBar()
+        fileMenu = menubar.addMenu('Measurement')
+
+        self.psfMeasAction = QtGui.QAction('PSF measurement', self)
+        self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
+        fileMenu.addAction(self.psfMeasAction)
+
+        self.psfMeasAction.triggered.connect(self.psf_measurement)
+
+        self.minfluxMeasAction = QtGui.QAction('MINFLUX measurement', self)
+        self.minfluxMeasAction.setStatusTip('Routine to perform a tcspc-MINFLUX measurement')
+        fileMenu.addAction(self.minfluxMeasAction)
 
         # GUI layout
 
@@ -120,7 +121,7 @@ class Frontend(QtGui.QMainWindow):
         backend.xyWorker.make_connection(self.xyWidget)
         
 
-    def psfMeasurement(self):
+    def psf_measurement(self):
 
         self.psfWidget = psf_meas_widget()
         self.psfWidget.show()
@@ -156,20 +157,40 @@ class Backend(QtCore.QObject):
         frontend.xyWidget.make_connection(self.xyWorker)
 
 
-#class psfMeasWidget(QtGui.QWidget):
-#     
-#    def __init__(self, *args, **kwargs):
-#
-#        super().__init__(*args, **kwargs)
-#
-#        grid = QtGui.QGridLayout()
-#
-#        self.setLayout(grid)
-#        self.paramWidget = QtGui.QFrame()
-#        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-#                                       QtGui.QFrame.Raised)
-#
-#        grid.addWidget(self.paramWidget, 0, 0)
+class psf_meas_widget(QtGui.QWidget):
+     
+    def __init__(self, *args, **kwargs):
+
+        super().__init__(*args, **kwargs)
+        
+        self.setWindowTitle('PSF measurement')
+
+        grid = QtGui.QGridLayout()
+
+        self.setLayout(grid)
+        self.paramWidget = QtGui.QFrame()
+        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                       QtGui.QFrame.Raised)
+
+        grid.addWidget(self.paramWidget, 0, 0)
+        
+        subgrid = QtGui.QGridLayout()
+        self.paramWidget.setLayout(subgrid)
+        
+        self.NframesLabel = QtGui.QLabel('Number of frames')
+        self.NframesEdit = QtGui.QLineEdit('10')
+        self.doughnutLabel = QtGui.QLabel('Doughnut label')
+        self.doughnutEdit = QtGui.QLineEdit('')
+        self.startButton = QtGui.QPushButton('Start PSF measurement')
+        self.progress = QtGui.QProgressBar(self)
+        
+        subgrid.addWidget(self.NframesLabel, 0, 0)
+        subgrid.addWidget(self.NframesEdit, 1, 0)
+        subgrid.addWidget(self.doughnutLabel, 2, 0)
+        subgrid.addWidget(self.doughnutEdit, 3, 0)
+        subgrid.addWidget(self.startButton, 4, 0)
+        subgrid.addWidget(self.progress, 5, 0)
+        
 
 
 if __name__ == '__main__':

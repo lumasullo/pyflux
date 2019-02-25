@@ -16,6 +16,7 @@ import pyqtgraph.ptime as ptime
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
 import tools.PSF as PSF
+import tools.tools as tools
 from scipy import optimize as opt
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
@@ -32,6 +33,7 @@ class Frontend(QtGui.QFrame):
     liveviewSignal = pyqtSignal(bool)
     roiInfoSignal = pyqtSignal(int, np.ndarray)
     closeSignal = pyqtSignal()
+    saveDataSignal = pyqtSignal(bool)
     
     def __init__(self, *args, **kwargs):
 
@@ -133,6 +135,16 @@ class Frontend(QtGui.QFrame):
         self.xCurve.setData(time, xPosition)
         self.yCurve.setData(time, yPosition)
         
+    def emit_save_data_state(self):
+        
+        if self.saveDataBox.isChecked():
+            
+            self.saveDataSignal.emit(True)
+            
+        else:
+            
+            self.saveDataSignal.emit(False)
+        
     def make_connection(self, backend):
             
         backend.changedImage.connect(self.get_image)
@@ -218,13 +230,20 @@ class Frontend(QtGui.QFrame):
         # delete ROI button
         
         self.delete_roiButton = QtGui.QPushButton('delete ROIs')
-        self.delete_roiButton.setCheckable(True)
         self.delete_roiButton.clicked.connect(self.delete_roi)
         
         # position tracking checkbox
         
+        self.exportDataButton = QtGui.QPushButton('export current data')
+
+        # position tracking checkbox
+        
         self.trackingBeadsBox = QtGui.QCheckBox('track beads positions')
         self.trackingBeadsBox.stateChanged.connect(self.emit_roi_info)
+        
+        
+        self.saveDataBox =  QtGui.QCheckBox("save data")
+        self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
         
         # buttons and param layout
         
@@ -234,7 +253,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.liveviewButton, 0, 0)
         subgrid.addWidget(self.ROIButton, 1, 0)
         subgrid.addWidget(self.delete_roiButton, 2, 0)
-        subgrid.addWidget(self.trackingBeadsBox, 3, 0)
+        subgrid.addWidget(self.exportDataButton, 3, 0)
+        subgrid.addWidget(self.trackingBeadsBox, 4, 0)
+        subgrid.addWidget(self.saveDataBox, 5, 0)
         
         grid.addWidget(self.xyGraph, 1, 0)
         
@@ -258,11 +279,13 @@ class Backend(QtCore.QObject):
         self.initialize_camera()
         self.setup_camera()
         
+        self.filename = r'C:\Data\filename'
+        
         self.viewtimer = QtCore.QTimer()
         self.viewtimer.timeout.connect(self.update_view)
         
         self.tracking_value = False
-        self.saveData = False
+        self.save_data_state = False
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
@@ -379,8 +402,6 @@ class Backend(QtCore.QObject):
 
         if self.tracking_value:
             
-            print('About to track beads')
-            
             for i in range(self.numberOfROIs):
                 
                 self.tracking(i, self.initial)
@@ -388,6 +409,8 @@ class Backend(QtCore.QObject):
     
     @pyqtSlot()
     def toggle_tracking(self):
+        
+        self.startTime = time.time()
         
         if self.tracking_value is False:
             self.tracking_value = True
@@ -451,8 +474,15 @@ class Backend(QtCore.QObject):
             
         self.x = poptG[1] - xmin_nm - self.x0
         self.y = poptG[2] - ymin_nm - self.y0
+        self.currentTime = ptime.time() - self.startTime
         
         print(self.x, self.y)
+        
+        if self.save_data_state:
+            
+            self.time_array.append(self.currentTime)
+            self.x_array.append(self.x)
+            self.y_array.append(self.y)
         
         
     def update(self):
@@ -465,13 +495,6 @@ class Backend(QtCore.QObject):
             
             self.xPosition = self.x
             self.yPosition = self.y
-            self.currentTime = ptime.time() - self.startTime
-            
-            if self.saveData:
-                
-                self.time_array.append(self.currentTime)
-                self.x_array.append(self.x)
-                self.y_array.append(self.y)
     
             if self.ptr < self.npoints:
                 self.xData[self.ptr] = self.xPosition
@@ -512,11 +535,25 @@ class Backend(QtCore.QObject):
         self.x_array = []
         self.y_array = []
         
-    def export_data(self, filename):
+    @pyqtSlot(bool)
+    def get_save_data_state(self, val):
+        
+        self.save_data_state = val
+        print('save_data_state = True')
+        
+    def export_data(self):
+        
+        fname = tools.getUniqueName(self.filename)
+        fname = fname + '_xydata'
         
         size = np.size(self.x_array)
-        savedData = np.zeros(3, size)
-        np.savetxt(filename + '_xydata', savedData)
+        savedData = np.zeros((3, size))
+        
+        savedData[0, :] = np.array(self.time_array)
+        savedData[1, :] = np.array(self.x_array)
+        savedData[2, :] = np.array(self.y_array)
+        
+        np.savetxt(fname, savedData)
         
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
@@ -530,6 +567,9 @@ class Backend(QtCore.QObject):
         frontend.trackingBeadsBox.stateChanged.connect(self.toggle_tracking)
         frontend.roiInfoSignal.connect(self.get_roi_info)
         frontend.closeSignal.connect(self.stop)
+        frontend.saveDataSignal.connect(self.get_save_data_state)
+        frontend.exportDataButton.clicked.connect(self.export_data)
+
         
     def stop(self):
         
