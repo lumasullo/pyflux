@@ -8,6 +8,7 @@ Created on Tue Jan 15 11:59:13 2019
 import numpy as np
 import time
 import ctypes as ct
+from datetime import date
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
@@ -38,17 +39,6 @@ class Frontend(QtGui.QFrame):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-        
-        # TO DO: finish gaussian fit calculation and plot
-        # TO DO: fix multithreading
-        
-#        self.andor = camera
-#        cam = 0
-#        self.andor.current_camera = self.andor.camera_handle(cam)
-#        self.andor.lib.Initialize()
-#        print('idn:', self.andor.idn)
-        
-#        self.xyworker = xyWorker(self, self.andor)
         
         self.setup_gui()
         
@@ -122,7 +112,6 @@ class Frontend(QtGui.QFrame):
             
             self.liveviewSignal.emit(False)
             self.liveviewButton.setChecked(False)
-        
         
     @pyqtSlot(np.ndarray)
     def get_image(self, img):
@@ -238,12 +227,15 @@ class Frontend(QtGui.QFrame):
 
         # position tracking checkbox
         
-        self.trackingBeadsBox = QtGui.QCheckBox('track beads positions')
+        self.trackingBeadsBox = QtGui.QCheckBox('track beads')
         self.trackingBeadsBox.stateChanged.connect(self.emit_roi_info)
         
-        
-        self.saveDataBox =  QtGui.QCheckBox("save data")
+        self.saveDataBox = QtGui.QCheckBox("save data")
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
+        
+        # button to clear the data
+        
+        self.clearDataButton = QtGui.QPushButton('Clear data')
         
         # buttons and param layout
         
@@ -255,7 +247,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.delete_roiButton, 2, 0)
         subgrid.addWidget(self.exportDataButton, 3, 0)
         subgrid.addWidget(self.trackingBeadsBox, 4, 0)
-        subgrid.addWidget(self.saveDataBox, 5, 0)
+        subgrid.addWidget(self.saveDataBox, 4, 1)
+        subgrid.addWidget(self.clearDataButton, 5, 0)
         
         grid.addWidget(self.xyGraph, 1, 0)
         
@@ -279,7 +272,14 @@ class Backend(QtCore.QObject):
         self.initialize_camera()
         self.setup_camera()
         
-        self.filename = r'C:\Data\filename'
+        # folder
+        
+        today = str(date.today()).replace('-', '')
+        root = r'C:\\Data\\'
+        folder = root + today
+        
+        filename = r'xydata'
+        self.filename = folder + filename
         
         self.viewtimer = QtCore.QTimer()
         self.viewtimer.timeout.connect(self.update_view)
@@ -289,12 +289,10 @@ class Backend(QtCore.QObject):
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
-        
-        self.time_array = []
-        self.x_array = []
-        self.y_array = []
+        self.buffersize = 10000
         
         self.reset()
+        self.reset_data_arrays()
         
     def setup_camera(self):
         
@@ -414,6 +412,9 @@ class Backend(QtCore.QObject):
         
         if self.tracking_value is False:
             self.tracking_value = True
+            
+            self.reset()
+            self.reset_data_arrays()
         
         else:
         
@@ -432,10 +433,10 @@ class Backend(QtCore.QObject):
 #        ROIpos_nm = np.array(self.gui.roilist[i].pos()) * self.pxSize
     
         xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates[i] * self.pxSize
-        
-        print('xmin', xmin_nm)
-        print('ymin', ymin_nm)
-        
+#        
+#        print('xmin', xmin_nm)
+#        print('ymin', ymin_nm)
+#        
         x = np.arange(xmin_nm, xmax_nm, self.pxSize)
         y = np.arange(ymin_nm, ymax_nm, self.pxSize)
         
@@ -463,8 +464,8 @@ class Backend(QtCore.QObject):
             self.initial = False
             print('initial')
             
-            dataG = PSF.gaussian2D((Mx, My), *poptG)
-            dataG_2d = dataG.reshape(int(np.shape(array)[0]), int(np.shape(array)[0]))
+#            dataG = PSF.gaussian2D((Mx, My), *poptG)
+#            dataG_2d = dataG.reshape(int(np.shape(array)[0]), int(np.shape(array)[0]))
             
 #            plt.figure()
 #            plt.imshow(array, interpolation=None, cmap=cmaps.parula)
@@ -476,13 +477,21 @@ class Backend(QtCore.QObject):
         self.y = poptG[2] - ymin_nm - self.y0
         self.currentTime = ptime.time() - self.startTime
         
-        print(self.x, self.y)
+#        print(self.x, self.y)
         
         if self.save_data_state:
             
-            self.time_array.append(self.currentTime)
-            self.x_array.append(self.x)
-            self.y_array.append(self.y)
+            self.time_array[self.j] = self.currentTime
+            self.x_array[self.j] = self.x
+            self.y_array[self.j] = self.y
+            
+            self.j += 1
+            
+            if self.j >= self.buffersize:
+                
+                self.export_data()
+                self.reset_data_arrays()
+                print('Data array, longer than buffer size, data_array reset')
         
         
     def update(self):
@@ -523,37 +532,45 @@ class Backend(QtCore.QObject):
             
     def reset(self):
         
+        self.initial = True
         self.xData = np.zeros(self.npoints)
         self.yData = np.zeros(self.npoints)
         self.time = np.zeros(self.npoints)
         self.ptr = 0
         self.startTime = ptime.time()
+        self.j = 0  # iterator on the data array
+        
+        self.changedData.emit(self.time, self.xData, self.yData)
         
     def reset_data_arrays(self):
         
-        self.time_array = []
-        self.x_array = []
-        self.y_array = []
+        self.time_array = np.zeros(self.buffersize, dtype=np.float16)
+        self.x_array = np.zeros(self.buffersize, dtype=np.float16)
+        self.y_array = np.zeros(self.buffersize, dtype=np.float16)
         
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
         
         self.save_data_state = val
-        print('save_data_state = True')
+        print('save_data_state = {}'.format(val))
         
     def export_data(self):
+
+        fname = self.filename
+        print('fname', fname)
+        filename = tools.getUniqueName(fname)
+        print('filename', filename)
         
-        fname = tools.getUniqueName(self.filename)
-        fname = fname + '_xydata'
-        
-        size = np.size(self.x_array)
+        size = self.j
         savedData = np.zeros((3, size))
         
-        savedData[0, :] = np.array(self.time_array)
-        savedData[1, :] = np.array(self.x_array)
-        savedData[2, :] = np.array(self.y_array)
+        savedData[0, :] = self.time_array[0:self.j]
+        savedData[1, :] = self.x_array[0:self.j]
+        savedData[2, :] = self.y_array[0:self.j]
         
-        np.savetxt(fname, savedData)
+        np.savetxt(filename, savedData.T) # transpose for easier loading
+        
+        print('data exported')
         
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
@@ -569,6 +586,8 @@ class Backend(QtCore.QObject):
         frontend.closeSignal.connect(self.stop)
         frontend.saveDataSignal.connect(self.get_save_data_state)
         frontend.exportDataButton.clicked.connect(self.export_data)
+        frontend.clearDataButton.clicked.connect(self.reset)
+        frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
 
         
     def stop(self):

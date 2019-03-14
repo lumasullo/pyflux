@@ -20,6 +20,8 @@ from instrumental.drivers.cameras import uc480
 import lantz.drivers.andor.ccd as ccd
 import drivers.picoharp as picoharp
 
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+
 import drivers
 import drivers.ADwin as ADwin
 
@@ -32,6 +34,8 @@ import xy_tracking
 
 
 class Frontend(QtGui.QMainWindow):
+    
+    closeSignal = pyqtSignal()
 
     def __init__(self, *args, **kwargs):
 
@@ -46,13 +50,15 @@ class Frontend(QtGui.QMainWindow):
 
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('Measurement')
+        
+        self.psfWidget = psf_meas_widget()
 
         self.psfMeasAction = QtGui.QAction('PSF measurement', self)
         self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
         fileMenu.addAction(self.psfMeasAction)
-
+        
         self.psfMeasAction.triggered.connect(self.psf_measurement)
-
+    
         self.minfluxMeasAction = QtGui.QAction('MINFLUX measurement', self)
         self.minfluxMeasAction.setStatusTip('Routine to perform a tcspc-MINFLUX measurement')
         fileMenu.addAction(self.minfluxMeasAction)
@@ -119,26 +125,22 @@ class Frontend(QtGui.QMainWindow):
         backend.scanWorker.make_connection(self.scanWidget)
         backend.tcspcWorker.make_connection(self.tcspcWidget)
         backend.xyWorker.make_connection(self.xyWidget)
-        
+        self.psfWidget.startButton.clicked.connect(backend.acquire_N_frames)
 
     def psf_measurement(self):
 
-        self.psfWidget = psf_meas_widget()
         self.psfWidget.show()
 
     def closeEvent(self, *args, **kwargs):
+        
+        self.closeSignal.emit()
 
-        # TO DO: add every module close event function
-
-#        self.focusThread.terminate()
-##        self.tcspcThread.terminate()
-#        self.xyThread.terminate()
-#        self.scanThread.terminate()
-#        self.scanWidget.closeEvent()
         super().closeEvent(*args, **kwargs)
         
         
 class Backend(QtCore.QObject):
+    
+    measurePSFSignal = pyqtSignal()
     
     def __init__(self, adw, ph, ccd, scmos, *args, **kwargs):
         
@@ -155,8 +157,32 @@ class Backend(QtCore.QObject):
         frontend.scanWidget.make_connection(self.scanWorker)
         frontend.tcspcWidget.make_connection(self.tcspcWorker)
         frontend.xyWidget.make_connection(self.xyWorker)
-
-
+        frontend.psfWidget.startButton.clicked.connect(self.acquire_N_frames)
+        frontend.closeSignal.connect(self.stop)
+        
+    @pyqtSlot(np.ndarray, int)
+    def get_frame_acq_data(self, data, frameNumber):
+        
+        self.dataStack[frameNumber] = data
+        
+    def acquire_N_frames(self, N=10):
+        
+        print('backend acquire_N_frames')
+        
+        N=10
+        
+        for i in range(N):
+         
+            self.measurePSFSignal.emit()
+        
+    def stop(self):
+        
+        self.scanWorker.stop()
+        self.focusWorker.stop()
+        self.tcspcWorker.stop()
+        self.xyWorker.stop()
+        
+        
 class psf_meas_widget(QtGui.QWidget):
      
     def __init__(self, *args, **kwargs):
@@ -196,8 +222,8 @@ class psf_meas_widget(QtGui.QWidget):
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     gui = Frontend()
     
@@ -216,6 +242,11 @@ if __name__ == '__main__':
     
     gui.scanWidget.emit_param()
     worker.scanWorker.emit_param()
+    
+    worker.scanWorker.frameAcqSignal.connect(worker.get_frame_acq_data)
+    worker.measurePSFSignal.connect(worker.scanWorker.frame_acquisition_startBIS)
+    
+    # focus thread
 
     focusThread = QtCore.QThread()
     worker.focusWorker.moveToThread(focusThread)
@@ -224,12 +255,34 @@ if __name__ == '__main__':
 
     focusThread.start()
     
+        
+    # xy worker thread
+    
+    xyThread = QtCore.QThread()
+    worker.xyWorker.moveToThread(xyThread)
+    worker.xyWorker.viewtimer.moveToThread(xyThread)
+    worker.xyWorker.viewtimer.timeout.connect(worker.xyWorker.update_view)
+    
+    xyThread.start()
+    
+    # xy GUI thread
+    
+    xyGUIThread = QtCore.QThread()
+    gui.xyWidget.moveToThread(xyGUIThread)
+    
+    xyGUIThread.start()
+    
+    # tcspc thread
+    
     tcspcWorkerThread = QtCore.QThread()
     worker.tcspcWorker.moveToThread(tcspcWorkerThread)
     
     tcspcWorkerThread.start()
     
+    # scan thread
+    
     scanThread = QtCore.QThread()
+    
     worker.scanWorker.moveToThread(scanThread)
     worker.scanWorker.viewtimer.moveToThread(scanThread)
     worker.scanWorker.viewtimer.timeout.connect(worker.scanWorker.update_view)

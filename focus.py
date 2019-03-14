@@ -10,6 +10,8 @@ import time
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 from scipy import optimize as opt
+from datetime import date
+import os
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
@@ -53,6 +55,7 @@ class Frontend(QtGui.QFrame):
     closeSignal = pyqtSignal()
     lockFocusSignal = pyqtSignal(bool)
     changedPIparam = pyqtSignal(np.ndarray)
+    saveDataSignal = pyqtSignal(bool)
     
     def __init__(self, *args, **kwargs):
 
@@ -61,7 +64,7 @@ class Frontend(QtGui.QFrame):
         self.roi = None
         self.cropped = False
 
-        self.setUpGUI()
+        self.setup_gui()
 
     def ROImethod(self):
         
@@ -140,6 +143,15 @@ class Frontend(QtGui.QFrame):
             
             self.lockFocusSignal.emit(False)
             
+    def emit_save_data_state(self):
+        
+        if self.saveDataBox.isChecked():
+            
+            self.saveDataSignal.emit(True)
+            
+        else:
+            
+            self.saveDataSignal.emit(False)
         
     @pyqtSlot(np.ndarray)
     def get_image(self, img):
@@ -165,7 +177,7 @@ class Frontend(QtGui.QFrame):
         backend.changedImage.connect(self.get_image)
         backend.changedData.connect(self.get_data)
         
-    def setUpGUI(self):
+    def setup_gui(self):
         
          # Focus lock widget
          
@@ -190,6 +202,12 @@ class Frontend(QtGui.QFrame):
         self.ROIbutton = QtGui.QPushButton('ROI')
         self.selectROIbutton = QtGui.QPushButton('select ROI')
         self.calibrationButton = QtGui.QPushButton('Calibrate')
+        
+        self.exportDataButton = QtGui.QPushButton('Export data')
+        self.saveDataBox = QtGui.QCheckBox("save data")
+        self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
+        
+        self.clearDataButton = QtGui.QPushButton('Clear data')
         
 #        self.kiEdit.textChanged.connect(self.fworker.unlockFocus)
 #        self.kpEdit.textChanged.connect(self.fworker.unlockFocus)
@@ -247,7 +265,7 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(150)
+        self.paramWidget.setFixedHeight(200)
         self.paramWidget.setFixedWidth(200)
         
         subgrid = QtGui.QGridLayout()
@@ -259,10 +277,11 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.kiLabel, 2, 2)
         subgrid.addWidget(self.kiEdit, 2, 3)
         subgrid.addWidget(self.lockButton, 3, 0, 1, 4)
+        subgrid.addWidget(self.saveDataBox, 4, 0, 1, 2)
+        subgrid.addWidget(self.exportDataButton, 4, 1, 3, 4)
+        subgrid.addWidget(self.clearDataButton, 5, 0)
         subgrid.addWidget(self.ROIbutton, 1, 0)
         subgrid.addWidget(self.selectROIbutton, 2, 0)
-        
-
         
         grid.addWidget(self.paramWidget, 0, 0)
         grid.addWidget(self.focusGraph, 0, 1)
@@ -290,6 +309,15 @@ class Backend(QtCore.QObject):
         self.locked = False
         self.cropped = False
         self.standAlone = False
+        
+        today = str(date.today()).replace('-', '')
+        root = r'C:\\Data\\'
+        folder = root + today
+        
+        filename = r'zdata'
+        self.filename = os.path.join(folder, filename)
+        
+        self.save_data_state = False
     
         self.npoints = 400
         
@@ -316,6 +344,7 @@ class Backend(QtCore.QObject):
         self.currentY = tools.convert(self.actuator.Get_FPar(51), 'UtoX')
         
         self.reset()
+        self.reset_data_arrays()
         
     def setupPI(self):
         
@@ -418,7 +447,10 @@ class Backend(QtCore.QObject):
             self.updatePI()
 #            self.updateStats()
             
-
+        if self.save_data_state:
+            
+            self.time_array.append(self.time[-1])
+            self.z_array.append(self.data[-1])
         
     def lockFocus(self, lockbool):
         
@@ -477,6 +509,11 @@ class Backend(QtCore.QObject):
         self.std = 0
         self.n = 1
         
+    def reset_data_arrays(self):
+        
+        self.time_array = []
+        self.z_array = []
+        
     @pyqtSlot(bool)
     def get_lock(self, lockbool):
         self.lockFocus(lockbool)
@@ -492,12 +529,39 @@ class Backend(QtCore.QObject):
     def get_PIparam(self, param):
         self.kp, self.ki = param
         
+    @pyqtSlot(bool)
+    def get_save_data_state(self, val):
+        
+        self.save_data_state = val
+        print('save_data_state = {}'.format(val))
+        
+    def export_data(self):
+
+        fname = self.filename
+        print('fname', fname)
+        filename = tools.getUniqueName(fname)
+        print('filename', filename)
+        
+        size = np.size(self.z_array)
+        savedData = np.zeros((2, size))
+        
+        savedData[0, :] = np.array(self.time_array)
+        savedData[1, :] = np.array(self.z_array)
+        
+        np.savetxt(filename, savedData)
+        
+        print('data exported')
+        
+        
     def make_connection(self, frontend):
             
         frontend.changedROI.connect(self.get_newROI)
         frontend.closeSignal.connect(self.stop)
         frontend.lockFocusSignal.connect(self.lockFocus)
         frontend.changedPIparam.connect(self.get_PIparam)
+        frontend.saveDataSignal.connect(self.get_save_data_state)
+        frontend.exportDataButton.clicked.connect(self.export_data)
+        frontend.clearDataButton.clicked.connect(self.reset)
         frontend.calibrationButton.clicked.connect(self.calibrate)
         
     def stop(self):
@@ -536,6 +600,7 @@ if __name__ == '__main__':
 
     gui = Frontend()   
     worker = Backend(cam, adw)
+    worker.standAlone = True
     
     worker.make_connection(gui)
     gui.make_connection(worker)

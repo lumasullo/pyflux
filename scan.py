@@ -97,6 +97,10 @@ class Frontend(QtGui.QFrame):
         self.waitingTimeEdit.textChanged.connect(self.emit_param)
         self.detectorType.activated.connect(self.emit_param)
         self.scanMode.activated.connect(self.emit_param)
+        self.filenameEdit.textChanged.connect(self.emit_param)
+        self.xStepEdit.textChanged.connect(self.emit_param)
+        self.yStepEdit.textChanged.connect(self.emit_param)
+        self.zStepEdit.textChanged.connect(self.emit_param)
         
     def emit_param(self):
         
@@ -121,7 +125,7 @@ class Frontend(QtGui.QFrame):
         params['xStep'] = float(self.xStepEdit.text())
         params['yStep'] = float(self.yStepEdit.text())
         params['zStep'] = float(self.zStepEdit.text())
-        params['Nframes'] = float(self.NframesEdit.text())
+#        params['Nframes'] = float(self.NframesEdit.text())
 
         self.paramSignal.emit(params)
         
@@ -131,10 +135,14 @@ class Frontend(QtGui.QFrame):
         frameTime = params['frameTime']
         pxSize = params['pxSize']
         maxCounts = params['maxCounts']
+        initialPos = params['initialPos']
+        
+#        print(initialPos)
         
         self.frameTimeValue.setText('Frame time = {} s'.format(np.around(frameTime, 2)))
         self.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * pxSize, 5))) # in nm
         self.maxCountsLabel.setText('Counts limit per pixel = {}'.format(maxCounts)) 
+        self.initialPosEdit.setText('{} {} {}'.format(*initialPos))
         
         self.pxSize = pxSize
      
@@ -179,59 +187,54 @@ class Frontend(QtGui.QFrame):
         except OSError:
             pass
         
-    def single_move(self, axis, direction):
-        
-        # TO DO: put here all the "xMoveUp" functions
-        
-        pass
-            
-    def xMoveUp(self):
-        
-        newPos_µm = self.initialPos[0] - self.xStep
-        newPos_µm = round(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
-                                                      self.initialPos[1],
-                                                      self.initialPos[2]))
-        
-    def xMoveDown(self):
-        
-        newPos_µm = self.initialPos[0] + self.xStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
-                                                      self.initialPos[1],
-                                                      self.initialPos[2]))
+#            
+#    def xMoveUp(self):
+#        
+#        newPos_µm = self.initialPos[0] - self.xStep
+#        newPos_µm = round(newPos_µm, 3)
+#        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
+#                                                      self.initialPos[1],
+#                                                      self.initialPos[2]))
+#        
+#    def xMoveDown(self):
+#        
+#        newPos_µm = self.initialPos[0] + self.xStep
+#        newPos_µm = np.around(newPos_µm, 3)
+#        self.initialPosEdit.setText('{} {} {}'.format(newPos_µm,
+#                                                      self.initialPos[1],
+#                                                      self.initialPos[2]))
     
-    def yMoveUp(self):
-        
-        newPos_µm = self.initialPos[1] + self.yStep
-        newPos_µm = np.around(newPos_µm, 3)       
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      newPos_µm,
-                                                      self.initialPos[2]))
+#    def yMoveUp(self):
+#        
+#        newPos_µm = self.initialPos[1] + self.yStep
+#        newPos_µm = np.around(newPos_µm, 3)       
+#        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+#                                                      newPos_µm,
+#                                                      self.initialPos[2]))
     
-    def yMoveDown(self):
-        
-        newPos_µm = self.initialPos[1] - self.yStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      newPos_µm,
-                                                      self.initialPos[2]))
+#    def yMoveDown(self):
+#        
+#        newPos_µm = self.initialPos[1] - self.yStep
+#        newPos_µm = np.around(newPos_µm, 3)
+#        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+#                                                      newPos_µm,
+#                                                      self.initialPos[2]))
 
-    def zMoveUp(self):
+#    def zMoveUp(self):
+#        
+#        newPos_µm = self.initialPos[2] + self.zStep
+#        newPos_µm = np.around(newPos_µm, 3)
+#        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+#                                                      self.initialPos[1],
+#                                                      newPos_µm))
         
-        newPos_µm = self.initialPos[2] + self.zStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      self.initialPos[1],
-                                                      newPos_µm))
-        
-    def zMoveDown(self):
-        
-        newPos_µm = self.initialPos[2] - self.zStep
-        newPos_µm = np.around(newPos_µm, 3)
-        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
-                                                      self.initialPos[1],
-                                                      newPos_µm))
+#    def zMoveDown(self):
+#        
+#        newPos_µm = self.initialPos[2] - self.zStep
+#        newPos_µm = np.around(newPos_µm, 3)
+#        self.initialPosEdit.setText('{} {} {}'.format(self.initialPos[0],
+#                                                      self.initialPos[1],
+#                                                      newPos_µm))
     
     def preview_scan(self):
 
@@ -533,7 +536,6 @@ class Frontend(QtGui.QFrame):
         # Save current frame button
 
         self.currentFrameButton = QtGui.QPushButton('Save current frame')
-        self.currentFrameButton.setCheckable(True)
 
         # preview scan button
 
@@ -562,8 +564,8 @@ class Frontend(QtGui.QFrame):
         self.pxSizeValue = QtGui.QLabel('')
         self.frameTimeValue = QtGui.QLabel('')
         
-        self.NframesLabel = QtGui.QLabel('Number of frames')
-        self.NframesEdit = QtGui.QLineEdit('10')
+#        self.NframesLabel = QtGui.QLabel('Number of frames')
+#        self.NframesEdit = QtGui.QLineEdit('10')
 
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
@@ -591,7 +593,7 @@ class Frontend(QtGui.QFrame):
         try:  
             os.mkdir(folder)
         except OSError:  
-            print ("Creation of the directory %s failed" % folder)
+            print ("Directory %s already exists" % folder)
         else:  
             print ("Successfully created the directory %s " % folder)
         
@@ -651,19 +653,19 @@ class Frontend(QtGui.QFrame):
                                       QtGui.QFrame.Raised)
         
         self.xUpButton = QtGui.QPushButton("(+x) ►")  # →
-        self.xUpButton.pressed.connect(self.xMoveUp)
+#        self.xUpButton.pressed.connect(self.xMoveUp)
         self.xDownButton = QtGui.QPushButton("◄ (-x)")  # ←
-        self.xDownButton.pressed.connect(self.xMoveDown)
+#        self.xDownButton.pressed.connect(self.xMoveDown)
 
         self.yUpButton = QtGui.QPushButton("(+y) ▲")  # ↑
-        self.yUpButton.pressed.connect(self.yMoveUp)
+#        self.yUpButton.pressed.connect(self.yMoveUp)
         self.yDownButton = QtGui.QPushButton("(-y) ▼")  # ↓
-        self.yDownButton.pressed.connect(self.yMoveDown)
+#        self.yDownButton.pressed.connect(self.yMoveDown)
         
         self.zUpButton = QtGui.QPushButton("(+z) ▲")  # ↑
-        self.zUpButton.pressed.connect(self.zMoveUp)
+#        self.zUpButton.pressed.connect(self.zMoveUp)
         self.zDownButton = QtGui.QPushButton("(-z) ▼")  # ↓
-        self.zDownButton.pressed.connect(self.zMoveDown)
+#        self.zDownButton.pressed.connect(self.zMoveDown)
         
         self.xStepLabel = QtGui.QLabel('x step (µm)')
         self.xStepEdit = QtGui.QLineEdit('0.050')
@@ -737,8 +739,13 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.pxTimeEdit, 7, 0)
         subgrid.addWidget(self.NofPixelsLabel, 8, 0)
         subgrid.addWidget(self.NofPixelsEdit, 9, 0)
-        subgrid.addWidget(self.NframesLabel, 10, 0)
-        subgrid.addWidget(self.NframesEdit, 11, 0)
+        
+        subgrid.addWidget(self.pxSizeValue, 10, 0)
+        subgrid.addWidget(self.frameTimeValue, 11, 0)
+        subgrid.addWidget(self.maxCountsLabel, 12, 0)
+        
+#        subgrid.addWidget(self.NframesLabel, 10, 0)
+#        subgrid.addWidget(self.NframesEdit, 11, 0)
         
         subgrid.addWidget(self.advancedButton, 14, 0)
         
@@ -754,9 +761,6 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.folderEdit, 5, 2)
         subgrid.addWidget(self.browseFolderButton, 6, 2)
         
-        subgrid.addWidget(self.pxSizeValue, 11, 2)
-        subgrid.addWidget(self.frameTimeValue, 12, 2)
-        subgrid.addWidget(self.maxCountsLabel, 13, 2)
     
 
         self.paramWidget.setFixedHeight(500)
@@ -813,7 +817,7 @@ class Frontend(QtGui.QFrame):
         layout.addWidget(self.zStepEdit, 5, 6)
         
         layout.addWidget(self.moveToLabel, 6, 1, 1, 3)
-        layout.addWidget(self.moveToEdit, 7, 1, 1, 1)
+        layout.addWidget(self.moveToEdit, 7, 1, 1, 2)
         layout.addWidget(self.moveToButton, 8, 1, 1, 2)
         
         self.positioner.setFixedHeight(250)
@@ -839,6 +843,8 @@ class Backend(QtCore.QObject):
     paramSignal = pyqtSignal(dict)
     imageSignal = pyqtSignal(np.ndarray)
     
+    frameAcqSignal = pyqtSignal(np.ndarray, int)
+    
     def __init__(self, adwin, *args, **kwargs):
         
         super().__init__(*args, **kwargs)
@@ -846,6 +852,24 @@ class Backend(QtCore.QObject):
         self.adw = adwin
         self.edited_scan = True
         self.saveScanData = False
+        
+#        self.detector = None
+#        self.scantype = None
+#        self.scanRange = None
+#        self.NofPixels = None
+#        self.pxTime = None
+#        self.initialPos = [None, None, None]
+#        
+#        self.waitingTime = None
+#        self.a_aux_coeff = None
+#        
+#        self.filename = None
+#        
+#        self.moveToPos = None
+#        
+#        self.xStep = None
+#        self.yStep = None
+#        self.zStep = None
         
         # edited_scan = True --> size of the useful part of the scan
         # edited_scan = False --> size of the full scan including aux parts
@@ -885,6 +909,10 @@ class Backend(QtCore.QObject):
 
         self.initialDir = r'C:\Data'
         
+        # initialize image
+        
+        self.image = None
+        
     @pyqtSlot(dict)
     def get_frontend_param(self, params):
         
@@ -907,13 +935,13 @@ class Backend(QtCore.QObject):
         self.xStep = params['xStep']
         self.yStep = params['yStep']
         self.zStep = params['zStep']
-        
-        self.Nframes = params['Nframes']
-        
+                
         self.calculate_derived_param()
         
         
     def calculate_derived_param(self):
+        
+        self.image_to_save = self.image
 
         self.pxSize = self.scanRange/self.NofPixels   # in µm
         self.frameTime = self.NofPixels**2 * self.pxTime / 10**6
@@ -977,9 +1005,11 @@ class Backend(QtCore.QObject):
         self.i = 0
 
         # load the new parameters into the ADwin system
-
-        self.update_device_param()
         
+        self.update_device_param()
+
+        # emit calculated parameters
+
         self.emit_param()
         
     def emit_param(self):
@@ -989,6 +1019,7 @@ class Backend(QtCore.QObject):
         params['frameTime'] = self.frameTime
         params['pxSize'] = self.pxSize
         params['maxCounts'] = self.maxCounts
+        params['initialPos'] = np.float64(self.initialPos)
         
         self.paramSignal.emit(params)
         
@@ -1087,7 +1118,55 @@ class Backend(QtCore.QObject):
     def moveTo_action(self):
 
         self.moveTo(*self.moveToPos)
-   
+        
+        
+    def relative_move(self, axis, direction):
+        
+        if axis == 'x' and direction == 'up':
+            
+            newPos_µm = self.initialPos[0] - self.xStep
+            newPos_µm = round(newPos_µm, 3)
+            self.initialPos = np.array([newPos_µm, self.initialPos[1],
+                                        self.initialPos[2]])
+            
+        if axis == 'x' and direction == 'down':
+            
+            newPos_µm = self.initialPos[0] + self.xStep
+            newPos_µm = np.around(newPos_µm, 3)
+            self.initialPos = np.array([newPos_µm, self.initialPos[1],
+                                        self.initialPos[2]])
+            
+        if axis == 'y' and direction == 'up':
+            
+            newPos_µm = self.initialPos[1] + self.yStep
+            newPos_µm = np.around(newPos_µm, 3)       
+            self.initialPos = np.array([self.initialPos[0], newPos_µm,
+                                        self.initialPos[2]])
+            
+        if axis == 'y' and direction == 'down':
+            
+            newPos_µm = self.initialPos[1] - self.yStep
+            newPos_µm = np.around(newPos_µm, 3)
+            self.initialPos = np.array([self.initialPos[0], newPos_µm,
+                                        self.initialPos[2]])
+            
+        if axis == 'z' and direction == 'up':
+            
+            newPos_µm = self.initialPos[2] + self.zStep
+            newPos_µm = np.around(newPos_µm, 3)
+            self.initialPos = np.array([self.initialPos[0], self.initialPos[1], 
+                                        newPos_µm])
+        
+        if axis == 'z' and direction == 'down':
+            
+            newPos_µm = self.initialPos[2] - self.zStep
+            newPos_µm = np.around(newPos_µm, 3)
+            self.initialPos = np.array([self.initialPos[0], self.initialPos[1], 
+                                        newPos_µm])
+    
+        self.update_device_param()
+        self.emit_param()    
+    
     def read_position(self):
 
         xPos = self.adw.Get_FPar(50)
@@ -1125,6 +1204,13 @@ class Backend(QtCore.QObject):
 #        else:
 #            self.frameAcquisitionStop()
         
+    @pyqtSlot(int)
+    def get_PSF_meas_param(self, N):
+        
+        self.Nframes = N
+        
+        print('got PSF measurement parameters')
+        
         
     @pyqtSlot(bool)
     def frame_acquisition(self, fabool):
@@ -1138,6 +1224,12 @@ class Backend(QtCore.QObject):
             
             self.frame_acquisition_stop()
 
+    @pyqtSlot()
+    def frame_acquisition_startBIS(self):
+        
+#        print('I would like to acquire {} frames'.format(N))
+        print('I would like to acquire a frame')
+        
 
     def frame_acquisition_start(self):
 
@@ -1200,12 +1292,14 @@ class Backend(QtCore.QObject):
         data = self.image
 
         result = Image.fromarray(data.astype('uint16'))
-        result.save(r'{}.tif'.format(name))
+        result.save(r'{}.tiff'.format(name))
         
         print(name)
 
         self.imageNumber += 1
 #        self.gui.acquireFrameButton.setChecked(False)
+        
+        self.frameAcqSignal.emit(data, self.imageNumber)
         
     def save_current_frame(self):
         
@@ -1216,14 +1310,14 @@ class Backend(QtCore.QObject):
         tools.saveConfig(self, now, name)
 
         # save image
+        
+        print(self.image_to_save)
 
-        data = self.image
+        data = self.image_to_save
         result = Image.fromarray(data.astype('uint16'))
-        result.save(r'{}.tif'.format(name))
+        result.save(r'{}.tiff'.format(name))
         
         print(name)
-
-        self.imageNumber += 1
 
 #        self.gui.currentFrameButton.setChecked(False)
         
@@ -1320,6 +1414,7 @@ class Backend(QtCore.QObject):
           
 #            # display image after every scanned line
             
+        self.image_to_save = self.image
         self.imageSignal.emit(self.image)
 
         if self.i < self.NofPixels-1:
@@ -1363,7 +1458,14 @@ class Backend(QtCore.QObject):
         frontend.moveToButton.clicked.connect(self.moveTo_action)
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
-            
+        
+        frontend.xUpButton.pressed.connect(lambda: self.relative_move('x', 'up'))
+        frontend.xDownButton.pressed.connect(lambda: self.relative_move('x', 'down'))
+        frontend.yUpButton.pressed.connect(lambda: self.relative_move('y', 'up'))
+        frontend.yDownButton.pressed.connect(lambda: self.relative_move('y', 'down'))        
+        frontend.zUpButton.pressed.connect(lambda: self.relative_move('z', 'up'))
+        frontend.zDownButton.pressed.connect(lambda: self.relative_move('z', 'down'))
+          
     def stop(self):
 
         self.liveview_stop()
