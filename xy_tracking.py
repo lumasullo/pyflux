@@ -10,23 +10,25 @@ import time
 import ctypes as ct
 from datetime import date
 
+import matplotlib.pyplot as plt
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
+from scipy import optimize as opt
+
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
 import tools.PSF as PSF
 import tools.tools as tools
-from scipy import optimize as opt
+import scan
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 import qdarkstyle
 
-
-
-#from lantz.drivers.legacy.andor import ccd 
 from lantz.drivers.andor import ccd 
+import drivers.ADwin as ADwin
+
 
 
 class Frontend(QtGui.QFrame):
@@ -193,15 +195,15 @@ class Frontend(QtGui.QFrame):
         self.xyGraph.addItem(self.xyGraph.statistics)
         self.xyGraph.statistics.setText('---')
         
-        self.xyGraph.xPlot = self.xyGraph.addPlot(row=0, col=0)
+        self.xyGraph.xPlot = self.xyGraph.addPlot(row=1, col=0)
         self.xyGraph.xPlot.setLabels(bottom=('Time', 's'),
-                            left=('X position', 'nm'))
+                            left=('Y position', 'nm'))   # TO DO: clean-up the x-y mess (they're interchanged)
         self.xyGraph.xPlot.showGrid(x=True, y=True)
         self.xCurve = self.xyGraph.xPlot.plot(pen='b')
         
-        self.xyGraph.yPlot = self.xyGraph.addPlot(row=1, col=0)
+        self.xyGraph.yPlot = self.xyGraph.addPlot(row=0, col=0)
         self.xyGraph.yPlot.setLabels(bottom=('Time', 's'),
-                            left=('Y position', 'nm'))
+                            left=('X position', 'nm'))
         self.xyGraph.yPlot.showGrid(x=True, y=True)
         self.yCurve = self.xyGraph.yPlot.plot(pen='r')
         
@@ -227,10 +229,16 @@ class Frontend(QtGui.QFrame):
 
         # position tracking checkbox
         
-        self.trackingBeadsBox = QtGui.QCheckBox('track beads')
+        self.trackingBeadsBox = QtGui.QCheckBox('Track beads')
         self.trackingBeadsBox.stateChanged.connect(self.emit_roi_info)
         
-        self.saveDataBox = QtGui.QCheckBox("save data")
+        # turn ON/OFF feedback loop
+        
+        self.feedbackLoopBox = QtGui.QCheckBox('Closed loop')
+        
+        # save data signal
+        
+        self.saveDataBox = QtGui.QCheckBox("Save data")
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
         
         # button to clear the data
@@ -247,8 +255,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.delete_roiButton, 2, 0)
         subgrid.addWidget(self.exportDataButton, 3, 0)
         subgrid.addWidget(self.trackingBeadsBox, 4, 0)
-        subgrid.addWidget(self.saveDataBox, 4, 1)
-        subgrid.addWidget(self.clearDataButton, 5, 0)
+        subgrid.addWidget(self.saveDataBox, 5, 0)
+        subgrid.addWidget(self.feedbackLoopBox, 6, 0)
+        subgrid.addWidget(self.clearDataButton, 7, 0)
         
         grid.addWidget(self.xyGraph, 1, 0)
         
@@ -265,12 +274,29 @@ class Backend(QtCore.QObject):
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
 
     
-    def __init__(self, andor, *args, **kwargs):
+    def __init__(self, andor, adw, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
         self.andor = andor
+        self.adw = adw
         self.initialize_camera()
         self.setup_camera()
+        
+        # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
+        
+        pos_zero = tools.convert(0, 'XtoU')
+        
+        self.adw.Set_FPar(50, pos_zero)
+        self.adw.Set_FPar(51, pos_zero)
+        self.adw.Set_FPar(52, pos_zero)
+        
+        self.moveTo(10, 10, 10) # in µm
+        
+        time.sleep(0.200)
+        
+        self.piezoXposition = 10.0 # in µm
+        self.piezoYposition = 10.0 # in µm
+        self.piezoZposition = 10.0 # in µm
         
         # folder
         
@@ -286,10 +312,11 @@ class Backend(QtCore.QObject):
         
         self.tracking_value = False
         self.save_data_state = False
+        self.feedback_active = False
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
-        self.buffersize = 10000
+        self.buffersize = 30000
         
         self.reset()
         self.reset_data_arrays()
@@ -420,64 +447,102 @@ class Backend(QtCore.QObject):
         
             self.tracking_value = False
             
+    @pyqtSlot()
+    def toggle_feedback(self):
+        
+        if self.feedback_active is False:
+            self.feedback_active = True
+            print('Feedback loop ON')
+            
+        else:
+            
+            self.feedback_active = False
+            print('Feedback loop OFF')
+            
     def tracking(self, i, initial=False):
         
-        # gaussian fit for every selected particle
-    
-#        array = self.gui.roilist[i].getArrayRegion(self.image, self.gui.img)
+        # set main reference frame
         
         xmin, xmax, ymin, ymax = self.ROIcoordinates[i]
-        print('self.ROIcoordinates[i]', self.ROIcoordinates[i])
+        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates[i] * self.pxSize
+        
+        # select the data of the image corresponding to the ROI
+
         array = self.image[xmin:xmax, ymin:ymax]
         
-#        ROIpos_nm = np.array(self.gui.roilist[i].pos()) * self.pxSize
-    
-        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates[i] * self.pxSize
-#        
-#        print('xmin', xmin_nm)
-#        print('ymin', ymin_nm)
-#        
-        x = np.arange(xmin_nm, xmax_nm, self.pxSize)
-        y = np.arange(ymin_nm, ymax_nm, self.pxSize)
+        # set new reference frame
         
-        (Mx, My) = np.meshgrid(x, y)
+        xrange_nm = xmax_nm - xmin_nm
+        yrange_nm = ymax_nm - ymin_nm
+             
+        x_nm = np.arange(0, xrange_nm, self.pxSize)
+        y_nm = np.arange(0, yrange_nm, self.pxSize)
+        
+        (Mx_nm, My_nm) = np.meshgrid(x_nm, y_nm)
+        
+        # find max 
+        
+        argmax = np.unravel_index(np.argmax(array, axis=None), array.shape)
+        
+        x_center_id = argmax[0]
+        y_center_id = argmax[1]
+        
+        # define area around maximum
+    
+        xrange = 10 # in px
+        yrange = 10 # in px
+        
+        xmin_id = int(x_center_id-xrange)
+        xmax_id = int(x_center_id+xrange)
+        
+        ymin_id = int(y_center_id-yrange)
+        ymax_id = int(y_center_id+yrange)
+        
+        array_sub = array[xmin_id:xmax_id, ymin_id:ymax_id]
+        
+        xsubsize = 2 * xrange
+        ysubsize = 2 * yrange
+        
+#        plt.imshow(array_sub, cmap=cmaps.parula, interpolation='None')
+        
+        x_sub_nm = np.arange(0, xsubsize) * self.pxSize
+        y_sub_nm = np.arange(0, ysubsize) * self.pxSize
+
+        [Mx_sub, My_sub] = np.meshgrid(x_sub_nm, y_sub_nm)
+        
+        # make initial guess for parameters
         
         bkg = np.min(array)
         A = np.max(array) - bkg
-        x0 = (xmax_nm + xmin_nm)/2
-        y0 = (ymax_nm + ymin_nm)/2
-
-        σ = 130   # in nm
+        σ = 130 # nm
+        x0 = x_sub_nm[int(xsubsize/2)]
+        y0 = y_sub_nm[int(ysubsize/2)]
         
         initial_guess_G = [A, x0, y0, σ, σ, bkg]
-#
-#                t0 = time.time()
-#                
-        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx, My), array.ravel(), 
-                                     p0=initial_guess_G)
+         
+        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx_sub, My_sub), 
+                                     array_sub.ravel(), p0=initial_guess_G)
         
-        if initial is True:
+        # retrieve results
+
+        poptG = np.around(poptG, 2)
+    
+        A, x0, y0, σ_x, σ_y, bkg = poptG
+    
+        self.currentx = x0 + Mx_nm[xmin_id, ymin_id]
+        self.currenty = y0 + My_nm[xmin_id, ymin_id]
+               
+        if self.initial is True:
             
-            self.x0 = poptG[1] - xmin_nm
-            self.y0 = poptG[2] - ymin_nm
+            self.initialx = self.currentx
+            self.initialy = self.currenty
             
             self.initial = False
-            print('initial')
             
-#            dataG = PSF.gaussian2D((Mx, My), *poptG)
-#            dataG_2d = dataG.reshape(int(np.shape(array)[0]), int(np.shape(array)[0]))
-            
-#            plt.figure()
-#            plt.imshow(array, interpolation=None, cmap=cmaps.parula)
-#            
-#            plt.figure()
-#            plt.imshow(dataG_2d, interpolation=None, cmap=cmaps.parula)
-            
-        self.x = poptG[1] - xmin_nm - self.x0
-        self.y = poptG[2] - ymin_nm - self.y0
+        self.x = self.currentx - self.initialx
+        self.y = self.currenty - self.initialy
+    
         self.currentTime = ptime.time() - self.startTime
-        
-#        print(self.x, self.y)
         
         if self.save_data_state:
             
@@ -487,11 +552,76 @@ class Backend(QtCore.QObject):
             
             self.j += 1
             
-            if self.j >= self.buffersize:
+            if self.j >= (self.buffersize - 5):    # TO DO: -5 bad fix
                 
                 self.export_data()
                 self.reset_data_arrays()
                 print('Data array, longer than buffer size, data_array reset')
+                
+        if self.feedback_active:
+            
+            dx = 0
+            dy = 0
+            threshold = 7
+            far_threshold = 15
+            correct_factor = 0.6
+            security_thr = 0.2 # in µm
+            
+            if np.abs(self.x) > threshold:
+                
+                if dx < far_threshold:
+                    
+                    dx = correct_factor * dx
+                
+                dx = - (self.x)/1000 # conversion to µm
+                
+                print('dx', dx)
+                
+            if np.abs(self.y) > threshold:
+                
+                if dy < far_threshold:
+                    
+                    dy = correct_factor * dy
+                
+                dy = - (self.y)/1000 # conversion to µm
+        
+            if dx > security_thr or dy > security_thr:
+                
+                print('Correction movement larger than 200 nm, active correction set too OFF')
+                
+            else:
+                
+                self.piezoXposition = self.piezoXposition + dy
+                self.piezoYposition = self.piezoYposition + dx
+                
+                self.moveTo(self.piezoXposition, self.piezoYposition, self.piezoZposition)
+                
+        time.sleep(0.300)
+                
+                
+    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+                         n_pixels_z=128, pixeltime=1000):
+
+        x_f = tools.convert(x_f, 'XtoU')
+        y_f = tools.convert(y_f, 'XtoU')
+        z_f = tools.convert(z_f, 'XtoU')
+
+#        print(x_f, y_f, z_f)
+
+        self.adw.Set_Par(21, n_pixels_x)
+        self.adw.Set_Par(22, n_pixels_y)
+        self.adw.Set_Par(23, n_pixels_z)
+
+        self.adw.Set_FPar(23, x_f)
+        self.adw.Set_FPar(24, y_f)
+        self.adw.Set_FPar(25, z_f)
+
+        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
+
+    def moveTo(self, x_f, y_f, z_f):
+
+        self.set_moveTo_param(x_f, y_f, z_f)
+        self.adw.Start_Process(2)
         
         
     def update(self):
@@ -588,15 +718,31 @@ class Backend(QtCore.QObject):
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
+        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
 
         
     def stop(self):
         
+        # Go back to 0 position
+
+        x_0 = 0
+        y_0 = 0
+        z_0 = 0
+
+        self.moveTo(x_0, y_0, z_0)
+        
         self.andor.shutter(0, 2, 0, 0, 0)
-        self.andor.abort_acquisition()
+        
+        try:
+            self.andor.abort_acquisition()
+            
+        except:  # TO DO: write this code properly
+            
+            pass
+            
         self.andor.finalize()
         
-            
+
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
@@ -605,8 +751,12 @@ if __name__ == '__main__':
     
     andor = ccd.CCD()
     
+    DEVICENUMBER = 0x1
+    adw = ADwin.ADwin(DEVICENUMBER, 1)
+    scan.setupDevice(adw)
+    
     gui = Frontend()
-    worker = Backend(andor)
+    worker = Backend(andor, adw)
     
     gui.make_connection(worker)
     worker.make_connection(gui)

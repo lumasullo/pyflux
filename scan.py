@@ -55,7 +55,6 @@ def setupDevice(adw):
     adw.Load_Process(process_2)
     adw.Load_Process(process_3)
 
-
     
 class Frontend(QtGui.QFrame):
     
@@ -1224,11 +1223,11 @@ class Backend(QtCore.QObject):
             
             self.frame_acquisition_stop()
 
-    @pyqtSlot()
-    def frame_acquisition_startBIS(self):
-        
-#        print('I would like to acquire {} frames'.format(N))
-        print('I would like to acquire a frame')
+#    @pyqtSlot()
+#    def frame_acquisition_startBIS(self):
+#        
+##        print('I would like to acquire {} frames'.format(N))
+#        print('I would like to acquire a frame')
         
 
     def frame_acquisition_start(self):
