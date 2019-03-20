@@ -851,7 +851,9 @@ class Backend(QtCore.QObject):
     xyDriftSignal = pyqtSignal()
     zDriftSignal = pyqtSignal()
     
-    frameAcqSignal = pyqtSignal(np.ndarray, int)
+#    frameAcqSignal = pyqtSignal(np.ndarray, int)
+    frameIsDone = pyqtSignal(bool)  # the bool is whether feedback is ON (True) or OFF (False)
+    newFrameSignal = pyqtSignal(bool)
     
     def __init__(self, adwin, *args, **kwargs):
         
@@ -861,6 +863,10 @@ class Backend(QtCore.QObject):
         self.edited_scan = True
         self.saveScanData = False
         self.feedback_active = False
+        
+        # connect internal signal/slot
+        
+        self.newFrameSignal.connect(self.frame_acquisition)
         
         
         # edited_scan = True --> size of the useful part of the scan
@@ -1178,11 +1184,11 @@ class Backend(QtCore.QObject):
             self.feedback_active = False
             print('Discrete feedback loop OFF')
         
-    def xy_drift_correction(self):
-        
-#        print('xy drift correction signal emitted...')
-        
-        self.xyDriftSignal.emit()
+#    def drift_correction_handler(self):
+#        
+##        print('xy drift correction signal emitted...')
+#        
+#        self.xyDriftSignal.emit()
         
     def z_drift_correction(self):
         
@@ -1194,7 +1200,12 @@ class Backend(QtCore.QObject):
         print('got drift corrected parameters', x, y, z)
         self.initialPos = np.array([x, y, z])
         self.update_device_param()
-    
+        
+        if True: # TO DO: change by taking into account number of frames wished or GUI signal
+            
+            self.newFrameSignal.emit(True)
+        
+        
     def read_position(self):
 
         xPos = self.adw.Get_FPar(50)
@@ -1300,9 +1311,15 @@ class Backend(QtCore.QObject):
         print(name)
 
         self.imageNumber += 1
+        
+        self.emit_param()
+        self.frameIsDone.emit(self.feedback_active)   
+        
+        print('frame is done')
+        
 #        self.gui.acquireFrameButton.setChecked(False)
         
-        self.frameAcqSignal.emit(data, self.imageNumber)
+#        self.frameAcqSignal.emit(data, self.imageNumber)
         
     def save_current_frame(self):
         
@@ -1389,13 +1406,6 @@ class Backend(QtCore.QObject):
 
     def update_view(self):
         
-        if self.feedback_active and self.i == 0:  # TO DO: clean up this waiting time to update ADwin
-        
-            t0 = time.time()
-            t1 = time.time()
-            while t1 - t0 < 0.5:
-                t1 = time.time()
-        
         if self.scantype == 'xy':
 
             dy = tools.convert(self.dy, 'ΔXtoU')
@@ -1435,32 +1445,14 @@ class Backend(QtCore.QObject):
 
             print('Frame ended')
 
-            if self.acquisitionMode == 'frame':
-                self.frame_acquisition_stop()
-
             self.i = 0
             self.y_offset = 0
             self.z_offset = 0
 
             if self.scantype == 'xy':
 
-                if self.feedback_active:
+                self.moveTo(self.x_i, self.y_i, self.z_i)
                     
-#                    print('OPTION 1')
-                    
-                    self.moveTo(self.x_i, self.y_i, self.z_i)
-
-                    t0 = time.time()
-                    t1 = time.time()
-                    while t1 - t0 < 0.7:
-                        t1 = time.time()
-                    
-                
-                else:
-                    self.moveTo(self.x_i, self.y_i, self.z_i)
-                    
-#                    print('OPTION 2')
-
             if self.scantype == 'xz':
 
                 self.moveTo(self.x_i, self.y_i + self.scanRange/2,
@@ -1471,9 +1463,14 @@ class Backend(QtCore.QObject):
                 self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                             self.z_i - self.scanRange/2)
                 
-            if self.feedback_active:
+            if self.acquisitionMode == 'frame':
+                self.frame_acquisition_stop()
                 
-                self.xy_drift_correction()
+            self.update_device_param()  
+                
+#            if self.feedback_active:
+#                
+#                self.xy_drift_correction()
     #            self.z_drift_correction()
     
 #                while self.driftFlag == 0:
@@ -1481,20 +1478,20 @@ class Backend(QtCore.QObject):
     
     # TO DO: clean up this waiting time to wait for the xy drift correction
     
-            t0 = time.time()
-            t1 = time.time()
-            while t1 - t0 < 3:
-                t1 = time.time()
+#            t0 = time.time()
+#            t1 = time.time()
+#            while t1 - t0 < 3:
+#                t1 = time.time()
 #
                 
-            if self.feedback_active:
-                
-                pass
-            
-            else:
-                
-                print('updated parameters at updateview')
-                self.update_device_param()  
+#            if self.feedback_active:
+#                
+#                pass
+#            
+#            else:
+#                
+#                print('updated parameters at updateview')
+
             
     def make_connection(self, frontend):
         

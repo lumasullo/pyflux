@@ -224,10 +224,10 @@ if __name__ == '__main__':
     
     # drift correction connections
     
-    worker.scanWorker.xyDriftSignal.connect(worker.xyWorker.discrete_drift_correction)
+    worker.scanWorker.frameIsDone.connect(worker.xyWorker.discrete_drift_correction)
     worker.scanWorker.paramSignal.connect(worker.xyWorker.get_scan_parameters)
     gui.scanWidget.feedbackLoopBox.stateChanged.connect(gui.xyWidget.emit_roi_info)
-    worker.xyWorker.paramSignal.connect(worker.scanWorker.get_drift_corrected_param)
+    worker.xyWorker.driftCorrectionIsDone.connect(worker.scanWorker.get_drift_corrected_param)
 
     # initial parameters
     

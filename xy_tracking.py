@@ -123,6 +123,9 @@ class Frontend(QtGui.QFrame):
             
             self.liveviewSignal.emit(False)
             self.liveviewButton.setChecked(False)
+            self.emit_roi_info()
+            self.img.setImage(np.zeros((512,512)), autoLevels=False)
+            print('live view stopped')
         
     @pyqtSlot(np.ndarray)
     def get_image(self, img):
@@ -224,6 +227,7 @@ class Frontend(QtGui.QFrame):
 
         self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
         self.liveviewButton.setCheckable(True)
+        self.liveviewButton.clicked.connect(self.toggle_liveview)
         
         # create ROI button
     
@@ -285,9 +289,8 @@ class Backend(QtCore.QObject):
     
     changedImage = pyqtSignal(np.ndarray)
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
-    
-    paramSignal = pyqtSignal(float, float, float) # signal to emit new piezo position after drift correction
 
+    driftCorrectionIsDone = pyqtSignal(float, float, float)  # signal to emit new piezo position after drift correction
     
     def __init__(self, andor, adw, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -421,14 +424,14 @@ class Backend(QtCore.QObject):
 
         self.changedImage.emit(self.image)
 
-        self.viewtimer.start(800) # DON'T USE time.sleep() inside the update()
+        self.viewtimer.start(400) # DON'T USE time.sleep() inside the update()
                                   # 400 ms ~ acq time + gaussian fit time
     
     def liveview_stop(self):
         
         self.viewtimer.stop()
         self.andor.abort_acquisition()
-        self.andor.shutter(0, 2, 0, 0, 0)
+#        self.andor.shutter(0, 2, 0, 0, 0)  # TO DO: implement toggle shutter
                     
     def update_view(self):
         """ Image update while in Liveview mode
@@ -643,17 +646,17 @@ class Backend(QtCore.QObject):
 #                while t1 - t0 < 1:
 #                    t1 = time.time()
                 
-        if self.discrete_correction:
-            
-            self.tracking_value = False
-            self.paramSignal.emit(self.piezoXposition, self.piezoYposition, self.piezoZposition)
+#        if self.discrete_correction:
+#            
+#            self.tracking_value = False
+#            self.paramSignal.emit(self.piezoXposition, self.piezoYposition, self.piezoZposition)
 #            print('sent signal with', self.piezoXposition, self.piezoYposition, self.piezoZposition)
-#        print('tracking ended')
-            
-            t0 = time.time()
-            t1 = time.time()
-            while t1 - t0 < 0.05:
-                t1 = time.time()
+#      print('tracking ended')
+#            
+#            t0 = time.time()
+#            t1 = time.time()
+#            while t1 - t0 < 0.05:
+#                t1 = time.time()
             
         self.counter += 1
         print('counter', self.counter)
@@ -727,14 +730,34 @@ class Backend(QtCore.QObject):
             
             self.i += 1  
             
-    @pyqtSlot()
-    def discrete_drift_correction(self):
+    @pyqtSlot(bool)
+    def discrete_drift_correction(self, val):
         
-        self.discrete_correction = True
-        self.tracking_value = True
-        self.feedback_active = True
+        print('Feedback {}'.format(val))
         
-#        print('discrete_correction', self.discrete_correction)
+        self.feedback_active = val
+        
+#        self.andor.shutter(0, 1, 0, 0, 0)
+        
+        self.andor.start_acquisition()
+        
+        time.sleep(self.expTime * 3)
+        
+        self.image = self.andor.most_recent_image16(self.shape)
+
+        self.changedImage.emit(self.image)
+        
+        self.andor.abort_acquisition()
+        
+        self.tracking()
+        
+        self.update()
+        
+        self.driftCorrectionIsDone.emit(self.piezoXposition, 
+                                        self.piezoYposition, 
+                                        self.piezoZposition)
+        
+        print('drift correction ended...')
         
     @pyqtSlot(dict)
     def get_scan_parameters(self, params):
@@ -795,10 +818,12 @@ class Backend(QtCore.QObject):
         
 #        self.numberOfROIs = N
         self.ROIcoordinates = coordinates_array.astype(int)
+        print('got ROI coordinates')
         
     def make_connection(self, frontend):
             
-        frontend.liveviewButton.clicked.connect(self.liveview)
+        frontend.liveviewSignal.connect(self.liveview)
+#        frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.trackingBeadsBox.stateChanged.connect(self.toggle_tracking)
         frontend.roiInfoSignal.connect(self.get_roi_info)
         frontend.closeSignal.connect(self.stop)
