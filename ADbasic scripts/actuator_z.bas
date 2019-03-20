@@ -12,18 +12,16 @@
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
 '<Header End>
-'process moveto: moveto_xyz by luciano a. masullo
+'process actuator_z: actuator_z by luciano a. masullo
 
-'par_11: number of x pixels
-'par_12: number of y pixels
+'actuator for focus lock feedback loop
 
-'fpar_21: x initial position
-'fpar_22: y initial position
+'par_23 = number of pixels
 
-'fpar23: x final position
-'fpar24: y final position
+'fpar_25 = setpoint z
+'fpar_26: pixel time
 
-'fpar_25: pixeltime
+'fpar_52 = currentz
 
 
 #INCLUDE .\data-acquisition.inc
@@ -41,7 +39,6 @@ INIT:
   time1 = 0
 
   currentz = fpar_52
-  
   setpointz = fpar_25
   
   if (setpointz > POSMAX) then setpointz = POSMAX 'check that set x position is not higher than POSMAX

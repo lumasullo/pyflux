@@ -9,20 +9,27 @@
 ' Optimize                       = Yes
 ' Optimize_Level                 = 1
 ' Stacksize                      = 1000
-' Info_Last_Save                 = USUARIO-PC  USUARIO-PC\USUARIO
+' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
 '<Header End>
 'process moveto: moveto_xyz by luciano a. masullo
 
-'par_11: number of x pixels
-'par_12: number of y pixels
+'function to do a single (smooth) movement to desired position
 
-'fpar_21: x initial position
-'fpar_22: y initial position
+'par_21: number of x pixels
+'par_22: number of y pixels
+'par_23: number of z pixels
 
-'fpar23: x final position
-'fpar24: y final position
+'fpar23: setpoint x
+'fpar24: setpoint y
+'fpar25: setpoint z
 
-'fpar_25: pixeltime
+'fpar_26: pixeltime
+
+'fpar_50: keeps track of x position of the piezo
+'fpar_51: keeps track of y position of the piezo
+'fpar_52: keeps track of z position of the piezo
+
+
 
 
 #INCLUDE .\data-acquisition.inc

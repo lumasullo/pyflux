@@ -24,6 +24,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5 import QtTest
 import qdarkstyle
 
 import drivers.ADwin as ADwin
@@ -100,6 +101,7 @@ class Frontend(QtGui.QFrame):
         self.xStepEdit.textChanged.connect(self.emit_param)
         self.yStepEdit.textChanged.connect(self.emit_param)
         self.zStepEdit.textChanged.connect(self.emit_param)
+        self.moveToEdit.textChanged.connect(self.emit_param)
         
     def emit_param(self):
         
@@ -542,6 +544,10 @@ class Frontend(QtGui.QFrame):
         self.preview_scanButton.setCheckable(True)
         self.preview_scanButton.clicked.connect(self.preview_scan)
         
+        # feedback loop xy drift box
+        
+        self.feedbackLoopBox = QtGui.QCheckBox('xyz closed loop')
+        
         # line profile button
         
         self.lineProfButton = QtGui.QPushButton('Line profile')
@@ -725,6 +731,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.ROIButton, 9, 1)
         subgrid.addWidget(self.select_ROIButton, 10, 1)
         subgrid.addWidget(self.acquireFrameButton, 11, 1)
+        subgrid.addWidget(self.feedbackLoopBox, 12, 1)
 
         subgrid.addWidget(self.lineProfButton, 13, 1)
 
@@ -841,6 +848,8 @@ class Backend(QtCore.QObject):
     
     paramSignal = pyqtSignal(dict)
     imageSignal = pyqtSignal(np.ndarray)
+    xyDriftSignal = pyqtSignal()
+    zDriftSignal = pyqtSignal()
     
     frameAcqSignal = pyqtSignal(np.ndarray, int)
     
@@ -851,24 +860,8 @@ class Backend(QtCore.QObject):
         self.adw = adwin
         self.edited_scan = True
         self.saveScanData = False
+        self.feedback_active = False
         
-#        self.detector = None
-#        self.scantype = None
-#        self.scanRange = None
-#        self.NofPixels = None
-#        self.pxTime = None
-#        self.initialPos = [None, None, None]
-#        
-#        self.waitingTime = None
-#        self.a_aux_coeff = None
-#        
-#        self.filename = None
-#        
-#        self.moveToPos = None
-#        
-#        self.xStep = None
-#        self.yStep = None
-#        self.zStep = None
         
         # edited_scan = True --> size of the useful part of the scan
         # edited_scan = False --> size of the full scan including aux parts
@@ -884,9 +877,14 @@ class Backend(QtCore.QObject):
 
         self.imageNumber = 0
 
-        # initialize flag for the ADwin process
+        # initialize flag for the linescan function
 
         self.flag = 0
+        
+        # initialize flag for the xy drift feedback loop
+        
+        self.driftFlag = 0
+        self.adw.Set_Par(40, 0)
 
 #        # update parameters
 #
@@ -902,7 +900,7 @@ class Backend(QtCore.QObject):
         
         # move to z = 10 µm
 
-        self.moveTo(0, 0, 10)
+        self.moveTo(3, 3, 10)
 
         # initial directory
 
@@ -1048,6 +1046,8 @@ class Backend(QtCore.QObject):
             self.adw.Set_FPar(11, 6)
 
         #  initial positions x and y
+        
+        print('self.initialPos', self.initialPos)
 
         self.x_i = self.initialPos[0]
         self.y_i = self.initialPos[1]
@@ -1165,6 +1165,35 @@ class Backend(QtCore.QObject):
     
         self.update_device_param()
         self.emit_param()    
+        
+    @pyqtSlot()
+    def toggle_feedback(self):
+        
+        if self.feedback_active is False:
+            self.feedback_active = True
+            print('Discrete feedback loop ON')
+            
+        else:
+            
+            self.feedback_active = False
+            print('Discrete feedback loop OFF')
+        
+    def xy_drift_correction(self):
+        
+#        print('xy drift correction signal emitted...')
+        
+        self.xyDriftSignal.emit()
+        
+    def z_drift_correction(self):
+        
+        self.zDriftSignal.emit()
+        
+    @pyqtSlot(float, float, float)
+    def get_drift_corrected_param(self, x, y, z):
+        
+        print('got drift corrected parameters', x, y, z)
+        self.initialPos = np.array([x, y, z])
+        self.update_device_param()
     
     def read_position(self):
 
@@ -1193,24 +1222,6 @@ class Backend(QtCore.QObject):
                     transparent=False, bbox_inches=None, pad_inches=0.1,
                     frameon=None)
             
-#    def frame_acquisition(self):
-#
-#        if self.acquireFrameButton.isChecked():
-#            self.liveviewStop()
-#            self.liveviewButton.setChecked(False)
-#            self.frameAcquisitionStart()
-#
-#        else:
-#            self.frameAcquisitionStop()
-        
-    @pyqtSlot(int)
-    def get_PSF_meas_param(self, N):
-        
-        self.Nframes = N
-        
-        print('got PSF measurement parameters')
-        
-        
     @pyqtSlot(bool)
     def frame_acquisition(self, fabool):
         
@@ -1222,14 +1233,7 @@ class Backend(QtCore.QObject):
         else:
             
             self.frame_acquisition_stop()
-
-#    @pyqtSlot()
-#    def frame_acquisition_startBIS(self):
-#        
-##        print('I would like to acquire {} frames'.format(N))
-#        print('I would like to acquire a frame')
         
-
     def frame_acquisition_start(self):
 
         self.acquisitionMode = 'frame'
@@ -1385,6 +1389,13 @@ class Backend(QtCore.QObject):
 
     def update_view(self):
         
+        if self.feedback_active and self.i == 0:  # TO DO: clean up this waiting time to update ADwin
+        
+            t0 = time.time()
+            t1 = time.time()
+            while t1 - t0 < 0.5:
+                t1 = time.time()
+        
         if self.scantype == 'xy':
 
             dy = tools.convert(self.dy, 'ΔXtoU')
@@ -1433,7 +1444,22 @@ class Backend(QtCore.QObject):
 
             if self.scantype == 'xy':
 
-                self.moveTo(self.x_i, self.y_i, self.z_i)
+                if self.feedback_active:
+                    
+#                    print('OPTION 1')
+                    
+                    self.moveTo(self.x_i, self.y_i, self.z_i)
+
+                    t0 = time.time()
+                    t1 = time.time()
+                    while t1 - t0 < 0.7:
+                        t1 = time.time()
+                    
+                
+                else:
+                    self.moveTo(self.x_i, self.y_i, self.z_i)
+                    
+#                    print('OPTION 2')
 
             if self.scantype == 'xz':
 
@@ -1444,8 +1470,31 @@ class Backend(QtCore.QObject):
 
                 self.moveTo(self.x_i + self.scanRange/2, self.y_i,
                             self.z_i - self.scanRange/2)
-
-            self.update_device_param()    
+                
+            if self.feedback_active:
+                
+                self.xy_drift_correction()
+    #            self.z_drift_correction()
+    
+#                while self.driftFlag == 0:
+#                    self.driftFlag = self.adw.Get_Par(40)
+    
+    # TO DO: clean up this waiting time to wait for the xy drift correction
+    
+            t0 = time.time()
+            t1 = time.time()
+            while t1 - t0 < 3:
+                t1 = time.time()
+#
+                
+            if self.feedback_active:
+                
+                pass
+            
+            else:
+                
+                print('updated parameters at updateview')
+                self.update_device_param()  
             
     def make_connection(self, frontend):
         
@@ -1457,6 +1506,7 @@ class Backend(QtCore.QObject):
         frontend.moveToButton.clicked.connect(self.moveTo_action)
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
+        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
         
         frontend.xUpButton.pressed.connect(lambda: self.relative_move('x', 'up'))
         frontend.xDownButton.pressed.connect(lambda: self.relative_move('x', 'down'))

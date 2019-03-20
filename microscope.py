@@ -30,6 +30,8 @@ import scan
 import tcspc
 import xy_tracking
 
+import tools.tools as tools
+
 π = np.pi
 
 
@@ -77,10 +79,6 @@ class Frontend(QtGui.QMainWindow):
 
         scanDock = Dock('Confocal scan', size=(1, 1))
 
-        DEVICENUMBER = 0x1
-        adw = ADwin.ADwin(DEVICENUMBER, 1)
-        scan.setupDevice(adw)
-
         self.scanWidget = scan.Frontend()
 
         scanDock.addWidget(self.scanWidget)
@@ -112,6 +110,7 @@ class Frontend(QtGui.QMainWindow):
 
         xyDock.addWidget(self.xyWidget)
         dockArea.addDock(xyDock, 'top', focusDock)
+#        dockArea.addDock(xyDock, 'top')
 
         # sizes to fit my screen properly
 
@@ -125,7 +124,6 @@ class Frontend(QtGui.QMainWindow):
         backend.scanWorker.make_connection(self.scanWidget)
         backend.tcspcWorker.make_connection(self.tcspcWidget)
         backend.xyWorker.make_connection(self.xyWidget)
-        self.psfWidget.startButton.clicked.connect(backend.acquire_N_frames)
 
     def psf_measurement(self):
 
@@ -149,7 +147,7 @@ class Backend(QtCore.QObject):
         self.scanWorker = scan.Backend(adw)
         self.focusWorker = focus.Backend(scmos, adw)
         self.tcspcWorker = tcspc.Backend(ph)
-        self.xyWorker = xy_tracking.Backend(ccd)
+        self.xyWorker = xy_tracking.Backend(ccd, adw)
 
     def make_connection(self, frontend):
         
@@ -157,24 +155,8 @@ class Backend(QtCore.QObject):
         frontend.scanWidget.make_connection(self.scanWorker)
         frontend.tcspcWidget.make_connection(self.tcspcWorker)
         frontend.xyWidget.make_connection(self.xyWorker)
-        frontend.psfWidget.startButton.clicked.connect(self.acquire_N_frames)
         frontend.closeSignal.connect(self.stop)
-        
-    @pyqtSlot(np.ndarray, int)
-    def get_frame_acq_data(self, data, frameNumber):
-        
-        self.dataStack[frameNumber] = data
-        
-    def acquire_N_frames(self, N=10):
-        
-        print('backend acquire_N_frames')
-        
-        N=10
-        
-        for i in range(N):
-         
-            self.measurePSFSignal.emit()
-        
+            
     def stop(self):
         
         self.scanWorker.stop()
@@ -240,29 +222,41 @@ if __name__ == '__main__':
     gui.make_connection(worker)
     worker.make_connection(gui)
     
+    # drift correction connections
+    
+    worker.scanWorker.xyDriftSignal.connect(worker.xyWorker.discrete_drift_correction)
+    worker.scanWorker.paramSignal.connect(worker.xyWorker.get_scan_parameters)
+    gui.scanWidget.feedbackLoopBox.stateChanged.connect(gui.xyWidget.emit_roi_info)
+    worker.xyWorker.paramSignal.connect(worker.scanWorker.get_drift_corrected_param)
+
+    # initial parameters
+    
     gui.scanWidget.emit_param()
     worker.scanWorker.emit_param()
-    
-    worker.scanWorker.frameAcqSignal.connect(worker.get_frame_acq_data)
-    worker.measurePSFSignal.connect(worker.scanWorker.frame_acquisition_startBIS)
-    
+      
     # focus thread
 
     focusThread = QtCore.QThread()
     worker.focusWorker.moveToThread(focusThread)
     worker.focusWorker.focusTimer.moveToThread(focusThread)
-    worker.focusWorker.focusTimer.timeout.connect(worker.focusWorker.update)
-
+    worker.focusWorker.focusTimer.timeout.connect(worker.focusWorker.update) # TO DO: this will probably call the update twice, fix!!
+#
     focusThread.start()
     
-        
-    # xy worker thread
+    # focus GUI thread
     
+    focusGUIThread = QtCore.QThread()
+    gui.focusWidget.moveToThread(focusGUIThread)
+    
+    focusGUIThread.start()
+#    
+#    # xy worker thread
+#    
     xyThread = QtCore.QThread()
     worker.xyWorker.moveToThread(xyThread)
     worker.xyWorker.viewtimer.moveToThread(xyThread)
-    worker.xyWorker.viewtimer.timeout.connect(worker.xyWorker.update_view)
-    
+#    worker.xyWorker.viewtimer.timeout.connect(worker.xyWorker.update_view)
+#    
     xyThread.start()
     
     # xy GUI thread
@@ -271,7 +265,7 @@ if __name__ == '__main__':
     gui.xyWidget.moveToThread(xyGUIThread)
     
     xyGUIThread.start()
-    
+
     # tcspc thread
     
     tcspcWorkerThread = QtCore.QThread()

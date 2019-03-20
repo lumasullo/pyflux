@@ -9,20 +9,28 @@
 ' Optimize                       = Yes
 ' Optimize_Level                 = 1
 ' Stacksize                      = 1000
-' Info_Last_Save                 = USUARIO-PC  USUARIO-PC\USUARIO
+' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
 '<Header End>
 'process moveto: moveto_xyz by luciano a. masullo
 
-'par_11: number of x pixels
-'par_12: number of y pixels
+'function to do a single (smooth) movement to desired position
 
-'fpar_21: x initial position
-'fpar_22: y initial position
+'par_21: number of x pixels
+'par_22: number of y pixels
+'par_23: number of z pixels
 
-'fpar23: x final position
-'fpar24: y final position
+'fpar23: setpoint x
+'fpar24: setpoint y
+'fpar25: setpoint z
 
-'fpar_25: pixeltime
+'fpar_26: pixeltime
+'fpar_27: extra waiting time
+
+'fpar_50: keeps track of x position of the piezo
+'fpar_51: keeps track of y position of the piezo
+'fpar_52: keeps track of z position of the piezo
+
+
 
 
 #INCLUDE .\data-acquisition.inc
@@ -96,7 +104,7 @@ EVENT:
   fpar_51 = currenty
   fpar_52 = currentz
   
-  p = 40 'error margin in ADwin units at which the moveTo is completed with currentpos = setpointpos
+  p = 1 'error margin in ADwin units at which the moveTo is completed with currentpos = setpointpos
   
   if (((Abs(currentx - setpointx) < p) & (Abs(currenty - setpointy) < p)) & (Abs(currentz - setpointz) < p)) then
     
@@ -126,6 +134,14 @@ EVENT:
     fpar_50 = currentx
     fpar_51 = currenty
     fpar_52 = currentz
+    
+    time0 = Read_Timer() 'this until End is a fix to wait for some time in the xy drift correction 18/03/2019
+    DO 
+      time1 = Read_Timer()
+    
+    UNTIL (Abs(time1 - time0) > fpar_27)
+    
+    fpar_27 = 0
     
     End
    

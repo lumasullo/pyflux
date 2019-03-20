@@ -1,9 +1,10 @@
 '<ADbasic Header, Headerversion 001.001>
-' Process_Number                 = 2
+' Process_Number                 = 3
 ' Initial_Processdelay           = 3000
 ' Eventsource                    = Timer
 ' Control_long_Delays_for_Stop   = No
-' Priority                       = High
+' Priority                       = Low
+' Priority_Low_Level             = 1
 ' Version                        = 1
 ' ADbasic_Version                = 6.2.0
 ' Optimize                       = Yes
@@ -11,18 +12,17 @@
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
 '<Header End>
-'process moveto: moveto_xyz by luciano a. masullo
+'process actuator_z: actuator_z by luciano a. masullo
 
-'par_11: number of x pixels
-'par_12: number of y pixels
+'par_23 = number of pixels
 
-'fpar_21: x initial position
+'fpar_52 = currentz
 'fpar_22: y initial position
 
 'fpar23: x final position
 'fpar24: y final position
 
-'fpar_25: pixeltime
+'fpar_25: setpoint z
 
 
 #INCLUDE .\data-acquisition.inc
@@ -40,7 +40,6 @@ INIT:
   time1 = 0
 
   currentz = fpar_52
-  
   setpointz = fpar_25
   
   if (setpointz > POSMAX) then setpointz = POSMAX 'check that set x position is not higher than POSMAX

@@ -16,6 +16,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
 from scipy import optimize as opt
+from PIL import Image
 
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
@@ -79,19 +80,27 @@ class Frontend(QtGui.QFrame):
 #        print('Set ROIs function')
         
         roinumber = len(self.roilist)
-        roicoordinates = np.zeros((roinumber, 4))
         
-        for i in range(len(self.roilist)):
+        if roinumber == 0:
             
-#            print(self.roilist[i].pos())
-#            print(self.roilist[i].size())
-            xmin, ymin = self.roilist[i].pos()
-            xmax, ymax = self.roilist[i].pos() + self.roilist[i].size()
-
-            coordinates = np.array([xmin, xmax, ymin, ymax])  
-            roicoordinates[i] = coordinates
+            print('Please select a valid ROI for beads tracking')
             
-        self.roiInfoSignal.emit(roinumber, roicoordinates)
+        else:
+            
+            coordinates = np.zeros((4))
+            
+            for i in range(len(self.roilist)):
+                
+    #            print(self.roilist[i].pos())
+    #            print(self.roilist[i].size())
+                xmin, ymin = self.roilist[i].pos()
+                xmax, ymax = self.roilist[i].pos() + self.roilist[i].size()
+        
+                coordinates = np.array([xmin, xmax, ymin, ymax])  
+#            roicoordinates[i] = coordinates
+                
+#            self.roiInfoSignal.emit(roinumber, roicoordinates)
+            self.roiInfoSignal.emit(roinumber, coordinates)
 
     def delete_roi(self):
         
@@ -126,6 +135,10 @@ class Frontend(QtGui.QFrame):
         self.xCurve.setData(time, xPosition)
         self.yCurve.setData(time, yPosition)
         
+#        print('xPosition', xPosition)
+#        print('yPosition', yPosition)
+#        print('time', time)
+        
     def emit_save_data_state(self):
         
         if self.saveDataBox.isChecked():
@@ -156,7 +169,7 @@ class Frontend(QtGui.QFrame):
                                        QtGui.QFrame.Raised)
         
         self.paramWidget.setFixedHeight(320)
-        self.paramWidget.setFixedWidth(200)
+        self.paramWidget.setFixedWidth(150)
         
         grid.addWidget(self.paramWidget, 0, 1)
         
@@ -272,6 +285,8 @@ class Backend(QtCore.QObject):
     
     changedImage = pyqtSignal(np.ndarray)
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
+    
+    paramSignal = pyqtSignal(float, float, float) # signal to emit new piezo position after drift correction
 
     
     def __init__(self, andor, adw, *args, **kwargs):
@@ -281,22 +296,6 @@ class Backend(QtCore.QObject):
         self.adw = adw
         self.initialize_camera()
         self.setup_camera()
-        
-        # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
-        
-        pos_zero = tools.convert(0, 'XtoU')
-        
-        self.adw.Set_FPar(50, pos_zero)
-        self.adw.Set_FPar(51, pos_zero)
-        self.adw.Set_FPar(52, pos_zero)
-        
-        self.moveTo(10, 10, 10) # in µm
-        
-        time.sleep(0.200)
-        
-        self.piezoXposition = 10.0 # in µm
-        self.piezoYposition = 10.0 # in µm
-        self.piezoZposition = 10.0 # in µm
         
         # folder
         
@@ -313,13 +312,19 @@ class Backend(QtCore.QObject):
         self.tracking_value = False
         self.save_data_state = False
         self.feedback_active = False
+        self.discrete_correction = False
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
         self.buffersize = 30000
         
+        self.currentx = 0
+        self.currenty = 0
+        
         self.reset()
         self.reset_data_arrays()
+        
+        self.counter = 0
         
     def setup_camera(self):
         
@@ -406,11 +411,18 @@ class Backend(QtCore.QObject):
         self.andor.start_acquisition()
         
         time.sleep(self.expTime * 2)
+        
+#        t0 = time.time()
+#        t1 = time.time()
+#        while t1 - t0 < 0.5:
+#            t1 = time.time()
+        
         self.image = self.andor.most_recent_image16(self.shape)
 
         self.changedImage.emit(self.image)
 
-        self.viewtimer.start(50)
+        self.viewtimer.start(800) # DON'T USE time.sleep() inside the update()
+                                  # 400 ms ~ acq time + gaussian fit time
     
     def liveview_stop(self):
         
@@ -421,16 +433,15 @@ class Backend(QtCore.QObject):
     def update_view(self):
         """ Image update while in Liveview mode
         """
-        
+
         self.image = self.andor.most_recent_image16(self.shape)
         self.changedImage.emit(self.image)
 
         if self.tracking_value:
-            
-            for i in range(self.numberOfROIs):
                 
-                self.tracking(i, self.initial)
-                self.update()
+#            print('tracking value', self.tracking_value)
+            self.tracking()
+            self.update()
     
     @pyqtSlot()
     def toggle_tracking(self):
@@ -439,6 +450,8 @@ class Backend(QtCore.QObject):
         
         if self.tracking_value is False:
             self.tracking_value = True
+            self.discrete_correction = False
+            self.counter = 0
             
             self.reset()
             self.reset_data_arrays()
@@ -446,12 +459,15 @@ class Backend(QtCore.QObject):
         else:
         
             self.tracking_value = False
+
             
     @pyqtSlot()
     def toggle_feedback(self):
+        ''' toggles continous feedback for MINFLUX measurement '''
         
         if self.feedback_active is False:
             self.feedback_active = True
+
             print('Feedback loop ON')
             
         else:
@@ -459,16 +475,22 @@ class Backend(QtCore.QObject):
             self.feedback_active = False
             print('Feedback loop OFF')
             
-    def tracking(self, i, initial=False):
+    def gaussian_fit(self):
         
         # set main reference frame
         
-        xmin, xmax, ymin, ymax = self.ROIcoordinates[i]
-        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates[i] * self.pxSize
+        xmin, xmax, ymin, ymax = self.ROIcoordinates
+        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates * self.pxSize
         
         # select the data of the image corresponding to the ROI
 
         array = self.image[xmin:xmax, ymin:ymax]
+        
+        result = Image.fromarray(self.image.astype('uint16'))
+        result.save(r'C:\Data\{}.tiff'.format('512x512'))
+        
+        result = Image.fromarray(array.astype('uint16'))
+        result.save(r'C:\Data\{}.tiff'.format('20x20'))
         
         # set new reference frame
         
@@ -499,7 +521,7 @@ class Backend(QtCore.QObject):
         ymax_id = int(y_center_id+yrange)
         
         array_sub = array[xmin_id:xmax_id, ymin_id:ymax_id]
-        
+                
         xsubsize = 2 * xrange
         ysubsize = 2 * yrange
         
@@ -531,6 +553,18 @@ class Backend(QtCore.QObject):
     
         self.currentx = x0 + Mx_nm[xmin_id, ymin_id]
         self.currenty = y0 + My_nm[xmin_id, ymin_id]
+        
+            
+    def tracking(self):
+        
+#        print('tracking started...')
+        
+#        try:
+        self.gaussian_fit()
+            
+#        except(ValueError):
+#            
+#            print('Gaussian fit did not work')
                
         if self.initial is True:
             
@@ -541,8 +575,10 @@ class Backend(QtCore.QObject):
             
         self.x = self.currentx - self.initialx
         self.y = self.currenty - self.initialy
+        
+#        print('self.x, self.y', self.x, self.y)
     
-        self.currentTime = ptime.time() - self.startTime
+        self.currentTime = time.time() - self.startTime
         
         if self.save_data_state:
             
@@ -559,6 +595,8 @@ class Backend(QtCore.QObject):
                 print('Data array, longer than buffer size, data_array reset')
                 
         if self.feedback_active:
+            
+#            print('feedback starting...')
             
             dx = 0
             dy = 0
@@ -584,19 +622,48 @@ class Backend(QtCore.QObject):
                     dy = correct_factor * dy
                 
                 dy = - (self.y)/1000 # conversion to µm
+                
+                print('dy', dy)
         
             if dx > security_thr or dy > security_thr:
                 
-                print('Correction movement larger than 200 nm, active correction set too OFF')
+                print('Correction movement larger than 200 nm, active correction turned OFF')
                 
             else:
                 
-                self.piezoXposition = self.piezoXposition + dy
+#                print('move To part entered')
+                
+                self.piezoXposition = self.piezoXposition + dy  # TO DO: clean-up x/y labeling
                 self.piezoYposition = self.piezoYposition + dx
                 
                 self.moveTo(self.piezoXposition, self.piezoYposition, self.piezoZposition)
                 
-        time.sleep(0.300)
+#                t0 = time.time()
+#                t1 = time.time()
+#                while t1 - t0 < 1:
+#                    t1 = time.time()
+                
+        if self.discrete_correction:
+            
+            self.tracking_value = False
+            self.paramSignal.emit(self.piezoXposition, self.piezoYposition, self.piezoZposition)
+#            print('sent signal with', self.piezoXposition, self.piezoYposition, self.piezoZposition)
+#        print('tracking ended')
+            
+            t0 = time.time()
+            t1 = time.time()
+            while t1 - t0 < 0.05:
+                t1 = time.time()
+            
+        self.counter += 1
+        print('counter', self.counter)
+        
+#        t0 = time.time()
+#        t1 = time.time()
+#        while t1 - t0 < 0.01:
+#            t1 = time.time()
+            
+#        self.adw.Set_Par(40, 1)
                 
                 
     def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
@@ -640,16 +707,16 @@ class Backend(QtCore.QObject):
                 self.yData[self.ptr] = self.yPosition
                 self.time[self.ptr] = self.currentTime
                 
-                self.changedData.emit(self.time[1:self.ptr + 1],
-                                      self.xData[1:self.ptr + 1],
-                                      self.yData[1:self.ptr + 1])
+                self.changedData.emit(self.time[0:self.ptr + 1],
+                                      self.xData[0:self.ptr + 1],
+                                      self.yData[0:self.ptr + 1])
     
             else:
-                self.xData[:-1] = self.xData[1:]
+                self.xData[:-1] = self.xData[0:]
                 self.xData[-1] = self.xPosition
-                self.yData[:-1] = self.yData[1:]
+                self.yData[:-1] = self.yData[0:]
                 self.yData[-1] = self.yPosition
-                self.time[:-1] = self.time[1:]
+                self.time[:-1] = self.time[0:]
                 self.time[-1] = self.currentTime
                 
                 self.changedData.emit(self.time, self.xData, self.yData)
@@ -660,6 +727,27 @@ class Backend(QtCore.QObject):
             
             self.i += 1  
             
+    @pyqtSlot()
+    def discrete_drift_correction(self):
+        
+        self.discrete_correction = True
+        self.tracking_value = True
+        self.feedback_active = True
+        
+#        print('discrete_correction', self.discrete_correction)
+        
+    @pyqtSlot(dict)
+    def get_scan_parameters(self, params):
+#        
+#        frameTime = params['frameTime']
+#        pxSize = params['pxSize']
+#        maxCounts = params['maxCounts']
+        self.initialPos = params['initialPos']
+        
+        self.piezoXposition, self.piezoYposition, self.piezoZposition = self.initialPos
+        
+        print('positions from scanner', self.piezoXposition, self.piezoYposition, self.piezoZposition)
+            
     def reset(self):
         
         self.initial = True
@@ -667,7 +755,7 @@ class Backend(QtCore.QObject):
         self.yData = np.zeros(self.npoints)
         self.time = np.zeros(self.npoints)
         self.ptr = 0
-        self.startTime = ptime.time()
+        self.startTime = time.time()
         self.j = 0  # iterator on the data array
         
         self.changedData.emit(self.time, self.xData, self.yData)
@@ -700,12 +788,12 @@ class Backend(QtCore.QObject):
         
         np.savetxt(filename, savedData.T) # transpose for easier loading
         
-        print('data exported')
+        print('xy data exported')
         
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
         
-        self.numberOfROIs = N
+#        self.numberOfROIs = N
         self.ROIcoordinates = coordinates_array.astype(int)
         
     def make_connection(self, frontend):
@@ -746,8 +834,8 @@ class Backend(QtCore.QObject):
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     andor = ccd.CCD()
     
@@ -761,6 +849,22 @@ if __name__ == '__main__':
     gui.make_connection(worker)
     worker.make_connection(gui)
     
+    # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
+        
+    pos_zero = tools.convert(0, 'XtoU')
+        
+    worker.adw.Set_FPar(50, pos_zero)
+    worker.adw.Set_FPar(51, pos_zero)
+    worker.adw.Set_FPar(52, pos_zero)
+    
+    worker.moveTo(10, 10, 10) # in µm
+    
+    time.sleep(0.200)
+    
+    worker.piezoXposition = 10.0 # in µm
+    worker.piezoYposition = 10.0 # in µm
+    worker.piezoZposition = 10.0 # in µm
+
     gui.setWindowTitle('xy drift correction')
     gui.show()
     app.exec_()
