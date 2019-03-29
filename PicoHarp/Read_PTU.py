@@ -154,7 +154,7 @@ def readPT3(inputfile, numRecords):
         if channel == 0xF: # Special record
         
             if dtime == 0: # Not a marker, so overflow
-                print("%u OFL * %2x\n" % (recNum, 1))
+#                print("%u OFL * %2x\n" % (recNum, 1))
                 oflcorrection += T3WRAPAROUND
                 
             else: # got marker

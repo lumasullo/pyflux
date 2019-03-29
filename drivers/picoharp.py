@@ -122,7 +122,7 @@ class PicoHarp300(LibraryDriver):
         return self.binningValue
         
     @binning.setter 
-    def binning(self,value):
+    def binning(self, value):
         
         self.lib.PH_SetBinning(ctypes.c_int(DEV_NUM), 
                                ctypes.c_int(value))
@@ -151,7 +151,7 @@ class PicoHarp300(LibraryDriver):
     def resolution(self, value):
         
         # calculation: resolution = maxRes * 2**binning
-        
+
         self.binning = int(np.log(value/self.maxRes)/np.log(2))
         
     def countrate(self, channel):
@@ -187,7 +187,7 @@ class PicoHarp300(LibraryDriver):
         
         print('TCSPC measurement started')
         
-        outputfile = open(outputfilename, "wb+")
+        outputfile = open(outputfilename, "wb+") 
         progress = 0
        
         self.lib.PH_StartMeas(ctypes.c_int(DEV_NUM), ctypes.c_int(self.tacq))
@@ -202,7 +202,7 @@ class PicoHarp300(LibraryDriver):
             
             
             self.lib.PH_ReadFiFo(ctypes.c_int(DEV_NUM), byref(self.buffer), 
-                                     TTREADMAX, byref(self.nactual))
+                                 TTREADMAX, byref(self.nactual))
                 
         
             if self.nactual.value > 0:

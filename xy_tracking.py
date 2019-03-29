@@ -253,10 +253,15 @@ class Frontend(QtGui.QFrame):
         
         self.feedbackLoopBox = QtGui.QCheckBox('Closed loop')
         
+        # turn ON/OFF tcspc feedback loop
+        
+        self.tcspcFeedbackBox = QtGui.QCheckBox('tcpsc feedback loop')
+        
         # save data signal
         
         self.saveDataBox = QtGui.QCheckBox("Save data")
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
+        
         
         # button to clear the data
         
@@ -274,7 +279,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.trackingBeadsBox, 4, 0)
         subgrid.addWidget(self.saveDataBox, 5, 0)
         subgrid.addWidget(self.feedbackLoopBox, 6, 0)
-        subgrid.addWidget(self.clearDataButton, 7, 0)
+        subgrid.addWidget(self.tcspcFeedbackBox, 7, 0)  # TO DO: put this in the tcpsc widget (plus signals, etc) and not here
+        subgrid.addWidget(self.clearDataButton, 8, 0)
         
         grid.addWidget(self.xyGraph, 1, 0)
         
@@ -290,8 +296,11 @@ class Backend(QtCore.QObject):
     changedImage = pyqtSignal(np.ndarray)
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
 
-    driftCorrectionIsDone = pyqtSignal(float, float, float)  # signal to emit new piezo position after drift correction
+    XYdriftCorrectionIsDone = pyqtSignal(float, float, float)  # signal to emit new piezo position after drift correction
     
+    XYtcspcIsDone = pyqtSignal()
+    XYtcspcCorrection = pyqtSignal()
+
     def __init__(self, andor, adw, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
@@ -306,7 +315,7 @@ class Backend(QtCore.QObject):
         root = r'C:\\Data\\'
         folder = root + today
         
-        filename = r'xydata'
+        filename = r'\xydata'
         self.filename = folder + filename
         
         self.viewtimer = QtCore.QTimer()
@@ -315,7 +324,8 @@ class Backend(QtCore.QObject):
         self.tracking_value = False
         self.save_data_state = False
         self.feedback_active = False
-        self.discrete_correction = False
+        self.confocal_correction = False
+        self.tcspc_feedback = False
         self.n = 0  # number of frames that it are averaged, 0 means no average
         self.i = 0  # update counter
         self.npoints = 400
@@ -453,7 +463,7 @@ class Backend(QtCore.QObject):
         
         if self.tracking_value is False:
             self.tracking_value = True
-            self.discrete_correction = False
+            self.confocal_correction = False
             self.counter = 0
             
             self.reset()
@@ -477,6 +487,21 @@ class Backend(QtCore.QObject):
             
             self.feedback_active = False
             print('Feedback loop OFF')
+            
+    @pyqtSlot()
+    def toggle_tcspc_feedback(self):
+        ''' toggles continous feedback for MINFLUX measurement '''
+        
+        if self.tcspc_feedback is False:
+            self.tcspc_feedback = True
+            self.xy_tcspc_correction()
+
+            print('Feedback loop for tcspc measurement: ON')
+            
+        else:
+            
+            self.tcspc_feedback = False
+            print('Feedback loop for tcspc measurement: OFF')
             
     def gaussian_fit(self):
         
@@ -640,34 +665,97 @@ class Backend(QtCore.QObject):
                 self.piezoYposition = self.piezoYposition + dx
                 
                 self.moveTo(self.piezoXposition, self.piezoYposition, self.piezoZposition)
-                
-#                t0 = time.time()
-#                t1 = time.time()
-#                while t1 - t0 < 1:
-#                    t1 = time.time()
-                
-#        if self.discrete_correction:
-#            
-#            self.tracking_value = False
-#            self.paramSignal.emit(self.piezoXposition, self.piezoYposition, self.piezoZposition)
-#            print('sent signal with', self.piezoXposition, self.piezoYposition, self.piezoZposition)
-#      print('tracking ended')
-#            
-#            t0 = time.time()
-#            t1 = time.time()
-#            while t1 - t0 < 0.05:
-#                t1 = time.time()
-            
+                         
         self.counter += 1
         print('counter', self.counter)
         
-#        t0 = time.time()
-#        t1 = time.time()
-#        while t1 - t0 < 0.01:
-#            t1 = time.time()
+    def tracking_XY(self): # TO DO: merge with tracking(), they are almost the same!!
+        
+#        print('tracking started...')
+        
+#        try:
+        self.gaussian_fit()
             
-#        self.adw.Set_Par(40, 1)
+#        except(ValueError):
+#            
+#            print('Gaussian fit did not work')
+               
+        if self.initial is True:
+            
+            self.initialx = self.currentx
+            self.initialy = self.currenty
+            
+            self.initial = False
+            
+        self.x = self.currentx - self.initialx
+        self.y = self.currenty - self.initialy
+        
+#        print('self.x, self.y', self.x, self.y)
+    
+        self.currentTime = time.time() - self.startTime
+        
+        if self.save_data_state:
+            
+            self.time_array[self.j] = self.currentTime
+            self.x_array[self.j] = self.x
+            self.y_array[self.j] = self.y
+            
+            self.j += 1
+            
+            if self.j >= (self.buffersize - 5):    # TO DO: -5 bad fix
                 
+                self.export_data()
+                self.reset_data_arrays()
+                print('Data array, longer than buffer size, data_array reset')
+                
+        if self.tcspc_feedback:
+            
+#            print('feedback starting...')
+            
+            dx = 0
+            dy = 0
+            threshold = 7
+            far_threshold = 15
+            correct_factor = 0.6
+            security_thr = 0.2 # in µm
+            
+            if np.abs(self.x) > threshold:
+                
+                if dx < far_threshold:
+                    
+                    dx = correct_factor * dx
+                
+                dx = - (self.x)/1000 # conversion to µm
+                
+                print('dx', dx)
+                
+            if np.abs(self.y) > threshold:
+                
+                if dy < far_threshold:
+                    
+                    dy = correct_factor * dy
+                
+                dy = - (self.y)/1000 # conversion to µm
+                
+                print('dy', dy)
+        
+            if dx > security_thr or dy > security_thr:
+                
+                print('Correction movement larger than 200 nm, active correction turned OFF')
+                
+            else:
+                
+                print('tcspc move To part entered')
+                
+                self.piezoXposition = self.piezoXposition + dy  # TO DO: clean-up x/y labeling
+                self.piezoYposition = self.piezoYposition + dx
+                
+                print('self.piezoXposition, self.piezoYposition', self.piezoXposition, self.piezoYposition)
+                
+                self.moveTo_XY(self.piezoXposition, self.piezoYposition)
+                         
+        self.counter += 1
+        print('counter', self.counter)
                 
     def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=1000):
@@ -693,6 +781,26 @@ class Backend(QtCore.QObject):
         self.set_moveTo_param(x_f, y_f, z_f)
         self.adw.Start_Process(2)
         
+    def set_moveTo_XY_param(self, x_f, y_f, n_pixels_x=128, n_pixels_y=128,
+                            pixeltime=1000): # TO DO: make all process use parameters starting with their process number: i. e. process 1  10-19, process 2 20-29
+        
+        x_f = tools.convert(x_f, 'XtoU')
+        y_f = tools.convert(y_f, 'XtoU')
+
+        self.adw.Set_Par(41, n_pixels_x)
+        self.adw.Set_Par(42, n_pixels_y)
+
+        self.adw.Set_FPar(43, x_f)
+        self.adw.Set_FPar(44, y_f)
+
+        self.adw.Set_FPar(46, tools.timeToADwin(pixeltime))
+        
+    def moveTo_XY(self, x_f, y_f):
+        
+        print('tried to move (tcspc)')
+
+        self.set_moveTo_XY_param(x_f, y_f)
+        self.adw.Start_Process(4)
         
     def update(self):
         """ Update the data displayed in the graphs
@@ -705,7 +813,7 @@ class Backend(QtCore.QObject):
             self.xPosition = self.x
             self.yPosition = self.y
     
-            if self.ptr < self.npoints:
+            if self.ptr < self.npoints-1:
                 self.xData[self.ptr] = self.xPosition
                 self.yData[self.ptr] = self.yPosition
                 self.time[self.ptr] = self.currentTime
@@ -731,7 +839,7 @@ class Backend(QtCore.QObject):
             self.i += 1  
             
     @pyqtSlot(bool)
-    def discrete_drift_correction(self, val):
+    def confocal_drift_correction(self, val): # TO DO: change name to xy_confocal_correction
         
         print('Feedback {}'.format(val))
         
@@ -753,11 +861,42 @@ class Backend(QtCore.QObject):
         
         self.update()
         
-        self.driftCorrectionIsDone.emit(self.piezoXposition, 
-                                        self.piezoYposition, 
-                                        self.piezoZposition)
+        self.XYdriftCorrectionIsDone.emit(self.piezoXposition, 
+                                          self.piezoYposition, 
+                                          self.piezoZposition)
         
         print('drift correction ended...')
+        
+    @pyqtSlot()  
+    def xy_tcspc_correction(self):
+        
+        self.andor.start_acquisition()
+        
+        time.sleep(self.expTime * 2.5)
+        
+        self.image = self.andor.most_recent_image16(self.shape)
+
+        self.changedImage.emit(self.image)
+        
+        self.andor.abort_acquisition()
+        
+        self.tracking_XY()
+        
+        self.update()
+        
+        self.XYtcspcIsDone.emit() 
+    
+    @pyqtSlot()       
+    def get_z_tscpsc_signal(self):
+        
+        if self.tcspc_feedback:
+        
+            self.XYtcspcCorrection.emit()
+            
+        else:
+            
+            print('xyz tcspc drift correction stopped')
+        
         
     @pyqtSlot(dict)
     def get_scan_parameters(self, params):
@@ -800,6 +939,7 @@ class Backend(QtCore.QObject):
         fname = self.filename
         print('fname', fname)
         filename = tools.getUniqueName(fname)
+        filename = filename + '.txt'
         print('filename', filename)
         
         size = self.j
@@ -832,6 +972,7 @@ class Backend(QtCore.QObject):
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
         frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
+        frontend.tcspcFeedbackBox.stateChanged.connect(self.toggle_tcspc_feedback)
 
         
     def stop(self):

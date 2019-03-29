@@ -123,7 +123,7 @@ def saveConfig(main, dateandtime, name, filename=None):
         'Number of pixels': main.NofPixels,
         'a_max (µm/µs^2)': str(main.a_max),
         'a_aux [a0, a1, a2, a3] (% of a_max)': main.a_aux_coeff,
-        'Pixel size (nm)': main.pxSize,
+        'Pixel size (µm)': main.pxSize,
         'Frame time (s)': main.frameTime,
         'Scan type': main.scantype}
 

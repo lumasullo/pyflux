@@ -14,15 +14,14 @@
 '<Header End>
 'process actuator_z: actuator_z by luciano a. masullo
 
+'actuator for focus lock feedback loop
+
 'par_23 = number of pixels
 
+'fpar_25 = setpoint z
+'fpar_26: pixel time
+
 'fpar_52 = currentz
-'fpar_22: y initial position
-
-'fpar23: x final position
-'fpar24: y final position
-
-'fpar_25: setpoint z
 
 
 #INCLUDE .\data-acquisition.inc

@@ -222,12 +222,38 @@ if __name__ == '__main__':
     gui.make_connection(worker)
     worker.make_connection(gui)
     
-    # drift correction connections
+    # confocal drift correction connections
     
-    worker.scanWorker.frameIsDone.connect(worker.xyWorker.discrete_drift_correction)
+    worker.scanWorker.frameIsDone.connect(worker.xyWorker.confocal_drift_correction)
+    worker.xyWorker.XYdriftCorrectionIsDone.connect(worker.focusWorker.confocal_drift_correction)
+    worker.focusWorker.ZdriftCorrectionIsDone.connect(worker.scanWorker.get_drift_corrected_param)
     worker.scanWorker.paramSignal.connect(worker.xyWorker.get_scan_parameters)
+    
     gui.scanWidget.feedbackLoopBox.stateChanged.connect(gui.xyWidget.emit_roi_info)
-    worker.xyWorker.driftCorrectionIsDone.connect(worker.scanWorker.get_drift_corrected_param)
+    gui.scanWidget.feedbackLoopBox.stateChanged.connect(worker.focusWorker.setup_feedback)
+    
+    # tcspc drift correction connections
+    
+    worker.xyWorker.XYtcspcIsDone.connect(worker.focusWorker.tcspc_drift_correction)
+    worker.focusWorker.ZtcspcIsDone.connect(worker.xyWorker.get_z_tscpsc_signal)
+    worker.xyWorker.XYtcspcCorrection.connect(worker.xyWorker.xy_tcspc_correction)
+
+    gui.xyWidget.tcspcFeedbackBox.stateChanged.connect(worker.focusWorker.setup_feedback)
+    
+    # tcspc export data connections    # TO DO: turn this all into MINFLUX measurement
+    
+    gui.tcspcWidget.exportDataButton.clicked.connect(worker.xyWorker.export_data)
+    gui.tcspcWidget.exportDataButton.clicked.connect(worker.focusWorker.export_data)
+    
+    # tcspc measure connections
+    
+    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset)
+    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset_data_arrays)
+    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset)
+    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset_data_arrays)
+    
+    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.xyWorker.get_save_data_state(True))
+    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.focusWorker.get_save_data_state(True))
 
     # initial parameters
     
@@ -240,7 +266,7 @@ if __name__ == '__main__':
     worker.focusWorker.moveToThread(focusThread)
     worker.focusWorker.focusTimer.moveToThread(focusThread)
     worker.focusWorker.focusTimer.timeout.connect(worker.focusWorker.update) # TO DO: this will probably call the update twice, fix!!
-#
+
     focusThread.start()
     
     # focus GUI thread

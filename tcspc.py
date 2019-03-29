@@ -26,6 +26,7 @@ import tools.pyqtsubclass as pyqtsc
 import tools.colormaps as cmaps
 
 import qdarkstyle
+import ctypes
 
 class Frontend(QtGui.QFrame):
     
@@ -46,13 +47,15 @@ class Frontend(QtGui.QFrame):
         filename = os.path.join(self.folderEdit.text(),
                                 self.filenameEdit.text())
         
-        name = tools.getUniqueName(filename)
+        name = filename
         res = int(self.resolutionEdit.text())
         tacq = int(self.acqtimeEdit.text())
         folder = self.folderEdit.text()
         
         paramlist = [name, res, tacq, folder]
 
+        print('paramlist', paramlist)
+        
         self.paramSignal.emit(paramlist)
         self.measureSignal.emit()
         
@@ -75,11 +78,12 @@ class Frontend(QtGui.QFrame):
     def get_backend_parameters(self, cts0, cts1):
         
         self.channel0Label.setText(('Input0 (sync) = {} c/s'.format(cts0)))
-        self.channel1Label.setText(('Input0 (sync) = {} c/s'.format(cts1)))
+        self.channel1Label.setText(('Input1 (APD) = {} c/s'.format(cts1)))
     
     @pyqtSlot(np.ndarray, np.ndarray)    
     def plot_data(self, relTime, absTime):
-        
+
+    
         counts, bins = np.histogram(relTime, bins=100) # TO DO: choose proper binning
         self.histPlot.plot(bins[0:-1], counts)
 
@@ -87,7 +91,7 @@ class Frontend(QtGui.QFrame):
 #        plt.xlabel('time (ns)')
 #        plt.ylabel('ocurrences')
 
-        timetrace, time = np.histogram(absTime, bins=50) # timetrace with 10 ms bins
+        timetrace, time = np.histogram(absTime, bins=50) # timetrace with 50 bins
 
         self.tracePlot.plot(time[0:-1], timetrace)
 
@@ -97,6 +101,11 @@ class Frontend(QtGui.QFrame):
         
         self.readButton.setChecked(False)
         
+    def clear_data(self):
+        
+        self.histPlot.clear()
+        self.tracePlot.clear()
+    
     def make_connection(self, backend):
         
         backend.ctRatesSignal.connect(self.get_backend_parameters)
@@ -127,18 +136,23 @@ class Frontend(QtGui.QFrame):
         self.measureButton.setCheckable(True)
         self.measureButton.clicked.connect(self.start_measurement)
         
-        # Read button
+        # exportData button
         
-        self.readButton = QtGui.QPushButton('Read')
-        self.readButton.setCheckable(True)
-#        self.readButton.clicked.connect(self.read)
+        self.exportDataButton = QtGui.QPushButton('Export data')
+        self.exportDataButton.setCheckable(True)
+        
+        # Clear data
+        
+        self.clearButton = QtGui.QPushButton('Clear data')
+        self.clearButton.setCheckable(True)
+        self.clearButton.clicked.connect(self.clear_data)    
         
         # TCSPC parameters
 
         self.acqtimeLabel = QtGui.QLabel('Acquisition time (s)')
         self.acqtimeEdit = QtGui.QLineEdit('1')
         self.resolutionLabel = QtGui.QLabel('Resolution (ps)')
-        self.resolutionEdit = QtGui.QLineEdit('16')
+        self.resolutionEdit = QtGui.QLineEdit('8')
         self.offsetLabel = QtGui.QLabel('Offset (ns)')
         self.offsetEdit = QtGui.QLineEdit('0')
         self.channel0Label = QtGui.QLabel('Input0 (sync) = --- c/s')
@@ -192,7 +206,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.browseFolderButton, 15, 0)
         
         subgrid.addWidget(self.measureButton, 17, 0)
-        subgrid.addWidget(self.readButton, 19, 0)
+        subgrid.addWidget(self.exportDataButton, 19, 0)
+        subgrid.addWidget(self.clearButton, 20, 0)
         
 class Backend(QtCore.QObject):
 
@@ -216,7 +231,7 @@ class Backend(QtCore.QObject):
         self.ph.open()
         self.ph.initialize()
         self.ph.setup()
-
+        
         self.ph.syncDivider = 4 # this parameter must be set such that the count rate at channel 0 (sync) is equal or lower than 10MHz
         self.ph.resolution = self.resolution # desired resolution in ps
         self.ph.offset = 0
@@ -235,30 +250,70 @@ class Backend(QtCore.QObject):
      
     @pyqtSlot()           
     def measure(self):
-         
-        self.prepare_ph()
-        print('Measurement started')
-        self.ph.startTTTR(self.fname)
-
-    def read_data(self):
         
-        inputfile = open(self.fname, "rb")
+        t0 = time.time()
+
+        self.currentfname = tools.getUniqueName(self.fname)
+        
+        self.prepare_ph()
+        
+        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
+                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+
+        t1 = time.time()
+        
+        print('starting the PH measurement took {} s'.format(t1-t0))
+
+        self.ph.startTTTR(self.currentfname)
+        
+        np.savetxt(self.currentfname + '.txt', [])
+
+    def export_data(self):
+        
+        self.reset_data()
+        
+        inputfile = open(self.currentfname, "rb") # TO DO: fix file selection
+        print('opened {} file'.format(self.currentfname))
         
         numRecords = self.ph.numRecords # number of records
         globRes = 2.5e-8  # in ns, corresponds to sync @40 MHz
         timeRes = self.ph.resolution * 1e-12 # time resolution in s
+        print(timeRes)
 
         relTime, absTime = Read_PTU.readPT3(inputfile, numRecords)
-        
+
         inputfile.close()
         
         relTime = relTime * timeRes # in real time units (s)
-        relTime = relTime * 1e9  # in (ns)
+        self.relTime = relTime * 1e9  # in (ns)
 
         absTime = absTime * globRes * 1e9  # true time in (ns), 4 comes from syncDivider, 10 Mhz = 40 MHz / syncDivider 
-        absTime = absTime / 1e6 # in ms
+        self.absTime = absTime / 1e6 # in ms
+
+        filename = self.currentfname + '_arrays.txt'
         
-        self.readDataSignal.emit(relTime, absTime)
+        datasize = np.size(self.absTime[self.absTime != 0])
+        data = np.zeros((2, datasize))
+        
+        data[0, :] = self.relTime[self.absTime != 0]
+        data[1, :] = self.absTime[self.absTime != 0]
+        
+        self.readDataSignal.emit(data[0, :], data[1, :])
+        
+        np.savetxt(filename, data.T) # transpose for easier loading
+        
+        print('tcspc data exported')
+        
+    def reset_data(self):
+        
+        a = np.array('clear')
+        b = np.array('clear')
+        self.readDataSignal.emit(a, b)
+        self.relTime = None
+        self.absTime = None
+        
+        time.sleep(0.05)
+
 
     @pyqtSlot(list)
     def get_frontend_parameters(self, paramlist):
@@ -268,12 +323,13 @@ class Backend(QtCore.QObject):
         self.tacq = paramlist[2]
         self.folder = paramlist[3]
 
+        print(paramlist)
 
     def make_connection(self, frontend):
 
         frontend.paramSignal.connect(self.get_frontend_parameters)
         frontend.measureSignal.connect(self.measure)
-        frontend.readButton.clicked.connect(self.read_data)
+        frontend.exportDataButton.clicked.connect(self.export_data)
 
 
     def stop(self):

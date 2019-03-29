@@ -41,6 +41,7 @@ def setupDevice(adw):
     PROCESS_1 = "linescan_signal_data.TB1"
     PROCESS_2 = "moveto_xyz.TB2"
     PROCESS_3 = "actuator_z.TB3"
+    PROCESS_4 = "moveto_xy.TB4"
 
     btl = adw.ADwindir + BTL
     adw.Boot(btl)
@@ -51,10 +52,12 @@ def setupDevice(adw):
     process_1 = os.path.join(process_folder, PROCESS_1)
     process_2 = os.path.join(process_folder, PROCESS_2)
     process_3 = os.path.join(process_folder, PROCESS_3)
+    process_4 = os.path.join(process_folder, PROCESS_4)
     
     adw.Load_Process(process_1)
     adw.Load_Process(process_2)
     adw.Load_Process(process_3)
+    adw.Load_Process(process_4)
 
     
 class Frontend(QtGui.QFrame):
@@ -528,11 +531,18 @@ class Frontend(QtGui.QFrame):
         self.select_ROIButton = QtGui.QPushButton('select ROI')
         self.select_ROIButton.clicked.connect(self.select_ROI)
 
-        # Acquire frame button
+        # Acquire frame button (start)
 
-        self.acquireFrameButton = QtGui.QPushButton('Acquire frames')
+        self.acquireFrameButton = QtGui.QPushButton('Start acquisition')
         self.acquireFrameButton.setCheckable(True)
         self.acquireFrameButton.clicked.connect(self.toggle_frame_acq)
+        
+        # Acquire frame button (stop)
+
+        self.stopAcquireFrameButton = QtGui.QPushButton('Stop acquisition')
+        self.stopAcquireFrameButton.setCheckable(True)
+#        self.stopAcquireFrameButton.clicked.connect(self.toggle_frame_acq)     
+        
         
         # Save current frame button
 
@@ -575,6 +585,9 @@ class Frontend(QtGui.QFrame):
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
         self.advancedButton.clicked.connect(self.toggle_advanced)
+        
+        self.emitParamButton = QtGui.QPushButton('Emit parameters')
+        self.emitParamButton.clicked.connect(self.emit_param)
         
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
@@ -731,9 +744,10 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.ROIButton, 9, 1)
         subgrid.addWidget(self.select_ROIButton, 10, 1)
         subgrid.addWidget(self.acquireFrameButton, 11, 1)
-        subgrid.addWidget(self.feedbackLoopBox, 12, 1)
+        subgrid.addWidget(self.stopAcquireFrameButton, 12, 1)
+        subgrid.addWidget(self.feedbackLoopBox, 13, 1)
 
-        subgrid.addWidget(self.lineProfButton, 13, 1)
+        subgrid.addWidget(self.lineProfButton, 14, 1)
 
         subgrid.addWidget(scanParamTitle, 0, 0, 2, 3)
         
@@ -749,6 +763,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.pxSizeValue, 10, 0)
         subgrid.addWidget(self.frameTimeValue, 11, 0)
         subgrid.addWidget(self.maxCountsLabel, 12, 0)
+        
+        subgrid.addWidget(self.emitParamButton, 13, 0)
         
 #        subgrid.addWidget(self.NframesLabel, 10, 0)
 #        subgrid.addWidget(self.NframesEdit, 11, 0)
@@ -889,7 +905,7 @@ class Backend(QtCore.QObject):
         
         # initialize flag for the xy drift feedback loop
         
-        self.driftFlag = 0
+        self.driftFlag = 0  # TO DO: delete these parameters, not needed anymore
         self.adw.Set_Par(40, 0)
 
 #        # update parameters
@@ -1177,18 +1193,24 @@ class Backend(QtCore.QObject):
         
         if self.feedback_active is False:
             self.feedback_active = True
-            print('Discrete feedback loop ON')
+            print('confocal feedback loop ON')
             
         else:
             
             self.feedback_active = False
-            print('Discrete feedback loop OFF')
+            print('confocal feedback loop OFF')
+    
+    @pyqtSlot()
+    def toggle_acquire_frames(self):
         
-#    def drift_correction_handler(self):
-#        
-##        print('xy drift correction signal emitted...')
-#        
-#        self.xyDriftSignal.emit()
+        if self.acquire_frames is False:
+            self.acquire_frames = True
+            print('Start acquiring frames')
+            
+        else:
+            
+            self.acquire_frames = False
+            print('Stop acquiring frames')
         
     def z_drift_correction(self):
         
@@ -1201,7 +1223,7 @@ class Backend(QtCore.QObject):
         self.initialPos = np.array([x, y, z])
         self.update_device_param()
         
-        if True: # TO DO: change by taking into account number of frames wished or GUI signal
+        if self.frame_acquisition_ON: # TO DO: change by taking into account number of frames wished or GUI signal
             
             self.newFrameSignal.emit(True)
         
@@ -1215,7 +1237,6 @@ class Backend(QtCore.QObject):
         self.xPos = tools.convert(xPos, 'UtoX')
         self.yPos = tools.convert(yPos, 'UtoX')
         self.zPos = tools.convert(zPos, 'UtoX') 
-        
         
     def plot_scan_signal(self):
         
@@ -1321,11 +1342,23 @@ class Backend(QtCore.QObject):
         
 #        self.frameAcqSignal.emit(data, self.imageNumber)
         
+    def stop_continous_acq(self):
+        
+        self.frame_acquisition_stop()
+        self.frame_acquisition_ON = False
+        
+    def start_continous_acq(self):
+        
+        self.frame_acquisition_ON = True
+        
+        
     def save_current_frame(self):
         
         # experiment parameters
-
+        
+        print('self.filename', self.filename)
         name = tools.getUniqueName(self.filename)
+        print('name', name)
         now = time.strftime("%c")
         tools.saveConfig(self, now, name)
 
@@ -1467,37 +1500,14 @@ class Backend(QtCore.QObject):
                 self.frame_acquisition_stop()
                 
             self.update_device_param()  
-                
-#            if self.feedback_active:
-#                
-#                self.xy_drift_correction()
-    #            self.z_drift_correction()
-    
-#                while self.driftFlag == 0:
-#                    self.driftFlag = self.adw.Get_Par(40)
-    
-    # TO DO: clean up this waiting time to wait for the xy drift correction
-    
-#            t0 = time.time()
-#            t1 = time.time()
-#            while t1 - t0 < 3:
-#                t1 = time.time()
-#
-                
-#            if self.feedback_active:
-#                
-#                pass
-#            
-#            else:
-#                
-#                print('updated parameters at updateview')
-
-            
+                      
     def make_connection(self, frontend):
         
 #        frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.liveviewSignal.connect(self.liveview)
         frontend.frameacqSignal.connect(self.frame_acquisition)
+        frontend.frameacqSignal.connect(self.start_continous_acq)
+        frontend.stopAcquireFrameButton.clicked.connect(self.stop_continous_acq)
         frontend.acquireFrameButton.clicked.connect(self.frame_acquisition)
         frontend.currentFrameButton.clicked.connect(self.save_current_frame)
         frontend.moveToButton.clicked.connect(self.moveTo_action)

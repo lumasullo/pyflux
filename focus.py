@@ -37,11 +37,11 @@ def actuatorParameters(adwin, z_f, n_pixels_z=50, pixeltime=1000):
 
     z_f = tools.convert(z_f, 'XtoU')
 
-    adwin.Set_Par(23, n_pixels_z)
+    adwin.Set_Par(33, n_pixels_z)
     
-    adwin.Set_FPar(25, z_f)
+    adwin.Set_FPar(35, z_f)
 
-    adwin.Set_FPar(26, tools.timeToADwin(pixeltime))
+    adwin.Set_FPar(36, tools.timeToADwin(pixeltime))
 
 def zMoveTo(adwin, z_f):
 
@@ -51,10 +51,10 @@ def zMoveTo(adwin, z_f):
 
 class Frontend(QtGui.QFrame):
     
+    liveviewSignal = pyqtSignal(bool)
     changedROI = pyqtSignal(np.ndarray)  # oass new roi size
     closeSignal = pyqtSignal()
     lockFocusSignal = pyqtSignal(bool)
-    changedPIparam = pyqtSignal(np.ndarray)
     saveDataSignal = pyqtSignal(bool)
     
     def __init__(self, *args, **kwargs):
@@ -110,10 +110,8 @@ class Frontend(QtGui.QFrame):
         self.getStats = True
     
         ROIpos = np.array(self.roi.pos())
-               
         roisize = np.array(self.roi.size())
         
-    
         y0 = int(ROIpos[0])
         x0 = int(ROIpos[1])
         y1 = int(ROIpos[0] + roisize[0])
@@ -129,10 +127,6 @@ class Frontend(QtGui.QFrame):
         
     def toggleFocus(self):
         
-        params = np.array([self.kpEdit.text(), self.kiEdit.text()], 
-                           dtype=np.float)
-        self.changedPIparam.emit(params)
-        
         if self.lockButton.isChecked():
             
             self.lockFocusSignal.emit(True)
@@ -142,6 +136,20 @@ class Frontend(QtGui.QFrame):
         else:
             
             self.lockFocusSignal.emit(False)
+            
+    def toggle_liveview(self):
+        
+        if self.liveviewButton.isChecked():
+            
+            self.liveviewSignal.emit(True)
+            print('focus live view started')
+        
+        else:
+            
+            self.liveviewSignal.emit(False)
+            self.liveviewButton.setChecked(False)
+            self.img.setImage(np.zeros((512,512)), autoLevels=False)
+            print('focus live view stopped')
             
     def emit_save_data_state(self):
         
@@ -184,13 +192,12 @@ class Frontend(QtGui.QFrame):
         self.setFrameStyle(QtGui.QFrame.Panel | QtGui.QFrame.Raised)
         self.setMinimumSize(2, 200)
         
-        self.kpEdit = QtGui.QLineEdit('-0.3')
-        self.kpEdit.setFixedWidth(60)
+        # LiveView Button
 
-        self.kpLabel = QtGui.QLabel('kp')
-        self.kiEdit = QtGui.QLineEdit('0.00001')
-        self.kiEdit.setFixedWidth(60)
-        self.kiLabel = QtGui.QLabel('ki')
+        self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
+        self.liveviewButton.setCheckable(True)
+        self.liveviewButton.clicked.connect(self.toggle_liveview)
+
         self.lockButton = QtGui.QPushButton('Lock focus')
         self.lockButton.setCheckable(True)
         self.lockButton.setSizePolicy(QtGui.QSizePolicy.Preferred,
@@ -265,23 +272,21 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(200)
-        self.paramWidget.setFixedWidth(200)
+        self.paramWidget.setFixedHeight(230)
+        self.paramWidget.setFixedWidth(150)
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
         
-        subgrid.addWidget(self.calibrationButton, 0, 0, 1, 4)
-        subgrid.addWidget(self.kpLabel, 1, 2)
-        subgrid.addWidget(self.kpEdit, 1, 3)
-        subgrid.addWidget(self.kiLabel, 2, 2)
-        subgrid.addWidget(self.kiEdit, 2, 3)
-        subgrid.addWidget(self.lockButton, 3, 0, 1, 4)
-        subgrid.addWidget(self.saveDataBox, 4, 0, 1, 2)
-        subgrid.addWidget(self.exportDataButton, 4, 1, 3, 4)
-        subgrid.addWidget(self.clearDataButton, 5, 0)
-        subgrid.addWidget(self.ROIbutton, 1, 0)
-        subgrid.addWidget(self.selectROIbutton, 2, 0)
+        subgrid.addWidget(self.calibrationButton, 8, 0)
+        subgrid.addWidget(self.lockButton, 4, 0)
+        subgrid.addWidget(self.saveDataBox, 5, 0)
+        subgrid.addWidget(self.exportDataButton, 6, 0)
+        subgrid.addWidget(self.clearDataButton, 7, 0)
+        
+        subgrid.addWidget(self.liveviewButton, 1, 0)
+        subgrid.addWidget(self.ROIbutton, 2, 0)
+        subgrid.addWidget(self.selectROIbutton, 3, 0)
         
         grid.addWidget(self.paramWidget, 0, 0)
         grid.addWidget(self.focusGraph, 0, 1)
@@ -300,6 +305,9 @@ class Backend(QtCore.QObject):
     changedImage = pyqtSignal(np.ndarray)
     changedData = pyqtSignal(np.ndarray, np.ndarray)
     changedSetPoint = pyqtSignal(np.ndarray)
+    
+    ZdriftCorrectionIsDone = pyqtSignal(float, float, float)
+    ZtcspcIsDone = pyqtSignal()
 
     def __init__(self, camera, actuator, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -314,7 +322,7 @@ class Backend(QtCore.QObject):
         root = r'C:\\Data\\'
         folder = root + today
         
-        filename = r'zdata'
+        filename = r'zdata.txt'
         self.filename = os.path.join(folder, filename)
         
         self.save_data_state = False
@@ -326,18 +334,18 @@ class Backend(QtCore.QObject):
         rawimage = self.camera.latest_frame()
         image = np.sum(rawimage, axis=2)
         
+        self.pxSize = 10   # in nm, TO DO: change for an input from the user
+        
         self.sensorSize = np.array(image.shape)
         self.focusSignal = 0
         
         # set focus update rate
         
         self.scansPerS = 20
-        self.camera.start_live_video(framerate='20 Hz')
 
         self.focusTime = 1000 / self.scansPerS
         self.focusTimer = QtCore.QTimer()
 #        self.focusTimer.timeout.connect(self.update)
-        self.focusTimer.start(self.focusTime)
         
         self.currentZ = tools.convert(self.actuator.Get_FPar(52), 'UtoX')
         self.currentX = tools.convert(self.actuator.Get_FPar(50), 'UtoX')
@@ -346,41 +354,110 @@ class Backend(QtCore.QObject):
         self.reset()
         self.reset_data_arrays()
         
-    def setupPI(self):
         
-        self.setPoint = self.focusSignal
-        self.PI = pi.PI(self.setPoint, 0.001, self.kp, self.ki)
+    @pyqtSlot(bool)
+    def liveview(self, value):
 
-        self.initialZ = self.currentZ
-        
-    def updatePI(self):
-        
-        # TO DO: fix this function
+        if value:
+            self.liveview_start()
 
-        self.distance = self.currentZ - self.initialZ
-        
-        cm = self.focusSignal
-        out = self.PI.update(cm)
+        else:
+            self.liveview_stop()
 
-#        self.lockN += 1
-#        self.lockMean += (cm - self.lockMean)/(self.lockN + 1)
-#        self.graph.setLine.setValue(self.lockMean)
+        
+    def liveview_start(self):
+        
+        try:
+            self.camera.stop_live_video()
+        except:
+            pass
+        
+        self.camera.start_live_video(framerate='20 Hz')
+        self.focusTimer.start(self.focusTime)
 
-        # Safety unlocking
+    def liveview_stop(self):
         
-        if abs(self.distance) > 1  or abs(out) > 3 or self.currentZ < 0:  # in µm
+        self.focusTimer.stop()
+
         
-            self.lockFocus(False)
+    def lock_focus(self, lockbool):
+        
+        if lockbool:
+        
+            self.reset()
+            self.setup_feedback()
+            self.update()
+            self.locked = True
+        
+        else:
+        
+            if self.locked is True:
+                self.locked = False
+    
+    @pyqtSlot()    
+    def setup_feedback(self):
+        
+        ''' set up on/off feedback loop'''
+        
+        print('set point is', self.focusSignal)
+        self.setPoint = self.focusSignal * self.pxSize
+        self.initialZ = self.currentZ # TO DO: get piezo z position from scanWorker
+    
+    def update_feedback(self):
+        
+        self.Z = self.focusSignal * self.pxSize - self.setPoint
+        
+#        print(self.Z)
+        
+        distance = self.Z
+        
+        dz = 0 # in nm
+        threshold = 7 # in nm
+        far_threshold = 20 # in nm
+        correct_factor = 1
+        security_thr = 0.2 # in µm
+        
+        if np.abs(distance) > threshold:
+            
+            if dz < far_threshold:
+                
+                dz = correct_factor * dz
+            
+            dz = (distance)/1000 # conversion to µm
+            
+#            print('dz', dz)
+    
+        if dz > security_thr:
+            
+            print('Correction movement larger than 200 nm, active correction turned OFF')
             
         else:
             
-            self.currentZ = self.currentZ + out
-            print('moved to', self.currentZ, 'µm')
+            self.currentZ = self.currentZ + dz
+            zMoveTo(self.actuator, self.currentZ)
             
-        zMoveTo(self.actuator, self.currentZ)
-            
+    def update_graph_data(self):
+        
+        ''' update of the data displayed in the gui graph '''
 
-    def updateStats(self):
+        if self.ptr < self.npoints:
+            self.data[self.ptr] = self.focusSignal
+            self.time[self.ptr] = ptime.time() - self.startTime
+            
+            self.changedData.emit(self.time[1:self.ptr + 1],
+                                  self.data[1:self.ptr + 1])
+
+        else:
+            self.data[:-1] = self.data[1:]
+            self.data[-1] = self.focusSignal
+            self.time[:-1] = self.time[1:]
+            self.time[-1] = ptime.time() - self.startTime
+
+            self.changedData.emit(self.time, self.data)
+
+        self.ptr += 1
+            
+    def update_stats(self):
         
         # TO DO: fix this function
 
@@ -403,70 +480,78 @@ class Backend(QtCore.QObject):
 
         self.n += 1
         
-    def update(self, delay=0.000):
-
-        time.sleep(delay)
+    def update(self):
         
-        raw_image = self.camera.latest_frame()
+        self.acquire_data()
+        self.update_graph_data()
         
-#        r = raw_image[:, :, 0]
-#        g = raw_image[:, :, 1]
-#        b = raw_image[:, :, 2]
-        
-        image = np.sum(raw_image, axis=2)
-        
-        self.changedImage.emit(image)
-            
-        # get mass center
-            
-        self.massCenter = np.array(ndi.measurements.center_of_mass(image))
-        self.focusSignal = self.massCenter[0]
-    
-        # update of the data displayed in the graph
-
-        if self.ptr < self.npoints:
-            self.data[self.ptr] = self.focusSignal
-            self.time[self.ptr] = ptime.time() - self.startTime
-            
-            self.changedData.emit(self.time[1:self.ptr + 1],
-                                  self.data[1:self.ptr + 1])
-
-        else:
-            self.data[:-1] = self.data[1:]
-            self.data[-1] = self.focusSignal
-            self.time[:-1] = self.time[1:]
-            self.time[-1] = ptime.time() - self.startTime
-
-            self.changedData.emit(self.time, self.data)
-
-        self.ptr += 1
-        
-        # update PI
+        #  if locked, correct position
         
         if self.locked:
-            self.updatePI()
+            
 #            self.updateStats()
+            self.update_feedback()
             
         if self.save_data_state:
             
             self.time_array.append(self.time[-1])
             self.z_array.append(self.data[-1])
-        
-    def lockFocus(self, lockbool):
-        
-        if lockbool:
-        
-            self.reset()
-            self.setupPI()
-            self.update()
-            self.locked = True
-        
-        else:
-        
-            if self.locked is True:
-                self.locked = False
-
             
+    def acquire_data(self):
+        
+        # acquire image
+    
+        raw_image = self.camera.latest_frame()
+        image = np.sum(raw_image, axis=2)   # sum the R, G, B images
+
+        # send image to gui
+
+        self.changedImage.emit(image)
+                
+        # get mass center
+                
+        self.massCenter = np.array(ndi.measurements.center_of_mass(image))
+        self.focusSignal = self.massCenter[0]
+        
+#    @pyqtSlot()
+#    def setup_discrete_feedback_loop(self):
+#        
+#        self.setup_feedback()
+        
+    @pyqtSlot(float, float, float)
+    def confocal_drift_correction(self, x, y, z):
+        
+        initialPos = np.array([x, y, z])
+        
+#        self.camera.start_live_video(framerate='20 Hz')
+#        time.sleep(0.050)
+        
+        self.acquire_data()
+        self.update_graph_data()
+        self.update_feedback()
+        
+        initialPos[2] = self.currentZ
+        self.ZdriftCorrectionIsDone.emit(*initialPos)
+        
+        if self.save_data_state:
+            
+            self.time_array.append(self.time[-1])
+            self.z_array.append(self.data[-1])
+    
+    @pyqtSlot()        
+    def tcspc_drift_correction(self):
+
+        self.acquire_data()
+        self.update_graph_data()
+        self.update_feedback()
+
+        if self.save_data_state:
+            
+            self.time_array.append(self.time[-1])
+            self.z_array.append(self.data[-1])
+            
+        self.ZtcspcIsDone.emit()
+    
     def calibrate(self):
         
         self.focusTimer.stop()
@@ -514,32 +599,12 @@ class Backend(QtCore.QObject):
         self.time_array = []
         self.z_array = []
         
-    @pyqtSlot(bool)
-    def get_lock(self, lockbool):
-        self.lockFocus(lockbool)
-            
-    @pyqtSlot(np.ndarray)
-    def get_newROI(self, val):
-
-        self.cropped = True
-        self.camera._set_AOI(*val)
-        print('focus lock ROI changed to', self.camera._get_AOI())
-        
-    @pyqtSlot(np.ndarray)
-    def get_PIparam(self, param):
-        self.kp, self.ki = param
-        
-    @pyqtSlot(bool)
-    def get_save_data_state(self, val):
-        
-        self.save_data_state = val
-        print('save_data_state = {}'.format(val))
-        
     def export_data(self):
 
         fname = self.filename
         print('fname', fname)
         filename = tools.getUniqueName(fname)
+        filename = filename + '.txt'
         print('filename', filename)
         
         size = np.size(self.z_array)
@@ -548,17 +613,37 @@ class Backend(QtCore.QObject):
         savedData[0, :] = np.array(self.time_array)
         savedData[1, :] = np.array(self.z_array)
         
-        np.savetxt(filename, savedData)
+        np.savetxt(filename, savedData.T)
         
         print('data exported')
         
+    @pyqtSlot(bool)
+    def get_lock(self, lockbool):
+        self.lock_focus(lockbool)
+            
+    @pyqtSlot(np.ndarray)
+    def get_newROI(self, val):
+
+        self.cropped = True
+        self.camera._set_AOI(*val)
+        print('focus lock ROI changed to', self.camera._get_AOI())
+        
+#    @pyqtSlot(np.ndarray)
+#    def get_PIparam(self, param):
+#        self.kp, self.ki = param
+        
+    @pyqtSlot(bool)
+    def get_save_data_state(self, val):
+        
+        self.save_data_state = val
+        print('save_data_state = {}'.format(val))
         
     def make_connection(self, frontend):
-            
+          
+        frontend.liveviewSignal.connect(self.liveview)
         frontend.changedROI.connect(self.get_newROI)
         frontend.closeSignal.connect(self.stop)
-        frontend.lockFocusSignal.connect(self.lockFocus)
-        frontend.changedPIparam.connect(self.get_PIparam)
+        frontend.lockFocusSignal.connect(self.lock_focus)
         frontend.saveDataSignal.connect(self.get_save_data_state)
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)

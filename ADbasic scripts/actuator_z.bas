@@ -16,10 +16,10 @@
 
 'actuator for focus lock feedback loop
 
-'par_23 = number of pixels
+'par_33 = number of pixels
 
-'fpar_25 = setpoint z
-'fpar_26: pixel time
+'fpar_35 = setpoint z
+'fpar_36: pixel time
 
 'fpar_52 = currentz
 
@@ -39,12 +39,12 @@ INIT:
   time1 = 0
 
   currentz = fpar_52
-  setpointz = fpar_25
+  setpointz = fpar_35
   
   if (setpointz > POSMAX) then setpointz = POSMAX 'check that set x position is not higher than POSMAX
   if (setpointz < POSMIN) then setpointz = POSMIN 'check that set x position is not lower than POSMIN
   
-  Nz = par_23
+  Nz = par_33
 
   dz = (setpointz-currentz)/Nz
   
@@ -55,7 +55,7 @@ EVENT:
   DO 
     time1 = Read_Timer()
     
-  UNTIL (Abs(time1 - time0) > fpar_26)
+  UNTIL (Abs(time1 - time0) > fpar_36)
     
   currentz = currentz + dz
   
@@ -74,7 +74,7 @@ EVENT:
     DO 
       time1 = Read_Timer()
     
-    UNTIL (Abs(time1 - time0) > fpar_26)
+    UNTIL (Abs(time1 - time0) > fpar_36)
  
     currentz = setpointz
   
