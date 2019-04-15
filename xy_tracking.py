@@ -31,7 +31,6 @@ from lantz.drivers.andor import ccd
 import drivers.ADwin as ADwin
 
 
-
 class Frontend(QtGui.QFrame):
     
     liveviewSignal = pyqtSignal(bool)
@@ -133,20 +132,68 @@ class Frontend(QtGui.QFrame):
         self.img.setImage(img, autoLevels=False)
         
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
-    def get_data(self, time, xPosition, yPosition):
+    def get_data(self, time, xData, yData):
         
-        self.xCurve.setData(time, xPosition)
-        self.yCurve.setData(time, yPosition)
+        self.xCurve.setData(time, xData)
+        self.yCurve.setData(time, yData)
         
-#        print('xPosition', xPosition)
-#        print('yPosition', yPosition)
-#        print('time', time)
+        self.xyDataItem.setData(xData, yData)
         
+        if len(xData) > 2:
+        
+            cov = np.cov(xData, yData)
+            
+            a, b, theta = tools.cov_ellipse(cov, nsig=1)
+            
+            xmean = np.mean(xData)
+            ymean = np.mean(yData)
+            
+#            print(xmean, ymean)
+#            print(type(xmean))
+            
+            t = np.linspace(0, 2 * np.pi, 1000)
+            
+            x = np.sqrt(a) * np.cos(t + theta) + np.mean(xData)
+            y = np.sqrt(b) * np.sin(t + theta) + np.mean(yData)
+            
+            self.xyDataEllipse.setData(x, y)
+            self.xyDataMean.setData([xmean], [ymean])
+        
+    @pyqtSlot(bool, bool, bool)
+    def get_backend_states(self, tracking, feedback, savedata):
+        
+        print('get_backend_states')
+        
+        if tracking is True:
+            
+            self.trackingBeadsBox.setChecked(True)
+        
+        if tracking is False:
+            
+            self.trackingBeadsBox.setChecked(False)
+            
+        if feedback is True:
+            
+            self.feedbackLoopBox.setChecked(True)
+            
+        if feedback is False:
+            
+            self.feedbackLoopBox.setChecked(False)
+            
+        if savedata is True:
+            
+            self.saveDataBox.setChecked(True)
+            
+        if savedata is False:
+            
+            self.saveDataBox.setChecked(False)
+
     def emit_save_data_state(self):
         
         if self.saveDataBox.isChecked():
             
             self.saveDataSignal.emit(True)
+            self.emit_roi_info()
             
         else:
             
@@ -156,9 +203,9 @@ class Frontend(QtGui.QFrame):
             
         backend.changedImage.connect(self.get_image)
         backend.changedData.connect(self.get_data)
+        backend.updateGUIcheckboxSignal.connect(self.get_backend_states)
         
     def setup_gui(self):
-        
         
         # GUI layout
         
@@ -171,15 +218,19 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(320)
-        self.paramWidget.setFixedWidth(150)
+        self.paramWidget.setFixedHeight(200)
+        self.paramWidget.setFixedWidth(250)
         
         grid.addWidget(self.paramWidget, 0, 1)
         
         # image widget layout
         
         imageWidget = pg.GraphicsLayoutWidget()
+        imageWidget.setMinimumHeight(350)
+        imageWidget.setMinimumWidth(350)
+        
         self.vb = imageWidget.addViewBox(row=0, col=0)
+        self.vb.setAspectLocked(True)
         self.vb.setMouseMode(pg.ViewBox.RectMode)
         self.img = pg.ImageItem()
         self.img.translate(-0.5, -0.5)
@@ -205,6 +256,7 @@ class Frontend(QtGui.QFrame):
         # xy drift graph (graph without a fixed range)
         
         self.xyGraph = pg.GraphicsWindow()
+#        self.xyGraph.resize(200, 300)
         self.xyGraph.setAntialiasing(True)
         
         self.xyGraph.statistics = pg.LabelItem(justify='right')
@@ -219,9 +271,32 @@ class Frontend(QtGui.QFrame):
         
         self.xyGraph.yPlot = self.xyGraph.addPlot(row=0, col=0)
         self.xyGraph.yPlot.setLabels(bottom=('Time', 's'),
-                            left=('X position', 'nm'))
+                                     left=('X position', 'nm'))
         self.xyGraph.yPlot.showGrid(x=True, y=True)
         self.yCurve = self.xyGraph.yPlot.plot(pen='r')
+        
+        # xy drift graph (2D point plot)
+        
+        self.xyPoint = pg.GraphicsWindow()
+        self.xyPoint.resize(400, 400)
+        self.xyPoint.setAntialiasing(False)
+        
+#        self.xyPoint.xyPointPlot = self.xyGraph.addPlot(col=1)
+#        self.xyPoint.xyPointPlot.showGrid(x=True, y=True)
+        
+        self.xyplotItem = self.xyPoint.addPlot()
+        self.xyplotItem.showGrid(x=True, y=True)
+        self.xyplotItem.setLabels(bottom=('X position', 'nm'),
+                                  left=('Y position', 'nm'))
+        
+        self.xyDataItem = self.xyplotItem.plot([], pen=None, symbolBrush=(255,0,0), 
+                                               symbolSize=5, symbolPen=None)
+        
+        self.xyDataMean = self.xyplotItem.plot([], pen=None, symbolBrush=(117, 184, 200), 
+                                               symbolSize=5, symbolPen=None)
+        
+        self.xyDataEllipse = self.xyplotItem.plot(pen=(117, 184, 200))
+
         
         # LiveView Button
 
@@ -251,12 +326,8 @@ class Frontend(QtGui.QFrame):
         
         # turn ON/OFF feedback loop
         
-        self.feedbackLoopBox = QtGui.QCheckBox('Closed loop')
-        
-        # turn ON/OFF tcspc feedback loop
-        
-        self.tcspcFeedbackBox = QtGui.QCheckBox('tcpsc feedback loop')
-        
+        self.feedbackLoopBox = QtGui.QCheckBox('Feedback loop')
+
         # save data signal
         
         self.saveDataBox = QtGui.QCheckBox("Save data")
@@ -276,13 +347,16 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.ROIButton, 1, 0)
         subgrid.addWidget(self.delete_roiButton, 2, 0)
         subgrid.addWidget(self.exportDataButton, 3, 0)
-        subgrid.addWidget(self.trackingBeadsBox, 4, 0)
-        subgrid.addWidget(self.saveDataBox, 5, 0)
-        subgrid.addWidget(self.feedbackLoopBox, 6, 0)
-        subgrid.addWidget(self.tcspcFeedbackBox, 7, 0)  # TO DO: put this in the tcpsc widget (plus signals, etc) and not here
-        subgrid.addWidget(self.clearDataButton, 8, 0)
+        subgrid.addWidget(self.clearDataButton, 4, 0)
+        subgrid.addWidget(self.trackingBeadsBox, 1, 1)
+        subgrid.addWidget(self.feedbackLoopBox, 2, 1)
+        subgrid.addWidget(self.saveDataBox, 3, 1)
+
+#        subgrid.addWidget(self.tcspcFeedbackBox, 7, 0)  # TO DO: put this in the tcpsc widget (plus signals, etc) and not here
+
         
         grid.addWidget(self.xyGraph, 1, 0)
+        grid.addWidget(self.xyPoint, 1, 1)
         
         
     def closeEvent(self, *args, **kwargs):
@@ -295,6 +369,7 @@ class Backend(QtCore.QObject):
     
     changedImage = pyqtSignal(np.ndarray)
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
+    updateGUIcheckboxSignal = pyqtSignal(bool, bool, bool)
 
     XYdriftCorrectionIsDone = pyqtSignal(float, float, float)  # signal to emit new piezo position after drift correction
     
@@ -311,7 +386,7 @@ class Backend(QtCore.QObject):
         
         # folder
         
-        today = str(date.today()).replace('-', '')
+        today = str(date.today()).replace('-', '')  # TO DO: change to get folder from microscope
         root = r'C:\\Data\\'
         folder = root + today
         
@@ -319,16 +394,13 @@ class Backend(QtCore.QObject):
         self.filename = folder + filename
         
         self.viewtimer = QtCore.QTimer()
-        self.viewtimer.timeout.connect(self.update_view)
+        self.viewtimer.timeout.connect(self.update)
         
         self.tracking_value = False
         self.save_data_state = False
         self.feedback_active = False
-        self.confocal_correction = False
-        self.tcspc_feedback = False
-        self.n = 0  # number of frames that it are averaged, 0 means no average
-        self.i = 0  # update counter
-        self.npoints = 400
+
+        self.npoints = 1200
         self.buffersize = 30000
         
         self.currentx = 0
@@ -342,7 +414,7 @@ class Backend(QtCore.QObject):
     def setup_camera(self):
         
         self.pxSize = 80  # in nm
-        self.shape = (512, 512)
+        self.shape = (512, 512) # TO DO: change to 256 x 256
         self.expTime = 0.300   # in sec
         
         self.andor.set_exposure_time(self.expTime)
@@ -424,12 +496,7 @@ class Backend(QtCore.QObject):
         self.andor.start_acquisition()
         
         time.sleep(self.expTime * 2)
-        
-#        t0 = time.time()
-#        t1 = time.time()
-#        while t1 - t0 < 0.5:
-#            t1 = time.time()
-        
+          
         self.image = self.andor.most_recent_image16(self.shape)
 
         self.changedImage.emit(self.image)
@@ -443,65 +510,88 @@ class Backend(QtCore.QObject):
         self.andor.abort_acquisition()
 #        self.andor.shutter(0, 2, 0, 0, 0)  # TO DO: implement toggle shutter
                     
-    def update_view(self):
-        """ Image update while in Liveview mode
-        """
-
-        self.image = self.andor.most_recent_image16(self.shape)
-        self.changedImage.emit(self.image)
+    def update(self):
+        """ General update method """
+        
+        self.update_view()
 
         if self.tracking_value:
                 
-#            print('tracking value', self.tracking_value)
             self.tracking()
-            self.update()
+            self.update_graph_data()
+            
+    def update_view(self):
+        """ Image update while in Liveview mode """
+
+        self.image = self.andor.most_recent_image16(self.shape)
+        self.changedImage.emit(self.image)
+            
+    def update_graph_data(self):
+        """ Update the data displayed in the graphs """
+
+        self.xPosition = self.x
+        self.yPosition = self.y
+
+        if self.ptr < self.npoints:
+            self.xData[self.ptr] = self.xPosition
+            self.yData[self.ptr] = self.yPosition
+            self.time[self.ptr] = self.currentTime
+            
+            self.changedData.emit(self.time[0:self.ptr + 1],
+                                  self.xData[0:self.ptr + 1],
+                                  self.yData[0:self.ptr + 1])
+
+        else:
+            self.xData[:-1] = self.xData[1:]
+            self.xData[-1] = self.xPosition
+            self.yData[:-1] = self.yData[1:]
+            self.yData[-1] = self.yPosition
+            self.time[:-1] = self.time[1:]
+            self.time[-1] = self.currentTime
+            
+            self.changedData.emit(self.time, self.xData, self.yData)
+
+        self.ptr += 1
     
-    @pyqtSlot()
-    def toggle_tracking(self):
+    @pyqtSlot(bool)
+    def toggle_tracking(self, val):
+        ''' Toggles ON/OFF tracking of fiducial fluorescent beads. 
+        Drift correction feedback loop is not automatically started.'''
         
         self.startTime = time.time()
         
-        if self.tracking_value is False:
+        if val is True:
+            
             self.tracking_value = True
-            self.confocal_correction = False
             self.counter = 0
             
             self.reset()
             self.reset_data_arrays()
         
-        else:
+        if val is False:
         
             self.tracking_value = False
-
             
-    @pyqtSlot()
-    def toggle_feedback(self):
-        ''' toggles continous feedback for MINFLUX measurement '''
+    @pyqtSlot(bool)
+    def toggle_feedback(self, val):
+        ''' Toggles ON/OFF feedback for either continous (TCSPC) 
+        or discrete (confocal imaging) correction'''
         
-        if self.feedback_active is False:
+        if val is True:
+            
             self.feedback_active = True
 
+            # set up and start actuator process
+            
+            self.set_actuator_param()
+            self.adw.Start_Process(4)
+            
             print('Feedback loop ON')
             
-        else:
+        if val is False:
             
             self.feedback_active = False
             print('Feedback loop OFF')
-            
-    @pyqtSlot()
-    def toggle_tcspc_feedback(self):
-        ''' toggles continous feedback for MINFLUX measurement '''
-        
-        if self.tcspc_feedback is False:
-            self.tcspc_feedback = True
-            self.xy_tcspc_correction()
-
-            print('Feedback loop for tcspc measurement: ON')
-            
-        else:
-            
-            self.tcspc_feedback = False
-            print('Feedback loop for tcspc measurement: OFF')
             
     def gaussian_fit(self):
         
@@ -514,11 +604,11 @@ class Backend(QtCore.QObject):
 
         array = self.image[xmin:xmax, ymin:ymax]
         
-        result = Image.fromarray(self.image.astype('uint16'))
-        result.save(r'C:\Data\{}.tiff'.format('512x512'))
-        
-        result = Image.fromarray(array.astype('uint16'))
-        result.save(r'C:\Data\{}.tiff'.format('20x20'))
+#        result = Image.fromarray(self.image.astype('uint16'))
+#        result.save(r'C:\Data\{}.tiff'.format('512x512'))
+#        
+#        result = Image.fromarray(array.astype('uint16')) # TO DO: clean up this save
+#        result.save(r'C:\Data\{}.tiff'.format('20x20'))
         
         # set new reference frame
         
@@ -585,14 +675,20 @@ class Backend(QtCore.QObject):
             
     def tracking(self):
         
-#        print('tracking started...')
+        """ 
+        Function to track fiducial markers (fluorescent beads) from the selected ROI.
+        The position of the beads is calculated through a guassian fit. 
+        If feedback_active = True it also corrects for drifts in xy
+        If save_data_state = True it saves the xy data
         
-#        try:
-        self.gaussian_fit()
+        """
+        
+        try:
+            self.gaussian_fit()
             
-#        except(ValueError):
-#            
-#            print('Gaussian fit did not work')
+        except(RuntimeError, ValueError):
+            
+            print('Gaussian fit did not work')
                
         if self.initial is True:
             
@@ -604,8 +700,6 @@ class Backend(QtCore.QObject):
         self.x = self.currentx - self.initialx
         self.y = self.currenty - self.initialy
         
-#        print('self.x, self.y', self.x, self.y)
-    
         self.currentTime = time.time() - self.startTime
         
         if self.save_data_state:
@@ -620,6 +714,7 @@ class Backend(QtCore.QObject):
                 
                 self.export_data()
                 self.reset_data_arrays()
+                
                 print('Data array, longer than buffer size, data_array reset')
                 
         if self.feedback_active:
@@ -640,8 +735,8 @@ class Backend(QtCore.QObject):
                     dx = correct_factor * dx
                 
                 dx = - (self.x)/1000 # conversion to µm
-                
-                print('dx', dx)
+
+#                print('dx', dx)
                 
             if np.abs(self.y) > threshold:
                 
@@ -651,7 +746,7 @@ class Backend(QtCore.QObject):
                 
                 dy = - (self.y)/1000 # conversion to µm
                 
-                print('dy', dy)
+#                print('dy', dy)
         
             if dx > security_thr or dy > security_thr:
                 
@@ -659,187 +754,50 @@ class Backend(QtCore.QObject):
                 
             else:
                 
-#                print('move To part entered')
+                # compensate for the mismatch between camera/piezo system of reference
                 
-                self.piezoXposition = self.piezoXposition + dy  # TO DO: clean-up x/y labeling
-                self.piezoYposition = self.piezoYposition + dx
+                theta = np.radians(-3.7)   # 86.3 (or 3.7) is the angle between camera and piezo (measured)
+                c, s = np.cos(theta), np.sin(theta)
+                R = np.array(((c,-s), (s, c)))
                 
-                self.moveTo(self.piezoXposition, self.piezoYposition, self.piezoZposition)
-                         
-        self.counter += 1
-        print('counter', self.counter)
-        
-    def tracking_XY(self): # TO DO: merge with tracking(), they are almost the same!!
-        
-#        print('tracking started...')
-        
-#        try:
-        self.gaussian_fit()
-            
-#        except(ValueError):
-#            
-#            print('Gaussian fit did not work')
-               
-        if self.initial is True:
-            
-            self.initialx = self.currentx
-            self.initialy = self.currenty
-            
-            self.initial = False
-            
-        self.x = self.currentx - self.initialx
-        self.y = self.currenty - self.initialy
-        
-#        print('self.x, self.y', self.x, self.y)
+                dy, dx = np.dot(R, np.asarray([dx, dy]))
+                
+                # add correction to piezo position
     
-        self.currentTime = time.time() - self.startTime
-        
-        if self.save_data_state:
-            
-            self.time_array[self.j] = self.currentTime
-            self.x_array[self.j] = self.x
-            self.y_array[self.j] = self.y
-            
-            self.j += 1
-            
-            if self.j >= (self.buffersize - 5):    # TO DO: -5 bad fix
+                self.piezoXposition = self.piezoXposition + dx  
+                self.piezoYposition = self.piezoYposition + dy  
                 
-                self.export_data()
-                self.reset_data_arrays()
-                print('Data array, longer than buffer size, data_array reset')
-                
-        if self.tcspc_feedback:
-            
-#            print('feedback starting...')
-            
-            dx = 0
-            dy = 0
-            threshold = 7
-            far_threshold = 15
-            correct_factor = 0.6
-            security_thr = 0.2 # in µm
-            
-            if np.abs(self.x) > threshold:
-                
-                if dx < far_threshold:
-                    
-                    dx = correct_factor * dx
-                
-                dx = - (self.x)/1000 # conversion to µm
-                
-                print('dx', dx)
-                
-            if np.abs(self.y) > threshold:
-                
-                if dy < far_threshold:
-                    
-                    dy = correct_factor * dy
-                
-                dy = - (self.y)/1000 # conversion to µm
-                
-                print('dy', dy)
-        
-            if dx > security_thr or dy > security_thr:
-                
-                print('Correction movement larger than 200 nm, active correction turned OFF')
-                
-            else:
-                
-                print('tcspc move To part entered')
-                
-                self.piezoXposition = self.piezoXposition + dy  # TO DO: clean-up x/y labeling
-                self.piezoYposition = self.piezoYposition + dx
-                
-                print('self.piezoXposition, self.piezoYposition', self.piezoXposition, self.piezoYposition)
-                
-                self.moveTo_XY(self.piezoXposition, self.piezoYposition)
+                self.actuator_xy(self.piezoXposition, self.piezoYposition)
                          
-        self.counter += 1
-        print('counter', self.counter)
-                
-    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
-                         n_pixels_z=128, pixeltime=1000):
+        self.counter += 1  # counter to check how many times this function is executed
 
-        x_f = tools.convert(x_f, 'XtoU')
-        y_f = tools.convert(y_f, 'XtoU')
-        z_f = tools.convert(z_f, 'XtoU')
-
-#        print(x_f, y_f, z_f)
-
-        self.adw.Set_Par(21, n_pixels_x)
-        self.adw.Set_Par(22, n_pixels_y)
-        self.adw.Set_Par(23, n_pixels_z)
-
-        self.adw.Set_FPar(23, x_f)
-        self.adw.Set_FPar(24, y_f)
-        self.adw.Set_FPar(25, z_f)
-
-        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
-
-    def moveTo(self, x_f, y_f, z_f):
-
-        self.set_moveTo_param(x_f, y_f, z_f)
-        self.adw.Start_Process(2)
         
-    def set_moveTo_XY_param(self, x_f, y_f, n_pixels_x=128, n_pixels_y=128,
-                            pixeltime=1000): # TO DO: make all process use parameters starting with their process number: i. e. process 1  10-19, process 2 20-29
-        
-        x_f = tools.convert(x_f, 'XtoU')
-        y_f = tools.convert(y_f, 'XtoU')
-
-        self.adw.Set_Par(41, n_pixels_x)
-        self.adw.Set_Par(42, n_pixels_y)
-
-        self.adw.Set_FPar(43, x_f)
-        self.adw.Set_FPar(44, y_f)
+    def set_actuator_param(self, pixeltime=1000):
 
         self.adw.Set_FPar(46, tools.timeToADwin(pixeltime))
         
-    def moveTo_XY(self, x_f, y_f):
-        
-        print('tried to move (tcspc)')
-
-        self.set_moveTo_XY_param(x_f, y_f)
-        self.adw.Start_Process(4)
-        
-    def update(self):
-        """ Update the data displayed in the graphs
-        """
-        
-        # i counter goes from 0 to n, at n it actually does the update
-        
-        if self.i == self.n:
-            
-            self.xPosition = self.x
-            self.yPosition = self.y
+        # set-up actuator initial param
     
-            if self.ptr < self.npoints-1:
-                self.xData[self.ptr] = self.xPosition
-                self.yData[self.ptr] = self.yPosition
-                self.time[self.ptr] = self.currentTime
-                
-                self.changedData.emit(self.time[0:self.ptr + 1],
-                                      self.xData[0:self.ptr + 1],
-                                      self.yData[0:self.ptr + 1])
-    
-            else:
-                self.xData[:-1] = self.xData[0:]
-                self.xData[-1] = self.xPosition
-                self.yData[:-1] = self.yData[0:]
-                self.yData[-1] = self.yPosition
-                self.time[:-1] = self.time[0:]
-                self.time[-1] = self.currentTime
-                
-                self.changedData.emit(self.time, self.xData, self.yData)
-    
-            self.ptr += 1
+        x_f = tools.convert(self.piezoXposition, 'XtoU')
+        y_f = tools.convert(self.piezoYposition, 'XtoU')
+        
+        self.adw.Set_FPar(40, x_f)
+        self.adw.Set_FPar(41, y_f)
             
-        else:
-            
-            self.i += 1  
+        self.adw.Set_Par(40, 1)
+        
+    def actuator_xy(self, x_f, y_f):
+        
+        x_f = tools.convert(x_f, 'XtoU')
+        y_f = tools.convert(y_f, 'XtoU')
+        
+        self.adw.Set_FPar(40, x_f)
+        self.adw.Set_FPar(41, y_f)
+        
+        self.adw.Set_Par(40, 1)
             
     @pyqtSlot(bool)
-    def confocal_drift_correction(self, val): # TO DO: change name to xy_confocal_correction
+    def discrete_xy_correction(self, val): # TO DO: change name to single_xy_correction
         
         print('Feedback {}'.format(val))
         
@@ -859,56 +817,13 @@ class Backend(QtCore.QObject):
         
         self.tracking()
         
-        self.update()
+        self.update_graph_data()
         
         self.XYdriftCorrectionIsDone.emit(self.piezoXposition, 
                                           self.piezoYposition, 
                                           self.piezoZposition)
         
         print('drift correction ended...')
-        
-    @pyqtSlot()  
-    def xy_tcspc_correction(self):
-        
-        self.andor.start_acquisition()
-        
-        time.sleep(self.expTime * 2.5)
-        
-        self.image = self.andor.most_recent_image16(self.shape)
-
-        self.changedImage.emit(self.image)
-        
-        self.andor.abort_acquisition()
-        
-        self.tracking_XY()
-        
-        self.update()
-        
-        self.XYtcspcIsDone.emit() 
-    
-    @pyqtSlot()       
-    def get_z_tscpsc_signal(self):
-        
-        if self.tcspc_feedback:
-        
-            self.XYtcspcCorrection.emit()
-            
-        else:
-            
-            print('xyz tcspc drift correction stopped')
-        
-        
-    @pyqtSlot(dict)
-    def get_scan_parameters(self, params):
-#        
-#        frameTime = params['frameTime']
-#        pxSize = params['pxSize']
-#        maxCounts = params['maxCounts']
-        self.initialPos = params['initialPos']
-        
-        self.piezoXposition, self.piezoYposition, self.piezoZposition = self.initialPos
-        
-        print('positions from scanner', self.piezoXposition, self.piezoYposition, self.piezoZposition)
             
     def reset(self):
         
@@ -928,19 +843,16 @@ class Backend(QtCore.QObject):
         self.x_array = np.zeros(self.buffersize, dtype=np.float16)
         self.y_array = np.zeros(self.buffersize, dtype=np.float16)
         
-    @pyqtSlot(bool)
-    def get_save_data_state(self, val):
-        
-        self.save_data_state = val
-        print('save_data_state = {}'.format(val))
         
     def export_data(self):
+        
+        """
+        Exports the x, y and t data into a .txt file
+        """
 
         fname = self.filename
-        print('fname', fname)
         filename = tools.getUniqueName(fname)
-        filename = filename + '.txt'
-        print('filename', filename)
+        filename = filename + '_xydata.txt'
         
         size = self.j
         savedData = np.zeros((3, size))
@@ -949,9 +861,24 @@ class Backend(QtCore.QObject):
         savedData[1, :] = self.x_array[0:self.j]
         savedData[2, :] = self.y_array[0:self.j]
         
-        np.savetxt(filename, savedData.T) # transpose for easier loading
+        np.savetxt(filename, savedData.T,  header='t (s), x (nm), y(nm)') # transpose for easier loading
         
-        print('xy data exported')
+        print('xy data exported to', filename)
+        
+    @pyqtSlot(bool)
+    def get_save_data_state(self, val):
+        
+        self.save_data_state = val
+        print('save_data_state = {}'.format(val))
+    
+    @pyqtSlot(dict)
+    def get_scan_parameters(self, params):
+
+        self.initialPos = params['initialPos']
+        
+        self.piezoXposition, self.piezoYposition, self.piezoZposition = self.initialPos
+        
+        print('positions from scanner', self.piezoXposition, self.piezoYposition, self.piezoZposition)
         
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
@@ -960,22 +887,117 @@ class Backend(QtCore.QObject):
         self.ROIcoordinates = coordinates_array.astype(int)
         print('got ROI coordinates')
         
+    @pyqtSlot(bool, str)   
+    def get_tcspc_signal(self, val, fname):
+        
+        """ 
+        Get signal to start/stop xy position tracking and lock during 
+        tcspc acquisition. It also gets the name of the tcspc file to produce
+        the corresponding xy_data file
+        
+        bool val
+        True: starts the tracking and feedback loop
+        False: stops saving the data and exports the data during tcspc measurement
+        tracking and feedback are not stopped automatically 
+        
+        """
+        
+        self.filename = fname
+        
+        if val is True:
+            
+            self.reset()
+            self.reset_data_arrays()
+            
+            self.toggle_tracking(True)
+            self.toggle_feedback(True)
+            self.save_data_state = True
+            
+        else:
+            
+            self.export_data()
+            self.save_data_state = False
+            
+        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+                                          self.feedback_active, 
+                                          self.save_data_state)
+        
+    @pyqtSlot(bool, str)   
+    def get_scan_signal(self, val, fname):
+        
+        """ 
+        Get signal to stop continous xy tracking/feedback if active and to
+        go to discrete xy tracking/feedback mode if required
+        """
+    @pyqtSlot(float, np.ndarray)    
+    def get_minflux_signal(self, acqtime, r):
+        
+        x_f, y_f = r
+        z_f = tools.convert(adw.Get_FPar(52), 'UtoX')
+        
+        self.aux_moveTo(x_f, y_f, z_f)
+        
+        self.toggle_tracking(True)
+        self.toggle_feedback(True)
+        self.save_data_state = True
+        
+        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+                                          self.feedback_active, 
+                                          self.save_data_state)
+        
+    def set_aux_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+                         n_pixels_z=128, pixeltime=2000):
+
+        x_f = tools.convert(x_f, 'XtoU')
+        y_f = tools.convert(y_f, 'XtoU')
+        z_f = tools.convert(z_f, 'XtoU')
+
+        self.adw.Set_Par(21, n_pixels_x)
+        self.adw.Set_Par(22, n_pixels_y)
+        self.adw.Set_Par(23, n_pixels_z)
+
+        self.adw.Set_FPar(23, x_f)
+        self.adw.Set_FPar(24, y_f)
+        self.adw.Set_FPar(25, z_f)
+
+        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
+
+    def aux_moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
+
+        self.set_aux_moveTo_param(x_f, y_f, z_f)
+        self.adw.Start_Process(2)
+        
     def make_connection(self, frontend):
             
         frontend.liveviewSignal.connect(self.liveview)
-#        frontend.liveviewButton.clicked.connect(self.liveview)
-        frontend.trackingBeadsBox.stateChanged.connect(self.toggle_tracking)
         frontend.roiInfoSignal.connect(self.get_roi_info)
         frontend.closeSignal.connect(self.stop)
         frontend.saveDataSignal.connect(self.get_save_data_state)
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
-        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
-        frontend.tcspcFeedbackBox.stateChanged.connect(self.toggle_tcspc_feedback)
-
+        frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
+        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+        
+        # lambda function and gui_###_state are used to toggle both backend
+        # states and checkbox status so that they always correspond 
+        # (checked <-> active, not checked <-> inactive)
         
     def stop(self):
+        
+        self.viewtimer.stop()
+        
+        try:
+            
+            self.andor.abort_acquisition()
+            
+        except:  # TO DO: write this code properly
+            
+            pass
+                
+        self.andor.shutter(0, 2, 0, 0, 0)
+            
+        self.andor.finalize()
         
         # Go back to 0 position
 
@@ -983,18 +1005,7 @@ class Backend(QtCore.QObject):
         y_0 = 0
         z_0 = 0
 
-        self.moveTo(x_0, y_0, z_0)
-        
-        self.andor.shutter(0, 2, 0, 0, 0)
-        
-        try:
-            self.andor.abort_acquisition()
-            
-        except:  # TO DO: write this code properly
-            
-            pass
-            
-        self.andor.finalize()
+        self.aux_moveTo(x_0, y_0, z_0)
         
 
 if __name__ == '__main__':
@@ -1015,15 +1026,15 @@ if __name__ == '__main__':
     gui.make_connection(worker)
     worker.make_connection(gui)
     
-    # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
+    # initialize fpar_70, fpar_71, fpar_72 ADwin position parameters
         
     pos_zero = tools.convert(0, 'XtoU')
         
-    worker.adw.Set_FPar(50, pos_zero)
-    worker.adw.Set_FPar(51, pos_zero)
-    worker.adw.Set_FPar(52, pos_zero)
+    worker.adw.Set_FPar(70, pos_zero)
+    worker.adw.Set_FPar(71, pos_zero)
+    worker.adw.Set_FPar(72, pos_zero)
     
-    worker.moveTo(10, 10, 10) # in µm
+    worker.aux_moveTo(10, 10, 10) # in µm
     
     time.sleep(0.200)
     

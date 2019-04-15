@@ -13,6 +13,8 @@
 '<Header End>
 'process moveto: moveto_xyz by luciano a. masullo
 
+'Parameters from 20 to 29 are used
+
 'function to do a single (smooth) movement to desired position
 
 'par_21: number of x pixels
@@ -25,12 +27,9 @@
 
 'fpar_26: pixeltime
 
-'fpar_50: keeps track of x position of the piezo
-'fpar_51: keeps track of y position of the piezo
-'fpar_52: keeps track of z position of the piezo
-
-
-
+'fpar_70: keeps track of x position of the piezo
+'fpar_71: keeps track of y position of the piezo
+'fpar_72: keeps track of z position of the piezo
 
 #INCLUDE .\data-acquisition.inc
 
@@ -46,9 +45,9 @@ INIT:
   time0 = 0
   time1 = 0
 
-  currentx = fpar_50
-  currenty = fpar_51
-  currentz = fpar_52
+  currentx = fpar_70
+  currenty = fpar_71
+  currentz = fpar_72
   
   setpointx = fpar_23 
   setpointy = fpar_24
@@ -70,9 +69,6 @@ INIT:
   dx = (setpointx-currentx)/Nx
   dy = (setpointy-currenty)/Ny
   dz = (setpointz-currentz)/Nz
-  
-  
-  
 
 EVENT:
 
@@ -99,9 +95,9 @@ EVENT:
   DAC(2, currenty)
   DAC(6, currentz)
   
-  fpar_50 = currentx
-  fpar_51 = currenty
-  fpar_52 = currentz
+  fpar_70 = currentx
+  fpar_71 = currenty
+  fpar_72 = currentz
   
   p = 1 'error margin in ADwin units at which the moveTo is completed with currentpos = setpointpos
   
@@ -130,9 +126,9 @@ EVENT:
     DAC(2, currenty)
     DAC(6, currentz)
     
-    fpar_50 = currentx
-    fpar_51 = currenty
-    fpar_52 = currentz
+    fpar_70 = currentx
+    fpar_71 = currenty
+    fpar_72 = currentz
     
     End
    

@@ -10,25 +10,29 @@
 ' Optimize_Level                 = 2
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
-' Foldings                       = 75,83
+' Foldings                       = 79,87
 '<Header End>
 'process 1: linescan_x by luciano a. masullo
-'derived from xyz-profile_c.bas
+
+'Parameters from 1 to 19 are used
+
+'function to do a line scan (+ one-step movement in slow axis)
 'x --> fast axis
 'y --> slow axis
 
 'par_2 = 0 'flag meaning process started
-'par_30: digital input = 0 (APD), analog input = 1 (photodiode)
+'par_3: digital input = 0 (APD), analog input = 1 (photodiode)
 
+'fpar_2: y_offset
 'fpar_6: scan pixeltime (measured)
 'fpar_9: pixel time (setpoint
 
 'fpar_10: 1 = x, 2 = y, 6 = z
 'fpar_11: 1 = x, 2 = y, 6 = z
 
-'fpar_50: keeps track of x position of the piezo
-'fpar_51: keeps track of y position of the piezo
-'fpar_52: keeps track of z position of the piezo
+'fpar_70: keeps track of x position of the piezo
+'fpar_71: keeps track of y position of the piezo
+'fpar_72: keeps track of z position of the piezo
 
 'data_1: counter 1 (APD 1)
 'data_2: time array
@@ -86,7 +90,7 @@ EVENT:
     
   UNTIL (Abs(time1 - time0) > px_time)
 
-  if (par_30 = 0) then
+  if (par_3 = 0) then
     
     co1 = cnt_read(1) 'read counter
     data_1 = co1 - co1old 'calculate counts in the current pixel
@@ -94,7 +98,7 @@ EVENT:
     
   endif
 
-  if (par_30 = 1) then
+  if (par_3 = 1) then
     
     signal = ADC(3) - ai_offset
     data_1 = signal
@@ -113,11 +117,11 @@ EVENT:
   DAC(fpar_10, currentx) 'move one step in x
   DAC(fpar_11, currenty) 'y position (typically constant after intial dy during aux time)'
   
-  if (fpar_10 = 1) then fpar_50 = currentx
-  if (fpar_10 = 2) then fpar_51 = currentx
+  if (fpar_10 = 1) then fpar_70 = currentx
+  if (fpar_10 = 2) then fpar_71 = currentx
   
-  if (fpar_11 = 2) then fpar_51 = currenty
-  if (fpar_11 = 6) then fpar_52 = currenty
+  if (fpar_11 = 2) then fpar_71 = currenty
+  if (fpar_11 = 6) then fpar_72 = currenty
 
   
   INC(i) 'update x pixel counter

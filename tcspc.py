@@ -7,6 +7,7 @@ Created on Tue Jan 15 14:14:14 2019
 
 import numpy as np
 import time
+from datetime import date
 import os
 import matplotlib.pyplot as plt
 import tools.tools as tools
@@ -22,6 +23,10 @@ from pyqtgraph.dockarea import Dock, DockArea
 import tools.viewbox_tools as viewbox_tools
 import drivers.picoharp as picoharp
 import PicoHarp.Read_PTU as Read_PTU
+import drivers.ADwin as ADwin
+import scan
+
+
 import tools.pyqtsubclass as pyqtsc
 import tools.colormaps as cmaps
 
@@ -82,7 +87,6 @@ class Frontend(QtGui.QFrame):
     
     @pyqtSlot(np.ndarray, np.ndarray)    
     def plot_data(self, relTime, absTime):
-
     
         counts, bins = np.histogram(relTime, bins=100) # TO DO: choose proper binning
         self.histPlot.plot(bins[0:-1], counts)
@@ -98,9 +102,7 @@ class Frontend(QtGui.QFrame):
 #        plt.plot(time[0:-1], timetrace)
 #        plt.xlabel('time (ms)')
 #        plt.ylabel('counts')
-        
-        self.readButton.setChecked(False)
-        
+                
     def clear_data(self):
         
         self.histPlot.clear()
@@ -119,8 +121,8 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(420)
-        self.paramWidget.setFixedWidth(200)
+        self.paramWidget.setFixedHeight(400)
+        self.paramWidget.setFixedWidth(300)
         
 #        phParamTitle = QtGui.QLabel('<h2><strong>TCSPC settings</strong></h2>')
         phParamTitle = QtGui.QLabel('<h2>TCSPC settings</h2>')
@@ -130,21 +132,30 @@ class Frontend(QtGui.QFrame):
         
         self.dataWidget = pg.GraphicsLayoutWidget()
         
+        # Shutter button
+        
+        self.shutterButton = QtGui.QPushButton('Shutter open/close')
+        self.shutterButton.setCheckable(True)
+        
         # Measure button
 
         self.measureButton = QtGui.QPushButton('Measure')
         self.measureButton.setCheckable(True)
         self.measureButton.clicked.connect(self.start_measurement)
         
+        # forced stop measurement
+        
+        self.stopButton = QtGui.QPushButton('Stop')
+        
         # exportData button
         
         self.exportDataButton = QtGui.QPushButton('Export data')
-        self.exportDataButton.setCheckable(True)
+#        self.exportDataButton.setCheckable(True)
         
         # Clear data
         
         self.clearButton = QtGui.QPushButton('Clear data')
-        self.clearButton.setCheckable(True)
+#        self.clearButton.setCheckable(True)
         self.clearButton.clicked.connect(self.clear_data)    
         
         # TCSPC parameters
@@ -172,9 +183,22 @@ class Frontend(QtGui.QFrame):
                                 left=('counts'))
         
         # folder
+        
+        # TO DO: move this to backend
+        
+        today = str(date.today()).replace('-', '')
+        root = r'C:\\Data\\'
+        folder = root + today
+        
+        try:  
+            os.mkdir(folder)
+        except OSError:  
+            print ("Directory %s already exists" % folder)
+        else:  
+            print ("Successfully created the directory %s " % folder)
 
         self.folderLabel = QtGui.QLabel('Folder')
-        self.folderEdit = QtGui.QLineEdit(self.initialDir)
+        self.folderEdit = QtGui.QLineEdit(folder)
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
         self.browseFolderButton.clicked.connect(self.load_folder)
@@ -191,34 +215,40 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(phParamTitle, 0, 0, 2, 3)
 
         subgrid.addWidget(self.acqtimeLabel, 2, 0)
-        subgrid.addWidget(self.acqtimeEdit, 3, 0)
+        subgrid.addWidget(self.acqtimeEdit, 2, 1)
         subgrid.addWidget(self.resolutionLabel, 4, 0)
-        subgrid.addWidget(self.resolutionEdit, 5, 0)
+        subgrid.addWidget(self.resolutionEdit, 4, 1)
         subgrid.addWidget(self.offsetLabel, 6, 0)
-        subgrid.addWidget(self.offsetEdit, 7, 0)
+        subgrid.addWidget(self.offsetEdit, 6, 1)
         subgrid.addWidget(self.channel0Label, 8, 0)
         subgrid.addWidget(self.channel1Label, 9, 0)
         
         subgrid.addWidget(self.filenameLabel, 11, 0)
-        subgrid.addWidget(self.filenameEdit, 12, 0)
+        subgrid.addWidget(self.filenameEdit, 11, 1)
         subgrid.addWidget(self.folderLabel, 13, 0)
-        subgrid.addWidget(self.folderEdit, 14, 0)
+        subgrid.addWidget(self.folderEdit, 13, 1)
         subgrid.addWidget(self.browseFolderButton, 15, 0)
         
-        subgrid.addWidget(self.measureButton, 17, 0)
-        subgrid.addWidget(self.exportDataButton, 19, 0)
-        subgrid.addWidget(self.clearButton, 20, 0)
+        subgrid.addWidget(self.shutterButton, 17, 0)
+        subgrid.addWidget(self.measureButton, 18, 0)
+        subgrid.addWidget(self.stopButton, 19, 0)
+#        subgrid.addWidget(self.exportDataButton, 20, 0)
+        subgrid.addWidget(self.clearButton, 21, 0)
         
 class Backend(QtCore.QObject):
 
     ctRatesSignal = pyqtSignal(float, float)
     readDataSignal = pyqtSignal(np.ndarray, np.ndarray)
     
-    def __init__(self, ph_device, *args, **kwargs): 
+    xyzSignal = pyqtSignal(bool, str)
+    
+    def __init__(self, ph_device, adwin, *args, **kwargs): 
         
         super().__init__(*args, **kwargs)
           
         self.ph = ph_device 
+        self.adw = adwin
+        self.shutter_state = False
         
     def measure_count_rate(self):
         
@@ -255,8 +285,11 @@ class Backend(QtCore.QObject):
 
         self.currentfname = tools.getUniqueName(self.fname)
         
-        self.prepare_ph()
+        delay = 4.0 # 4.0 s is the typical time that the PH takes to start a measurement
         
+        self.xyzSignal.emit(True, self.currentfname)
+        
+        self.prepare_ph()
         self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
                                   ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
 
@@ -265,8 +298,19 @@ class Backend(QtCore.QObject):
         print('starting the PH measurement took {} s'.format(t1-t0))
 
         self.ph.startTTTR(self.currentfname)
-        
         np.savetxt(self.currentfname + '.txt', [])
+        
+        while self.ph.measure_state is not 'done':
+            pass
+        
+        self.xyzSignal.emit(False, self.currentfname)
+        self.export_data()
+        
+    def stop_measure(self):
+        
+        # TO DO: make this function
+        
+        print('stop measure function')
 
     def export_data(self):
         
@@ -321,15 +365,40 @@ class Backend(QtCore.QObject):
         self.fname = paramlist[0]
         self.resolution = paramlist[1]
         self.tacq = paramlist[2]
-        self.folder = paramlist[3]
+        self.folder = paramlist[3]      
+        
+    @pyqtSlot(bool)
+    def toggle_shutter(self, val):
+        
+        if val is True:
+            
+            self.shutter_state = True
+            
+            self.adw.Set_Par(55, 0)
+            self.adw.Set_Par(50, 1)
+            self.adw.Set_Par(57, 1)
+            self.adw.Start_Process(5)
+            
+            print('shutter opened')
+            
+        if val is False:
+            
+            self.shutte_state = False
+            
+            self.adw.Set_Par(55, 0)
+            self.adw.Set_Par(50, 0)
+            self.adw.Set_Par(57, 1)
+            self.adw.Start_Process(5)
 
-        print(paramlist)
+            print('shutter closed')
 
     def make_connection(self, frontend):
 
         frontend.paramSignal.connect(self.get_frontend_parameters)
         frontend.measureSignal.connect(self.measure)
+        frontend.stopButton.clicked.connect(self.stop_measure)
         frontend.exportDataButton.clicked.connect(self.export_data)
+        frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
 
 
     def stop(self):
@@ -343,8 +412,12 @@ if __name__ == '__main__':
     app.setStyle(QtGui.QStyleFactory.create('fusion'))
 #    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 
+    DEVICENUMBER = 0x1
+    adw = ADwin.ADwin(DEVICENUMBER, 1)
+    scan.setupDevice(adw)
+
     ph = picoharp.PicoHarp300()
-    worker = Backend(ph)
+    worker = Backend(ph, adw)
     gui = Frontend()
     
     workerThread = QtCore.QThread()

@@ -146,8 +146,37 @@ class Backend(QtCore.QObject):
         
         self.scanWorker = scan.Backend(adw)
         self.focusWorker = focus.Backend(scmos, adw)
-        self.tcspcWorker = tcspc.Backend(ph)
+        self.tcspcWorker = tcspc.Backend(ph, adw)
         self.xyWorker = xy_tracking.Backend(ccd, adw)
+        
+        self.i = 0 # counter
+        self.n = 1
+        self.acqtime = 1 # in s
+        self.r = np.array([0, 0])
+        
+    def start_minflux_meas(self):
+        
+        """ Starts minflux measurement
+        
+        n positions 
+        with acqtime in each position
+        
+        """
+        
+        self.tcspcStartSignal.emit()
+        self.xyzStartSignal.emit(self.acqtime, self.r[0, :])
+     
+    @pyqtSlot()    
+    def get_xy_done_signal(self):
+        
+        if self.i < self.n:
+        
+            self.xyMoveAndLockSignal.emit(self.acqtime, self.r[self.i, :])
+            self.i += 1
+            
+        else:
+            
+            print('MINFLUX measurement done')
 
     def make_connection(self, frontend):
         
@@ -163,7 +192,7 @@ class Backend(QtCore.QObject):
         self.focusWorker.stop()
         self.tcspcWorker.stop()
         self.xyWorker.stop()
-        
+
         
 class psf_meas_widget(QtGui.QWidget):
      
@@ -224,7 +253,7 @@ if __name__ == '__main__':
     
     # confocal drift correction connections
     
-    worker.scanWorker.frameIsDone.connect(worker.xyWorker.confocal_drift_correction)
+    worker.scanWorker.frameIsDone.connect(worker.xyWorker.discrete_xy_correction)
     worker.xyWorker.XYdriftCorrectionIsDone.connect(worker.focusWorker.confocal_drift_correction)
     worker.focusWorker.ZdriftCorrectionIsDone.connect(worker.scanWorker.get_drift_corrected_param)
     worker.scanWorker.paramSignal.connect(worker.xyWorker.get_scan_parameters)
@@ -234,26 +263,29 @@ if __name__ == '__main__':
     
     # tcspc drift correction connections
     
-    worker.xyWorker.XYtcspcIsDone.connect(worker.focusWorker.tcspc_drift_correction)
-    worker.focusWorker.ZtcspcIsDone.connect(worker.xyWorker.get_z_tscpsc_signal)
-    worker.xyWorker.XYtcspcCorrection.connect(worker.xyWorker.xy_tcspc_correction)
+#    worker.xyWorker.XYtcspcIsDone.connect(worker.focusWorker.tcspc_drift_correction)
+#    worker.focusWorker.ZtcspcIsDone.connect(worker.xyWorker.get_z_tscpsc_signal)
+#    worker.xyWorker.XYtcspcCorrection.connect(worker.xyWorker.xy_tcspc_correction)
 
-    gui.xyWidget.tcspcFeedbackBox.stateChanged.connect(worker.focusWorker.setup_feedback)
+#    gui.xyWidget.tcspcFeedbackBox.stateChanged.connect(worker.focusWorker.setup_feedback)
     
     # tcspc export data connections    # TO DO: turn this all into MINFLUX measurement
     
-    gui.tcspcWidget.exportDataButton.clicked.connect(worker.xyWorker.export_data)
-    gui.tcspcWidget.exportDataButton.clicked.connect(worker.focusWorker.export_data)
+#    gui.tcspcWidget.exportDataButton.clicked.connect(worker.xyWorker.export_data)
+#    gui.tcspcWidget.exportDataButton.clicked.connect(worker.focusWorker.export_data)
     
     # tcspc measure connections
     
-    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset)
-    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset_data_arrays)
-    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset)
-    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset_data_arrays)
+    worker.tcspcWorker.xyzSignal.connect(worker.xyWorker.get_tcspc_signal)
+    worker.tcspcWorker.xyzSignal.connect(worker.focusWorker.get_tcspc_signal)
     
-    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.xyWorker.get_save_data_state(True))
-    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.focusWorker.get_save_data_state(True))
+#    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset)
+#    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset_data_arrays)
+#    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset)
+#    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset_data_arrays)
+#    
+#    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.xyWorker.get_save_data_state(True))
+#    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.focusWorker.get_save_data_state(True))
 
     # initial parameters
     

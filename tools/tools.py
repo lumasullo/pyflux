@@ -9,6 +9,7 @@ import numpy as np
 import configparser
 import os
 import matplotlib.pyplot as plt
+from scipy.stats import norm, chi2
 
 def convert(x, key):
     
@@ -297,4 +298,39 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
         signal_s = signal_y + (z_i - scan_range/2)
 
     return signal_time, signal_f, signal_s
+
+def cov_ellipse(cov, q=None, nsig=None, **kwargs):
+    """
+    Plot of covariance ellipse
+    
+    Parameters
+    ----------
+    cov : (2, 2) array
+        Covariance matrix.
+    q : float, optional
+        Confidence level, should be in (0, 1)
+    nsig : int, optional
+        Confidence level in unit of standard deviations. 
+        E.g. 1 stands for 68.3% and 2 stands for 95.4%.
+    Returns
+    -------
+    width(w), height(h), rotation(theta in degrees):
+         The lengths of two axises and the rotation angle in degree
+    for the ellipse.
+    """
+    if q is not None:
+        q = np.asarray(q)
+    elif nsig is not None:
+        q = 2 * norm.cdf(nsig) - 1
+    else:
+        raise ValueError('One of `q` and `nsig` should be specified.')
+    r2 = chi2.ppf(q, 2)
+    
+    val, vec =  np.linalg.eig(cov)
+    order = val.argsort()[::]
+    val = val[order]
+    vec = vec[order]
+    w, h = 2 * np.sqrt(val[:, None] * r2)
+    theta = np.degrees(np.arctan2(*vec[::, 0]))
+    return w, h, theta
     

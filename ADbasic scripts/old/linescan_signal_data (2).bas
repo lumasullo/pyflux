@@ -19,7 +19,7 @@
 'y --> slow axis
 
 'par_2 = 0 'flag meaning process started
-'par_30: digital input = 0 (APD), analog input = 1 (photodiode)
+'par_3: digital input = 0 (APD), analog input = 1 (photodiode)
 
 'fpar_6: scan pixeltime (measured)
 'fpar_9: pixel time (setpoint
@@ -87,7 +87,7 @@ EVENT:
     
   UNTIL (Abs(time1 - time0) > px_time)
 
-  if (par_30 = 0) then
+  if (par_3 = 0) then
     
     co1 = cnt_read(1) 'read counter
     data_1 = co1 - co1old 'calculate counts in the current pixel
@@ -95,7 +95,7 @@ EVENT:
     
   endif
 
-  if (par_30 = 1) then
+  if (par_3 = 1) then
     
     signal = ADC(3) - ai_offset
     data_1 = signal

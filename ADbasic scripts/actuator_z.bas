@@ -14,22 +14,24 @@
 '<Header End>
 'process actuator_z: actuator_z by luciano a. masullo
 
-'actuator for focus lock feedback loop
+'Parameters from 30 to 39 are used
+
+'function to actuate in an ON/OFF z feedback loop.
+'WARNING: the movement is not supposed to be smooth, therefore this script is to be used for small corrections ( < 200 nm)
 
 'par_33 = number of pixels
 
 'fpar_35 = setpoint z
 'fpar_36: pixel time
 
-'fpar_52 = currentz
+'fpar_72 = currentz
 
 
 #INCLUDE .\data-acquisition.inc
 
 dim currentz as float at dm_local
 dim setpointz as float at dm_local
-dim dz as float at dm_local
-dim Nz,p as long at dm_local
+dim flag as long at dm_local
 dim time0, time1 as float at dm_local
 
 
@@ -37,57 +39,32 @@ INIT:
   
   time0 = 0
   time1 = 0
-
-  currentz = fpar_52
-  setpointz = fpar_35
   
-  if (setpointz > POSMAX) then setpointz = POSMAX 'check that set x position is not higher than POSMAX
-  if (setpointz < POSMIN) then setpointz = POSMIN 'check that set x position is not lower than POSMIN
-  
-  Nz = par_33
-
-  dz = (setpointz-currentz)/Nz
-  
-
 EVENT:
-
+  
+  'This loop holds the actuator until the flag is passed to start the actual function
+  DO
+    flag = par_30
+  UNTIL (flag = 1)
+ 
+  setpointz = fpar_32
+  
+  if (currentz > POSMAX) then currentz = POSMAX 'check that set x position is not higher than POSMAX
+  if (currentz < POSMIN) then currentz = POSMIN 'check that set x position is not lower than POSMIN
+  
+  currentz = setpointz
+  
+  DAC(6, currentz)
+  
+  fpar_72 = currentz
+  
+  par_30 = 0
+    
   time0 = Read_Timer() 
   DO 
     time1 = Read_Timer()
     
-  UNTIL (Abs(time1 - time0) > fpar_36)
-    
-  currentz = currentz + dz
-  
-  if (currentz > POSMAX) then currentz = POSMAX 'check that set x position is not higher than POSMAX
-  if (currentz < POSMIN) then currentz = POSMIN 'check that set x position is not lower than POSMIN
-
-  DAC(6, currentz)
-
-  fpar_52 = currentz
-  
-  p = 1 'error margin in ADwin units at which the moveTo is completed with currentpos = setpointpos
-  
-  if (Abs(currentz - setpointz) < p) then
-    
-    time0 = Read_Timer() 
-    DO 
-      time1 = Read_Timer()
-    
-    UNTIL (Abs(time1 - time0) > fpar_36)
- 
-    currentz = setpointz
-  
-    if (currentz > POSMAX) then currentz = POSMAX 'check that set x position is not higher than POSMAX
-    if (currentz < POSMIN) then currentz = POSMIN 'check that set x position is not lower than POSMIN
-
-    DAC(6, currentz)
-    
-    fpar_52 = currentz
-    
-    End
-   
-  endif  
+  UNTIL (Abs(time1 - time0) > fpar_36) 
   
 
 FINISH:

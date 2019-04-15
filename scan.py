@@ -38,11 +38,12 @@ from tools.lineprofile import linePlotWidget
 def setupDevice(adw):
 
     BTL = "ADwin11.btl"
-    PROCESS_1 = "linescan_signal_data.TB1"
+    PROCESS_1 = "line_scan.TB1"
     PROCESS_2 = "moveto_xyz.TB2"
     PROCESS_3 = "actuator_z.TB3"
-    PROCESS_4 = "moveto_xy.TB4"
-
+    PROCESS_4 = "actuator_xy.TB4"
+    PROCESS_5 = "shutter.TB5"
+    
     btl = adw.ADwindir + BTL
     adw.Boot(btl)
 
@@ -53,12 +54,14 @@ def setupDevice(adw):
     process_2 = os.path.join(process_folder, PROCESS_2)
     process_3 = os.path.join(process_folder, PROCESS_3)
     process_4 = os.path.join(process_folder, PROCESS_4)
+    process_5 = os.path.join(process_folder, PROCESS_5)
     
     adw.Load_Process(process_1)
     adw.Load_Process(process_2)
     adw.Load_Process(process_3)
     adw.Load_Process(process_4)
-
+    adw.Load_Process(process_5)
+    
     
 class Frontend(QtGui.QFrame):
     
@@ -541,8 +544,12 @@ class Frontend(QtGui.QFrame):
 
         self.stopAcquireFrameButton = QtGui.QPushButton('Stop acquisition')
         self.stopAcquireFrameButton.setCheckable(True)
-#        self.stopAcquireFrameButton.clicked.connect(self.toggle_frame_acq)     
+#        self.stopAcquireFrameButton.clicked.connect(self.toggle_frame_acq)   
         
+        # Shutter button
+        
+        self.shutterButton = QtGui.QPushButton('Shutter open/close')
+        self.shutterButton.setCheckable(True)
         
         # Save current frame button
 
@@ -738,7 +745,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.scanModeLabel, 2, 1)
         subgrid.addWidget(self.scanMode, 3, 1)
         subgrid.addWidget(self.detectorType, 4, 1)
-
+        
+        subgrid.addWidget(self.shutterButton, 5, 1, 2, 1)
         subgrid.addWidget(self.liveviewButton, 6, 1, 2, 1)
         subgrid.addWidget(self.currentFrameButton, 8, 1)
         subgrid.addWidget(self.ROIButton, 9, 1)
@@ -785,7 +793,7 @@ class Frontend(QtGui.QFrame):
         
     
 
-        self.paramWidget.setFixedHeight(500)
+        self.paramWidget.setFixedHeight(400)
         self.paramWidget.setFixedWidth(450)
         
         subgrid.setColumnMinimumWidth(1, 130)
@@ -876,7 +884,6 @@ class Backend(QtCore.QObject):
         super().__init__(*args, **kwargs)
         
         self.adw = adwin
-        self.edited_scan = True
         self.saveScanData = False
         self.feedback_active = False
         
@@ -884,16 +891,18 @@ class Backend(QtCore.QObject):
         
         self.newFrameSignal.connect(self.frame_acquisition)
         
+        # edited_scan: True --> size of the useful part of the scan
+        # edited_scan: False --> size of the full scan including aux parts
         
-        # edited_scan = True --> size of the useful part of the scan
-        # edited_scan = False --> size of the full scan including aux parts
+        self.edited_scan = True
         
-        self.APDmaxCounts = 5*10**6   # 5MHz is max count rate of the P. Elmer APD
+        # 5MHz is max count rate of the P. Elmer APD
+        
+        self.APDmaxCounts = 5*10**6   
 
         # Create a timer for the update of the liveview
 
         self.viewtimer = QtCore.QTimer()
-#        self.viewtimer.timeout.connect(self.update_view)
 
         # Counter for the saved images
 
@@ -903,22 +912,13 @@ class Backend(QtCore.QObject):
 
         self.flag = 0
         
-        # initialize flag for the xy drift feedback loop
-        
-        self.driftFlag = 0  # TO DO: delete these parameters, not needed anymore
-        self.adw.Set_Par(40, 0)
-
-#        # update parameters
-#
-#        self.paramChanged()
-        
         # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
         
         pos_zero = tools.convert(0, 'XtoU')
         
-        self.adw.Set_FPar(50, pos_zero)
-        self.adw.Set_FPar(51, pos_zero)
-        self.adw.Set_FPar(52, pos_zero)
+        self.adw.Set_FPar(70, pos_zero)
+        self.adw.Set_FPar(71, pos_zero)
+        self.adw.Set_FPar(72, pos_zero)
         
         # move to z = 10 µm
 
@@ -1045,10 +1045,10 @@ class Backend(QtCore.QObject):
     def update_device_param(self):
         
         if self.detector == 'APD':
-            self.adw.Set_Par(30, 0)  # Digital input (APD)
+            self.adw.Set_Par(3, 0)  # Digital input (APD)
 
         if self.detector == 'photodiode':
-            self.adw.Set_Par(30, 1)  # Analog input (photodiode)
+            self.adw.Set_Par(3, 1)  # Analog input (photodiode)
 
         # select scan type
 
@@ -1069,8 +1069,6 @@ class Backend(QtCore.QObject):
 
         #  initial positions x and y
         
-        print('self.initialPos', self.initialPos)
-
         self.x_i = self.initialPos[0]
         self.y_i = self.initialPos[1]
         self.z_i = self.initialPos[2]
@@ -1226,17 +1224,6 @@ class Backend(QtCore.QObject):
         if self.frame_acquisition_ON: # TO DO: change by taking into account number of frames wished or GUI signal
             
             self.newFrameSignal.emit(True)
-        
-        
-    def read_position(self):
-
-        xPos = self.adw.Get_FPar(50)
-        yPos = self.adw.Get_FPar(51)
-        zPos = self.adw.Get_FPar(52)
-
-        self.xPos = tools.convert(xPos, 'UtoX')
-        self.yPos = tools.convert(yPos, 'UtoX')
-        self.zPos = tools.convert(zPos, 'UtoX') 
         
     def plot_scan_signal(self):
         
@@ -1500,6 +1487,32 @@ class Backend(QtCore.QObject):
                 self.frame_acquisition_stop()
                 
             self.update_device_param()  
+            
+    @pyqtSlot(bool)
+    def toggle_shutter(self, val):
+        
+        if val is True:
+            
+            self.shutter_state = True
+            
+            self.adw.Set_Par(55, 0)
+            self.adw.Set_Par(50, 1)
+            self.adw.Set_Par(57, 1)
+            self.adw.Start_Process(5)
+            
+            print('shutter opened')
+            
+        if val is False:
+            
+            self.shutte_state = False
+            
+            self.adw.Set_Par(55, 0)
+            self.adw.Set_Par(50, 0)
+            self.adw.Set_Par(57, 1)
+            self.adw.Start_Process(5)
+
+            print('shutter closed')
+
                       
     def make_connection(self, frontend):
         
@@ -1514,6 +1527,8 @@ class Backend(QtCore.QObject):
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
         frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
+        frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
+
         
         frontend.xUpButton.pressed.connect(lambda: self.relative_move('x', 'up'))
         frontend.xDownButton.pressed.connect(lambda: self.relative_move('x', 'down'))

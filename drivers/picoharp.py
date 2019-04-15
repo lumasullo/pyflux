@@ -187,11 +187,14 @@ class PicoHarp300(LibraryDriver):
         
         print('TCSPC measurement started')
         
+
+        
         outputfile = open(outputfilename, "wb+") 
         progress = 0
        
         self.lib.PH_StartMeas(ctypes.c_int(DEV_NUM), ctypes.c_int(self.tacq))
         meas = True
+        self.measure_state = 'measuring'
         
         while meas is True:
             self.lib.PH_GetFlags(ctypes.c_int(DEV_NUM), byref(self.flags))
@@ -226,6 +229,7 @@ class PicoHarp300(LibraryDriver):
                     self.stopTTTR()
                     print('{} events recorded'.format(self.numRecords))
                     meas = False
+                    self.measure_state = 'done'
                     
     def stopTTTR(self):
         

@@ -1,5 +1,5 @@
 '<ADbasic Header, Headerversion 001.001>
-' Process_Number                 = 4
+' Process_Number                 = 2
 ' Initial_Processdelay           = 3000
 ' Eventsource                    = Timer
 ' Control_long_Delays_for_Stop   = No
@@ -11,27 +11,30 @@
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
 '<Header End>
-'process moveto: moveto_xy by luciano a. masullo
+'process moveto: moveto_xyz by luciano a. masullo
 
 'function to do a single (smooth) movement to desired position
 
-'par_41: number of x pixels
-'par_42: number of y pixels
+'par_21: number of x pixels
+'par_22: number of y pixels
+'par_23: number of z pixels
 
-'fpar43: setpoint x
-'fpar44: setpoint y
+'fpar23: setpoint x
+'fpar24: setpoint y
+'fpar25: setpoint z
 
-'fpar_46: pixeltime
+'fpar_26: pixeltime
 
-'fpar_50: keeps track of x position of the piezo
-'fpar_51: keeps track of y position of the piezo
+'fpar_70: keeps track of x position of the piezo
+'fpar_71: keeps track of y position of the piezo
+'fpar_72: keeps track of z position of the piezo
 
 #INCLUDE .\data-acquisition.inc
 
-dim currentx, currenty as float at dm_local
-dim setpointx, setpointy as float at dm_local
-dim dx, dy as float at dm_local
-dim Nx,Ny,p as long at dm_local
+dim currentx, currenty, currentz as float at dm_local
+dim setpointx, setpointy, setpointz as float at dm_local
+dim dx, dy, dz as float at dm_local
+dim Nx,Ny,Nz,p as long at dm_local
 dim time0, time1 as float at dm_local
 
 
@@ -40,11 +43,13 @@ INIT:
   time0 = 0
   time1 = 0
 
-  currentx = fpar_50
-  currenty = fpar_51
+  currentx = fpar_70
+  currenty = fpar_71
+  currentz = fpar_72
   
-  setpointx = fpar_43 
-  setpointy = fpar_44
+  setpointx = fpar_23 
+  setpointy = fpar_24
+  setpointz = fpar_25
   
   if (setpointx > POSMAX) then setpointx = POSMAX 'check that set x position is not higher than POSMAX
   if (setpointx < POSMIN) then setpointx = POSMIN 'check that set x position is not lower than POSMIN
@@ -52,11 +57,16 @@ INIT:
   if (setpointy > POSMAX) then setpointy = POSMAX 'check that set x position is not higher than POSMAX
   if (setpointy < POSMIN) then setpointy = POSMIN 'check that set x position is not lower than POSMIN
   
-  Nx = par_41
-  Ny = par_42
+  if (setpointz > POSMAX) then setpointz = POSMAX 'check that set x position is not higher than POSMAX
+  if (setpointz < POSMIN) then setpointz = POSMIN 'check that set x position is not lower than POSMIN
+  
+  Nx = par_21
+  Ny = par_22
+  Nz = par_23
  
   dx = (setpointx-currentx)/Nx
   dy = (setpointy-currenty)/Ny
+  dz = (setpointz-currentz)/Nz
 
 EVENT:
 
@@ -64,47 +74,59 @@ EVENT:
   DO 
     time1 = Read_Timer()
     
-  UNTIL (Abs(time1 - time0) > fpar_46)
+  UNTIL (Abs(time1 - time0) > fpar_26)
     
   currentx = currentx + dx
   currenty = currenty + dy
+  currentz = currentz + dz
   
   if (currentx > POSMAX) then currentx = POSMAX 'check that set x position is not higher than POSMAX
   if (currentx < POSMIN) then currentx = POSMIN 'check that set x position is not lower than POSMIN
   
   if (currenty > POSMAX) then currenty = POSMAX 'check that set x position is not higher than POSMAX
   if (currenty < POSMIN) then currenty = POSMIN 'check that set x position is not lower than POSMIN
+  
+  if (currentz > POSMAX) then currentz = POSMAX 'check that set x position is not higher than POSMAX
+  if (currentz < POSMIN) then currentz = POSMIN 'check that set x position is not lower than POSMIN
 
   DAC(1, currentx)
   DAC(2, currenty)
+  DAC(6, currentz)
   
-  fpar_50 = currentx
-  fpar_51 = currenty
+  fpar_70 = currentx
+  fpar_71 = currenty
+  fpar_72 = currentz
   
   p = 1 'error margin in ADwin units at which the moveTo is completed with currentpos = setpointpos
   
-  if (((Abs(currentx - setpointx) < p) & (Abs(currenty - setpointy) < p))) then
+  if (((Abs(currentx - setpointx) < p) & (Abs(currenty - setpointy) < p)) & (Abs(currentz - setpointz) < p)) then
     
     time0 = Read_Timer() 
     DO 
       time1 = Read_Timer()
     
-    UNTIL (Abs(time1 - time0) > fpar_46)
+    UNTIL (Abs(time1 - time0) > fpar_26)
   
     currentx = setpointx
     currenty = setpointy
+    currentz = setpointz
   
     if (currentx > POSMAX) then currentx = POSMAX 'check that set x position is not higher than POSMAX
     if (currentx < POSMIN) then currentx = POSMIN 'check that set x position is not lower than POSMIN
   
     if (currenty > POSMAX) then currenty = POSMAX 'check that set x position is not higher than POSMAX
     if (currenty < POSMIN) then currenty = POSMIN 'check that set x position is not lower than POSMIN
+  
+    if (currentz > POSMAX) then currentz = POSMAX 'check that set x position is not higher than POSMAX
+    if (currentz < POSMIN) then currentz = POSMIN 'check that set x position is not lower than POSMIN
 
     DAC(1, currentx)
     DAC(2, currenty)
+    DAC(6, currentz)
     
-    fpar_50 = currentx
-    fpar_51 = currenty
+    fpar_70 = currentx
+    fpar_71 = currenty
+    fpar_72 = currentz
     
     End
    
