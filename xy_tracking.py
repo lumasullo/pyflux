@@ -8,7 +8,7 @@ Created on Tue Jan 15 11:59:13 2019
 import numpy as np
 import time
 import ctypes as ct
-from datetime import date
+from datetime import date, datetime
 
 import matplotlib.pyplot as plt
 import pyqtgraph as pg
@@ -124,7 +124,7 @@ class Frontend(QtGui.QFrame):
             self.liveviewButton.setChecked(False)
             self.emit_roi_info()
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
-            print('live view stopped')
+            print(datetime.now(), '[xy_tracking] Live view stopped')
         
     @pyqtSlot(np.ndarray)
     def get_image(self, img):
@@ -140,29 +140,44 @@ class Frontend(QtGui.QFrame):
         self.xyDataItem.setData(xData, yData)
         
         if len(xData) > 2:
+            
+            self.plot_ellipse(xData, yData)
         
-            cov = np.cov(xData, yData)
+    def plot_ellipse(self, x_array, y_array):
+        
+        pass
+        
+#            cov = np.cov(x_array, y_array)
+#            
+#            a, b, theta = tools.cov_ellipse(cov, q=.683)
+#            
+#            theta = theta + np.pi/2            
+##            print(a, b, theta)
+#            
+#            xmean = np.mean(xData)
+#            ymean = np.mean(yData)
+#            
+#            t = np.linspace(0, 2 * np.pi, 1000)
+#            
+#            c, s = np.cos(theta), np.sin(theta)
+#            R = np.array(((c, -s), (s, c)))
+#            
+#            coord = np.array([a * np.cos(t), b * np.sin(t)])
+#            
+#            coord_rot = np.dot(R, coord)
+#            
+#            x = coord_rot[0] + xmean
+#            y = coord_rot[1] + ymean
             
-            a, b, theta = tools.cov_ellipse(cov, nsig=1)
+            # TO DO: fix plot of ellipse
             
-            xmean = np.mean(xData)
-            ymean = np.mean(yData)
-            
-#            print(xmean, ymean)
-#            print(type(xmean))
-            
-            t = np.linspace(0, 2 * np.pi, 1000)
-            
-            x = np.sqrt(a) * np.cos(t + theta) + np.mean(xData)
-            y = np.sqrt(b) * np.sin(t + theta) + np.mean(yData)
-            
-            self.xyDataEllipse.setData(x, y)
-            self.xyDataMean.setData([xmean], [ymean])
+#            self.xyDataEllipse.setData(x, y)
+#            self.xyDataMean.setData([xmean], [ymean])
         
     @pyqtSlot(bool, bool, bool)
     def get_backend_states(self, tracking, feedback, savedata):
         
-        print('get_backend_states')
+#        print(datetime.now(), '[xy_tracking] Got backend states')
         
         if tracking is True:
             
@@ -375,6 +390,8 @@ class Backend(QtCore.QObject):
     
     XYtcspcIsDone = pyqtSignal()
     XYtcspcCorrection = pyqtSignal()
+    
+    partialMinfluxMeasDone = pyqtSignal()
 
     def __init__(self, andor, adw, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -420,7 +437,7 @@ class Backend(QtCore.QObject):
         self.andor.set_exposure_time(self.expTime)
         self.andor.set_image(shape=self.shape)
         
-        print('FOV size = {}'.format(self.shape))
+        print(datetime.now(), '[xy_tracking] FOV size = {}'.format(self.shape))
 
         # Temperature
 
@@ -430,7 +447,7 @@ class Backend(QtCore.QObject):
         # Frame transfer mode
         
         self.andor.frame_transfer_mode = True
-        print('Frame transfer mode =', self.andor.frame_transfer_mode)
+        print(datetime.now(), '[xy_tracking] Frame transfer mode =', self.andor.frame_transfer_mode)
 
         # Horizontal readout speed
 
@@ -440,28 +457,28 @@ class Backend(QtCore.QObject):
         self.andor.lib.SetHSSpeed(ct.c_int(ad), ct.c_int(typ), ct.c_int(index))
         
         hrate = self.andor.true_horiz_shift_speed(index=0, typ=0, ad=1)
-        print('Horizontal readout rate = {} MHz'.format(hrate.magnitude))
+        print(datetime.now(), '[xy_tracking] Horizontal readout rate = {} MHz'.format(hrate.magnitude))
         
         # pre-amp GAIN
 
         self.andor.preamp = 2  # index 2 for preamp gain = 4.7 
         
         gain = self.andor.true_preamp(2)
-        print('PreAmp gain = {}'.format(np.round(gain, 1)))
+        print(datetime.now(), '[xy_tracking] PreAmp gain = {}'.format(np.round(gain, 1)))
 
         # EM GAIN
         
         self.andor.EM_gain_mode = 'DAC255'
         self.andor.EM_gain = 1  # EM gain set to 100
 
-        print('EM gain = {}'.format(self.andor.EM_gain))
+        print(datetime.now(), '[xy_tracking] EM gain = {}'.format(self.andor.EM_gain))
     
         # Vertical shift speed
         
         self.andor.vert_shift_speed = 4
         
         vspeed = self.andor.true_vert_shift_speed(4)
-        print('Vertical shift speed = {} µs'.format(np.round(vspeed.magnitude,
+        print(datetime.now(), '[xy_tracking] Vertical shift speed = {} µs'.format(np.round(vspeed.magnitude,
                                                              1)))
         
     def initialize_camera(self):
@@ -469,7 +486,7 @@ class Backend(QtCore.QObject):
         cam = 0
         self.andor.current_camera = self.andor.camera_handle(cam)
         self.andor.lib.Initialize()
-        print('idn:', self.andor.idn)
+        print(datetime.now(), '[xy_tracking] idn:', self.andor.idn)
     
     @pyqtSlot(bool)
     def liveview(self, value):
@@ -485,13 +502,13 @@ class Backend(QtCore.QObject):
         
         self.initial = True
         
-        print('Temperature = {} °C'.format(self.andor.temperature))
-        print(self.andor.temperature_status)
+        print(datetime.now(), '[xy_tracking] Temperature = {} °C'.format(self.andor.temperature))
+        print(datetime.now(), '[xy_tracking] Andor temperature status:', self.andor.temperature_status)
 
         # Initial image
         
         self.andor.acquisition_mode = 'Run till abort'
-        print('Acquisition mode:', self.andor.acquisition_mode)
+        print(datetime.now(), '[xy_tracking] Acquisition mode:', self.andor.acquisition_mode)
         self.andor.shutter(0, 1, 0, 0, 0)
         self.andor.start_acquisition()
         
@@ -513,6 +530,8 @@ class Backend(QtCore.QObject):
     def update(self):
         """ General update method """
         
+        print(datetime.now(), '[xy_tracking] entered update')
+        
         self.update_view()
 
         if self.tracking_value:
@@ -528,13 +547,10 @@ class Backend(QtCore.QObject):
             
     def update_graph_data(self):
         """ Update the data displayed in the graphs """
-
-        self.xPosition = self.x
-        self.yPosition = self.y
-
+        
         if self.ptr < self.npoints:
-            self.xData[self.ptr] = self.xPosition
-            self.yData[self.ptr] = self.yPosition
+            self.xData[self.ptr] = self.x
+            self.yData[self.ptr] = self.y
             self.time[self.ptr] = self.currentTime
             
             self.changedData.emit(self.time[0:self.ptr + 1],
@@ -543,9 +559,9 @@ class Backend(QtCore.QObject):
 
         else:
             self.xData[:-1] = self.xData[1:]
-            self.xData[-1] = self.xPosition
+            self.xData[-1] = self.x
             self.yData[:-1] = self.yData[1:]
-            self.yData[-1] = self.yPosition
+            self.yData[-1] = self.y
             self.time[:-1] = self.time[1:]
             self.time[-1] = self.currentTime
             
@@ -586,12 +602,12 @@ class Backend(QtCore.QObject):
             self.set_actuator_param()
             self.adw.Start_Process(4)
             
-            print('Feedback loop ON')
+            print(datetime.now(), '[xy_tracking] Feedback loop ON')
             
         if val is False:
             
             self.feedback_active = False
-            print('Feedback loop OFF')
+            print(datetime.now(), '[xy_tracking] Feedback loop OFF')
             
     def gaussian_fit(self):
         
@@ -688,7 +704,7 @@ class Backend(QtCore.QObject):
             
         except(RuntimeError, ValueError):
             
-            print('Gaussian fit did not work')
+            print(datetime.now(), '[xy_tracking] Gaussian fit did not work')
                
         if self.initial is True:
             
@@ -715,7 +731,7 @@ class Backend(QtCore.QObject):
                 self.export_data()
                 self.reset_data_arrays()
                 
-                print('Data array, longer than buffer size, data_array reset')
+                print(datetime.now(), '[xy_tracking] Data array, longer than buffer size, data_array reset')
                 
         if self.feedback_active:
             
@@ -750,7 +766,7 @@ class Backend(QtCore.QObject):
         
             if dx > security_thr or dy > security_thr:
                 
-                print('Correction movement larger than 200 nm, active correction turned OFF')
+                print(datetime.now(), '[xy_tracking] Correction movement larger than 200 nm, active correction turned OFF')
                 
             else:
                 
@@ -763,6 +779,9 @@ class Backend(QtCore.QObject):
                 dy, dx = np.dot(R, np.asarray([dx, dy]))
                 
                 # add correction to piezo position
+                
+                self.piezoXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
+                self.piezoYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
     
                 self.piezoXposition = self.piezoXposition + dx  
                 self.piezoYposition = self.piezoYposition + dy  
@@ -777,6 +796,9 @@ class Backend(QtCore.QObject):
         self.adw.Set_FPar(46, tools.timeToADwin(pixeltime))
         
         # set-up actuator initial param
+        
+        self.piezoXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
+        self.piezoYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
     
         x_f = tools.convert(self.piezoXposition, 'XtoU')
         y_f = tools.convert(self.piezoYposition, 'XtoU')
@@ -788,6 +810,8 @@ class Backend(QtCore.QObject):
         
     def actuator_xy(self, x_f, y_f):
         
+        print(datetime.now(), '[xy_tracking] actuator x, y =', x_f, y_f)
+        
         x_f = tools.convert(x_f, 'XtoU')
         y_f = tools.convert(y_f, 'XtoU')
         
@@ -797,9 +821,9 @@ class Backend(QtCore.QObject):
         self.adw.Set_Par(40, 1)
             
     @pyqtSlot(bool)
-    def discrete_xy_correction(self, val): # TO DO: change name to single_xy_correction
+    def single_xy_correction(self, val): # TO DO: change name to single_xy_correction
         
-        print('Feedback {}'.format(val))
+        print(datetime.now(), '[xy_tracking] Feedback {}'.format(val))
         
         self.feedback_active = val
         
@@ -819,11 +843,9 @@ class Backend(QtCore.QObject):
         
         self.update_graph_data()
         
-        self.XYdriftCorrectionIsDone.emit(self.piezoXposition, 
-                                          self.piezoYposition, 
-                                          self.piezoZposition)
+        self.singleXYCorrectionIsDone.emit()
         
-        print('drift correction ended...')
+        print(datetime.now(), '[xy_tracking] single xy correction ended')
             
     def reset(self):
         
@@ -863,79 +885,34 @@ class Backend(QtCore.QObject):
         
         np.savetxt(filename, savedData.T,  header='t (s), x (nm), y(nm)') # transpose for easier loading
         
-        print('xy data exported to', filename)
+        print(datetime.now(), '[xy_tracking] xy data exported to', filename)
         
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
         
         self.save_data_state = val
-        print('save_data_state = {}'.format(val))
+        print(datetime.now(), '[xy_tracking] save_data_state = {}'.format(val))
     
-    @pyqtSlot(dict)
-    def get_scan_parameters(self, params):
-
-        self.initialPos = params['initialPos']
-        
-        self.piezoXposition, self.piezoYposition, self.piezoZposition = self.initialPos
-        
-        print('positions from scanner', self.piezoXposition, self.piezoYposition, self.piezoZposition)
-        
+#    @pyqtSlot(dict)
+#    def get_scan_parameters(self, params):
+#
+#        self.initialPos = params['initialPos']
+#        self.piezoXposition, self.piezoYposition, self.piezoZposition = self.initialPos
+#        
+#        print(datetime.now(), '[xy_tracking] Got scan position')
+                
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
         
 #        self.numberOfROIs = N
         self.ROIcoordinates = coordinates_array.astype(int)
-        print('got ROI coordinates')
+        print(datetime.now(), '[xy_tracking] got ROI coordinates')
+     
+    @pyqtSlot()    
+    def get_lock_signal(self):
         
-    @pyqtSlot(bool, str)   
-    def get_tcspc_signal(self, val, fname):
-        
-        """ 
-        Get signal to start/stop xy position tracking and lock during 
-        tcspc acquisition. It also gets the name of the tcspc file to produce
-        the corresponding xy_data file
-        
-        bool val
-        True: starts the tracking and feedback loop
-        False: stops saving the data and exports the data during tcspc measurement
-        tracking and feedback are not stopped automatically 
-        
-        """
-        
-        self.filename = fname
-        
-        if val is True:
-            
-            self.reset()
-            self.reset_data_arrays()
-            
-            self.toggle_tracking(True)
-            self.toggle_feedback(True)
-            self.save_data_state = True
-            
-        else:
-            
-            self.export_data()
-            self.save_data_state = False
-            
-        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
-                                          self.feedback_active, 
-                                          self.save_data_state)
-        
-    @pyqtSlot(bool, str)   
-    def get_scan_signal(self, val, fname):
-        
-        """ 
-        Get signal to stop continous xy tracking/feedback if active and to
-        go to discrete xy tracking/feedback mode if required
-        """
-    @pyqtSlot(float, np.ndarray)    
-    def get_minflux_signal(self, acqtime, r):
-        
-        x_f, y_f = r
-        z_f = tools.convert(adw.Get_FPar(52), 'UtoX')
-        
-        self.aux_moveTo(x_f, y_f, z_f)
+        self.reset()
+        self.reset_data_arrays()
         
         self.toggle_tracking(True)
         self.toggle_feedback(True)
@@ -945,7 +922,99 @@ class Backend(QtCore.QObject):
                                           self.feedback_active, 
                                           self.save_data_state)
         
-    def set_aux_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+        print(datetime.now(), '[xy_tracking] System xy locked')
+        
+        
+#    @pyqtSlot(bool, str)   
+#    def get_tcspc_signal(self, val, fname):
+#        
+#        """ 
+#        Get signal to start/stop xy position tracking and lock during 
+#        tcspc acquisition. It also gets the name of the tcspc file to produce
+#        the corresponding xy_data file
+#        
+#        bool val
+#        True: starts the tracking and feedback loop
+#        False: stops saving the data and exports the data during tcspc measurement
+#        tracking and feedback are not stopped automatically 
+#        
+#        """
+#        
+#        self.filename = fname
+#        
+#        if val is True:
+#            
+#            self.reset()
+#            self.reset_data_arrays()
+#            
+#            self.toggle_tracking(True)
+#            self.toggle_feedback(True)
+#            self.save_data_state = True
+#            
+#        else:
+#            
+#            self.export_data()
+#            self.save_data_state = False
+#            
+#        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+#                                          self.feedback_active, 
+#                                          self.save_data_state)
+        
+    @pyqtSlot(bool, str)   
+    def get_psf_signal(self, val, fname):
+        
+        """ 
+        Get signal to stop continous xy tracking/feedback if active and to
+        go to discrete xy tracking/feedback mode if required
+        """
+    @pyqtSlot(np.ndarray)    
+    def get_minflux_signal(self, r):
+        
+        print(datetime.now(), '[xy_tracking] Got minflux measurement signal for position', r)
+        
+        # Unlock
+                
+        self.toggle_feedback(False)
+        
+        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+                                          self.feedback_active, 
+                                          self.save_data_state)
+        
+        # Move
+        
+        x_f, y_f = r
+        self.actuator_xy(x_f, y_f)
+        
+        print(datetime.now(), '[xy_tracking] Moved to', r)
+        
+        # Lock again
+        
+        self.initial = False # to lock at a new position
+        self.toggle_feedback(True)
+        
+        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+                                          self.feedback_active, 
+                                          self.save_data_state)
+        
+        self.partialMinfluxMeasDone.emit()
+        
+        print(datetime.now(), '[xy_tracking] Minflux measurement for position ', r, ' is done, moved to next position')
+       
+    @pyqtSlot(np.ndarray)   
+    def get_single_move_signal(self, pos_xy):
+        
+        z_f = tools.convert(self.adw.Get_FPar(72),'UtoX') # z_f is read from the ADwin board
+        x_f, y_f = pos_xy
+        print(datetime.now(), '[xy_tracking] x_f, y_f, z_f', x_f, y_f, z_f)
+        self.moveTo(x_f, y_f, z_f)
+    
+    @pyqtSlot(str)    
+    def get_end_measurement_signal(self, fname):
+        
+        self.filename = fname
+        self.export_data()
+    
+    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
 
         x_f = tools.convert(x_f, 'XtoU')
@@ -962,9 +1031,9 @@ class Backend(QtCore.QObject):
 
         self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
 
-    def aux_moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
+    def moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
 
-        self.set_aux_moveTo_param(x_f, y_f, z_f)
+        self.set_moveTo_param(x_f, y_f, z_f)
         self.adw.Start_Process(2)
         
     def make_connection(self, frontend):
@@ -1005,7 +1074,7 @@ class Backend(QtCore.QObject):
         y_0 = 0
         z_0 = 0
 
-        self.aux_moveTo(x_0, y_0, z_0)
+        self.moveTo(x_0, y_0, z_0)
         
 
 if __name__ == '__main__':
@@ -1034,7 +1103,7 @@ if __name__ == '__main__':
     worker.adw.Set_FPar(71, pos_zero)
     worker.adw.Set_FPar(72, pos_zero)
     
-    worker.aux_moveTo(10, 10, 10) # in µm
+    worker.moveTo(10, 10, 10) # in µm
     
     time.sleep(0.200)
     

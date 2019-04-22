@@ -7,7 +7,7 @@ Created on Tue Jan 15 14:14:14 2019
 
 import numpy as np
 import time
-from datetime import date
+from datetime import date, datetime
 import os
 import matplotlib.pyplot as plt
 import tools.tools as tools
@@ -49,19 +49,6 @@ class Frontend(QtGui.QFrame):
         
     def start_measurement(self):
         
-        filename = os.path.join(self.folderEdit.text(),
-                                self.filenameEdit.text())
-        
-        name = filename
-        res = int(self.resolutionEdit.text())
-        tacq = int(self.acqtimeEdit.text())
-        folder = self.folderEdit.text()
-        
-        paramlist = [name, res, tacq, folder]
-
-        print('paramlist', paramlist)
-        
-        self.paramSignal.emit(paramlist)
         self.measureSignal.emit()
         
         self.measureButton.setChecked(False)
@@ -79,6 +66,19 @@ class Frontend(QtGui.QFrame):
         except OSError:
             pass
         
+    def emit_param(self):
+        
+        filename = os.path.join(self.folderEdit.text(),
+                                self.filenameEdit.text())
+        
+        name = filename
+        res = int(self.resolutionEdit.text())
+        tacq = int(self.acqtimeEdit.text())
+        folder = self.folderEdit.text()
+        paramlist = [name, res, tacq, folder]
+        
+        self.paramSignal.emit(paramlist)
+        
     @pyqtSlot(float, float)
     def get_backend_parameters(self, cts0, cts1):
         
@@ -87,8 +87,8 @@ class Frontend(QtGui.QFrame):
     
     @pyqtSlot(np.ndarray, np.ndarray)    
     def plot_data(self, relTime, absTime):
-    
-        counts, bins = np.histogram(relTime, bins=100) # TO DO: choose proper binning
+        
+        counts, bins = np.histogram(relTime, bins=50) # TO DO: choose proper binning
         self.histPlot.plot(bins[0:-1], counts)
 
 #        plt.hist(relTime, bins=300)
@@ -111,7 +111,7 @@ class Frontend(QtGui.QFrame):
     def make_connection(self, backend):
         
         backend.ctRatesSignal.connect(self.get_backend_parameters)
-        backend.readDataSignal.connect(self.plot_data)
+        backend.plotDataSignal.connect(self.plot_data)
         
     def  setup_gui(self):
         
@@ -122,7 +122,7 @@ class Frontend(QtGui.QFrame):
                                        QtGui.QFrame.Raised)
         
         self.paramWidget.setFixedHeight(400)
-        self.paramWidget.setFixedWidth(300)
+        self.paramWidget.setFixedWidth(250)
         
 #        phParamTitle = QtGui.QLabel('<h2><strong>TCSPC settings</strong></h2>')
         phParamTitle = QtGui.QLabel('<h2>TCSPC settings</h2>')
@@ -141,7 +141,6 @@ class Frontend(QtGui.QFrame):
 
         self.measureButton = QtGui.QPushButton('Measure')
         self.measureButton.setCheckable(True)
-        self.measureButton.clicked.connect(self.start_measurement)
         
         # forced stop measurement
         
@@ -156,7 +155,6 @@ class Frontend(QtGui.QFrame):
         
         self.clearButton = QtGui.QPushButton('Clear data')
 #        self.clearButton.setCheckable(True)
-        self.clearButton.clicked.connect(self.clear_data)    
         
         # TCSPC parameters
 
@@ -193,16 +191,24 @@ class Frontend(QtGui.QFrame):
         try:  
             os.mkdir(folder)
         except OSError:  
-            print ("Directory %s already exists" % folder)
+            print(datetime.now(), '[tcspc] Directory {} already exists'.format(folder))
         else:  
-            print ("Successfully created the directory %s " % folder)
+            print(datetime.now(), '[tcspc] Successfully created the directory {}'.format(folder))
 
         self.folderLabel = QtGui.QLabel('Folder')
         self.folderEdit = QtGui.QLineEdit(folder)
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
-        self.browseFolderButton.clicked.connect(self.load_folder)
         
+        # GUI connections
+        
+        self.measureButton.clicked.connect(self.start_measurement)
+        self.browseFolderButton.clicked.connect(self.load_folder)
+        self.clearButton.clicked.connect(self.clear_data)    
+        
+        self.acqtimeEdit.textChanged.connect(self.emit_param)
+        self.resolutionEdit.textChanged.connect(self.emit_param)
+
         # GUI layout
 
         grid = QtGui.QGridLayout()
@@ -238,9 +244,10 @@ class Frontend(QtGui.QFrame):
 class Backend(QtCore.QObject):
 
     ctRatesSignal = pyqtSignal(float, float)
-    readDataSignal = pyqtSignal(np.ndarray, np.ndarray)
+    plotDataSignal = pyqtSignal(np.ndarray, np.ndarray)
     
-    xyzSignal = pyqtSignal(bool, str)
+#    xyzSignal = pyqtSignal(bool, str)
+    tcspcDoneSignal = pyqtSignal()
     
     def __init__(self, ph_device, adwin, *args, **kwargs): 
         
@@ -269,15 +276,12 @@ class Backend(QtCore.QObject):
         
         self.cts0 = self.ph.countrate(0)
         self.cts1 = self.ph.countrate(1)
-        
-#        self.channel0Label.setText(('Input0 (sync) = {} c/s'.format(self.cts0)))
-#        self.channel1Label.setText(('Input0 (sync) = {} c/s'.format(self.cts1)))
-        
+
         self.ctRatesSignal.emit(self.cts0, self.cts1)
   
-        print('Resolution = {} ps'.format(self.ph.resolution))
-        print('Acquisition time = {} s'.format(self.ph.tacq))
-     
+        print(datetime.now(), '[tcspc] Resolution = {} ps'.format(self.ph.resolution))
+        print(datetime.now(), '[tcspc] Acquisition time = {} s'.format(self.ph.tacq))
+    
     @pyqtSlot()           
     def measure(self):
         
@@ -287,7 +291,7 @@ class Backend(QtCore.QObject):
         
         delay = 4.0 # 4.0 s is the typical time that the PH takes to start a measurement
         
-        self.xyzSignal.emit(True, self.currentfname)
+#        self.xyzSignal.emit(True, self.currentfname)
         
         self.prepare_ph()
         self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
@@ -295,7 +299,7 @@ class Backend(QtCore.QObject):
 
         t1 = time.time()
         
-        print('starting the PH measurement took {} s'.format(t1-t0))
+        print(datetime.now(), '[tcspc] starting the PH measurement took {} s'.format(t1-t0))
 
         self.ph.startTTTR(self.currentfname)
         np.savetxt(self.currentfname + '.txt', [])
@@ -303,26 +307,64 @@ class Backend(QtCore.QObject):
         while self.ph.measure_state is not 'done':
             pass
         
-        self.xyzSignal.emit(False, self.currentfname)
+#        self.xyzSignal.emit(False, self.currentfname)
+        self.export_data()
+        
+    @pyqtSlot(str, int, int)
+    def prepare_minflux(self, fname, acqtime, n):
+        
+        print(datetime.now(), ' [tcspc] preparing minflux measurement')
+        
+        t0 = time.time()
+
+        self.currentfname = tools.getUniqueName(fname)
+                
+#        self.xyzSignal.emit(True, self.currentfname)
+        
+        self.prepare_ph()
+        
+        self.ph.tacq = acqtime * n * 1000 # TO DO: correspond to GUI !!!
+        
+        print(' [tcspc] self.ph.tacq', self.ph.tacq)
+        
+        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
+                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+   
+        t1 = time.time()
+        
+        print(datetime.now(), '[tcspc] preparing the PH measurement took {} s'.format(t1-t0))
+        
+        
+    @pyqtSlot()
+    def measure_minflux(self):
+
+        self.ph.startTTTR(self.currentfname)
+        
+        np.savetxt(self.currentfname + '.txt', [])
+        
+        while self.ph.measure_state is not 'done':
+            pass
+        
+        self.tcspcDoneSignal.emit()
         self.export_data()
         
     def stop_measure(self):
         
         # TO DO: make this function
         
-        print('stop measure function')
+        print(datetime.now(), '[tcspc] stop measure function')
 
     def export_data(self):
         
-        self.reset_data()
+#        self.reset_data()
         
         inputfile = open(self.currentfname, "rb") # TO DO: fix file selection
-        print('opened {} file'.format(self.currentfname))
+        print(datetime.now(), '[tcspc] opened {} file'.format(self.currentfname))
         
         numRecords = self.ph.numRecords # number of records
         globRes = 2.5e-8  # in ns, corresponds to sync @40 MHz
         timeRes = self.ph.resolution * 1e-12 # time resolution in s
-        print(timeRes)
+#        print(timeRes)
 
         relTime, absTime = Read_PTU.readPT3(inputfile, numRecords)
 
@@ -342,25 +384,16 @@ class Backend(QtCore.QObject):
         data[0, :] = self.relTime[self.absTime != 0]
         data[1, :] = self.absTime[self.absTime != 0]
         
-        self.readDataSignal.emit(data[0, :], data[1, :])
+        self.plotDataSignal.emit(data[0, :], data[1, :])
         
         np.savetxt(filename, data.T) # transpose for easier loading
         
-        print('tcspc data exported')
+        print(datetime.now(), '[tcspc] tcspc data exported')
         
-    def reset_data(self):
-        
-        a = np.array('clear')
-        b = np.array('clear')
-        self.readDataSignal.emit(a, b)
-        self.relTime = None
-        self.absTime = None
-        
-        time.sleep(0.05)
-
-
     @pyqtSlot(list)
     def get_frontend_parameters(self, paramlist):
+        
+        print(datetime.now(), '[tcspc] got frontend parameters')
 
         self.fname = paramlist[0]
         self.resolution = paramlist[1]
@@ -379,7 +412,7 @@ class Backend(QtCore.QObject):
             self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
             
-            print('shutter opened')
+            print(datetime.now(), '[tcspc] Shutter opened')
             
         if val is False:
             
@@ -390,16 +423,16 @@ class Backend(QtCore.QObject):
             self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
 
-            print('shutter closed')
+            print(datetime.now(), '[tcspc] Shutter closed')
 
     def make_connection(self, frontend):
 
         frontend.paramSignal.connect(self.get_frontend_parameters)
         frontend.measureSignal.connect(self.measure)
         frontend.stopButton.clicked.connect(self.stop_measure)
-        frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
 
+        frontend.emit_param() # TO DO: change such that backend has parameters defined from the start
 
     def stop(self):
   

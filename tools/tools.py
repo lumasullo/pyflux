@@ -8,6 +8,7 @@ Created on Tue Jun  5 11:25:20 2018
 import numpy as np
 import configparser
 import os
+from datetime import datetime
 import matplotlib.pyplot as plt
 from scipy.stats import norm, chi2
 
@@ -162,7 +163,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
         
     else:
         
-        print('Scan signal has unmatching aux accelerations')
+        print(datetime.now(), '[scan-tools] Scan signal has unmatching aux accelerations')
     
     # scan signal 
     
@@ -170,10 +171,10 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     total_range = aux_range[0] + aux_range[1] + scan_range
     
     if total_range > 20:
-        print('Warning: scan + aux scan excede DAC/piezo range! ' 
+        print(datetime.now(), '[scan-tools] Warning: scan + aux scan excede DAC/piezo range! ' 
               'Scan signal will be saturated')
     else:
-        print('Scan signal OK')
+        print(datetime.now(), '[scan-tools] Scan signal OK')
         
     signal_time = np.zeros(size)
     signal_x = np.zeros(size)

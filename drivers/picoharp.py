@@ -10,6 +10,7 @@ from ctypes import byref, POINTER
 from lantz import LibraryDriver
 from lantz import Driver, Feat, Action
 import time
+from datetime import datetime
 import numpy as np
 
 LIB_VERSION = "3.0"
@@ -185,7 +186,7 @@ class PicoHarp300(LibraryDriver):
                
     def startTTTR(self, outputfilename):
         
-        print('TCSPC measurement started')
+        print(datetime.now(), ' [picoharp 300] TCSPC measurement started')
         
 
         
@@ -209,7 +210,7 @@ class PicoHarp300(LibraryDriver):
                 
         
             if self.nactual.value > 0:
-                print(self.nactual.value)
+                print('[picoharp 300]', self.nactual.value)
                 # We could just iterate through our buffer with a for loop, however,
                 # this is slow and might cause a FIFO overrun. So instead, we shrinken
                 # the buffer to its appropriate length with array slicing, which gives

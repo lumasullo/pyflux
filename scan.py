@@ -7,7 +7,7 @@ Created on Fri Jun  1 14:18:19 2018
 
 import numpy as np
 import time
-from datetime import date
+from datetime import date, datetime
 import os
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -428,7 +428,7 @@ class Frontend(QtGui.QFrame):
             
             self.EBP = (ebp + np.array([x0, y0]))/pxSize
                                        
-        print('EBP px', self.EBP)
+        print('[scan] EBP px', self.EBP)
             
         for i in range(4):
         
@@ -534,17 +534,17 @@ class Frontend(QtGui.QFrame):
         self.select_ROIButton = QtGui.QPushButton('select ROI')
         self.select_ROIButton.clicked.connect(self.select_ROI)
 
-        # Acquire frame button (start)
-
-        self.acquireFrameButton = QtGui.QPushButton('Start acquisition')
-        self.acquireFrameButton.setCheckable(True)
-        self.acquireFrameButton.clicked.connect(self.toggle_frame_acq)
-        
-        # Acquire frame button (stop)
-
-        self.stopAcquireFrameButton = QtGui.QPushButton('Stop acquisition')
-        self.stopAcquireFrameButton.setCheckable(True)
-#        self.stopAcquireFrameButton.clicked.connect(self.toggle_frame_acq)   
+#        # Acquire frame button (start)
+#
+#        self.acquireFrameButton = QtGui.QPushButton('Start acquisition')
+#        self.acquireFrameButton.setCheckable(True)
+#        self.acquireFrameButton.clicked.connect(self.toggle_frame_acq)
+#        
+#        # Acquire frame button (stop)
+#
+#        self.stopAcquireFrameButton = QtGui.QPushButton('Stop acquisition')
+#        self.stopAcquireFrameButton.setCheckable(True)
+##        self.stopAcquireFrameButton.clicked.connect(self.toggle_frame_acq)   
         
         # Shutter button
         
@@ -560,10 +560,6 @@ class Frontend(QtGui.QFrame):
         self.preview_scanButton = QtGui.QPushButton('Scan preview')
         self.preview_scanButton.setCheckable(True)
         self.preview_scanButton.clicked.connect(self.preview_scan)
-        
-        # feedback loop xy drift box
-        
-        self.feedbackLoopBox = QtGui.QCheckBox('xyz closed loop')
         
         # line profile button
         
@@ -593,8 +589,8 @@ class Frontend(QtGui.QFrame):
         self.advancedButton.setCheckable(True)
         self.advancedButton.clicked.connect(self.toggle_advanced)
         
-        self.emitParamButton = QtGui.QPushButton('Emit parameters')
-        self.emitParamButton.clicked.connect(self.emit_param)
+#        self.emitParamButton = QtGui.QPushButton('Emit parameters')
+#        self.emitParamButton.clicked.connect(self.emit_param)
         
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
@@ -618,9 +614,9 @@ class Frontend(QtGui.QFrame):
         try:  
             os.mkdir(folder)
         except OSError:  
-            print ("Directory %s already exists" % folder)
+            print(datetime.now(), '[scan] Directory {} already exists'.format(folder))
         else:  
-            print ("Successfully created the directory %s " % folder)
+            print(datetime.now(), '[scan] Successfully created the directory {}'.format(folder))
         
         self.folderLabel = QtGui.QLabel('Folder')
         self.folderEdit = QtGui.QLineEdit(folder)
@@ -751,9 +747,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.currentFrameButton, 8, 1)
         subgrid.addWidget(self.ROIButton, 9, 1)
         subgrid.addWidget(self.select_ROIButton, 10, 1)
-        subgrid.addWidget(self.acquireFrameButton, 11, 1)
-        subgrid.addWidget(self.stopAcquireFrameButton, 12, 1)
-        subgrid.addWidget(self.feedbackLoopBox, 13, 1)
+#        subgrid.addWidget(self.acquireFrameButton, 11, 1)
+#        subgrid.addWidget(self.stopAcquireFrameButton, 12, 1)
 
         subgrid.addWidget(self.lineProfButton, 14, 1)
 
@@ -772,10 +767,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.frameTimeValue, 11, 0)
         subgrid.addWidget(self.maxCountsLabel, 12, 0)
         
-        subgrid.addWidget(self.emitParamButton, 13, 0)
-        
-#        subgrid.addWidget(self.NframesLabel, 10, 0)
-#        subgrid.addWidget(self.NframesEdit, 11, 0)
+#        subgrid.addWidget(self.emitParamButton, 13, 0)
         
         subgrid.addWidget(self.advancedButton, 14, 0)
         
@@ -878,6 +870,7 @@ class Backend(QtCore.QObject):
 #    frameAcqSignal = pyqtSignal(np.ndarray, int)
     frameIsDone = pyqtSignal(bool)  # the bool is whether feedback is ON (True) or OFF (False)
     newFrameSignal = pyqtSignal(bool)
+    ROIcenterSignal = pyqtSignal(np.ndarray)
     
     def __init__(self, adwin, *args, **kwargs):
         
@@ -887,9 +880,9 @@ class Backend(QtCore.QObject):
         self.saveScanData = False
         self.feedback_active = False
         
-        # connect internal signal/slot
-        
-        self.newFrameSignal.connect(self.frame_acquisition)
+#        # connect internal signal/slot
+#        
+#        self.newFrameSignal.connect(self.frame_acquisition)
         
         # edited_scan: True --> size of the useful part of the scan
         # edited_scan: False --> size of the full scan including aux parts
@@ -956,7 +949,6 @@ class Backend(QtCore.QObject):
         self.zStep = params['zStep']
                 
         self.calculate_derived_param()
-        
         
     def calculate_derived_param(self):
         
@@ -1186,17 +1178,17 @@ class Backend(QtCore.QObject):
         self.update_device_param()
         self.emit_param()    
         
-    @pyqtSlot()
-    def toggle_feedback(self):
-        
-        if self.feedback_active is False:
-            self.feedback_active = True
-            print('confocal feedback loop ON')
-            
-        else:
-            
-            self.feedback_active = False
-            print('confocal feedback loop OFF')
+#    @pyqtSlot()
+#    def toggle_feedback(self):
+#        
+#        if self.feedback_active is False:
+#            self.feedback_active = True
+#            print('confocal feedback loop ON')
+#            
+#        else:
+#            
+#            self.feedback_active = False
+#            print('confocal feedback loop OFF')
     
     @pyqtSlot()
     def toggle_acquire_frames(self):
@@ -1214,16 +1206,16 @@ class Backend(QtCore.QObject):
         
         self.zDriftSignal.emit()
         
-    @pyqtSlot(float, float, float)
-    def get_drift_corrected_param(self, x, y, z):
-        
-        print('got drift corrected parameters', x, y, z)
-        self.initialPos = np.array([x, y, z])
-        self.update_device_param()
-        
-        if self.frame_acquisition_ON: # TO DO: change by taking into account number of frames wished or GUI signal
-            
-            self.newFrameSignal.emit(True)
+#    @pyqtSlot(float, float, float)
+#    def get_drift_corrected_param(self, x, y, z):
+#        
+#        print('got drift corrected parameters', x, y, z)
+#        self.initialPos = np.array([x, y, z])
+#        self.update_device_param()
+#        
+#        if self.frame_acquisition_ON: # TO DO: change by taking into account number of frames wished or GUI signal
+#            
+#            self.newFrameSignal.emit(True)
         
     def plot_scan_signal(self):
         
@@ -1241,123 +1233,119 @@ class Backend(QtCore.QObject):
                     transparent=False, bbox_inches=None, pad_inches=0.1,
                     frameon=None)
             
-    @pyqtSlot(bool)
-    def frame_acquisition(self, fabool):
-        
-        if fabool:
-            
-            self.liveview_stop()
-            self.frame_acquisition_start()
-            
-        else:
-            
-            self.frame_acquisition_stop()
-        
-    def frame_acquisition_start(self):
-
-        self.acquisitionMode = 'frame'
-
-        # save scan plot (x vs t)
-
-        if self.saveScanData:
-
-            plt.figure('Scan plot x vs t')
-            plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
-            plt.xlabel('t (ADwin time)')
-            plt.ylabel('V (DAC units)')
-    
-            fname = tools.getUniqueName(self.filename)
-            fname = fname + '_scan_plot'
-            plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
-                        orientation='portrait', papertype=None, format=None,
-                        transparent=False, bbox_inches=None, pad_inches=0.1,
-                        frameon=None)
-        
-        # restar the slow axis
-        
-        self.y_offset = 0
-
-        # move to initial position smoothly
-
-        if self.scantype == 'xy':
-
-            self.moveTo(self.x_i, self.y_i, self.z_i)
-
-        if self.scantype == 'xz':
-
-            self.moveTo(self.x_i, self.y_i + self.scanRange/2,
-                        self.z_i - self.scanRange/2)
-
-        if self.scantype == 'yz':
-
-            self.moveTo(self.x_i + self.scanRange/2, self.y_i,
-                        self.z_i - self.scanRange/2)
-
-        self.i = 0
-
-        # start updateView timer
-
-        self.viewtimer.start(self.viewtimer_time)
-
-    def frame_acquisition_stop(self):
-
-        self.viewtimer.stop()
-
-        # experiment parameters
-
-        name = tools.getUniqueName(self.filename)
-        now = time.strftime("%c")
-        tools.saveConfig(self, now, name)
-
-        # save image
-
-        data = self.image
-
-        result = Image.fromarray(data.astype('uint16'))
-        result.save(r'{}.tiff'.format(name))
-        
-        print(name)
-
-        self.imageNumber += 1
-        
-        self.emit_param()
-        self.frameIsDone.emit(self.feedback_active)   
-        
-        print('frame is done')
+#    @pyqtSlot(bool)
+#    def frame_acquisition(self, fabool):
+#        
+#        if fabool:
+#            
+#            self.liveview_stop()
+#            self.frame_acquisition_start()
+#            
+#        else:
+#            
+#            self.frame_acquisition_stop()
+#        
+#    def frame_acquisition_start(self):
+#
+#        self.acquisitionMode = 'frame'
+#
+#        # save scan plot (x vs t)
+#
+#        if self.saveScanData:
+#
+#            plt.figure('Scan plot x vs t')
+#            plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
+#            plt.xlabel('t (ADwin time)')
+#            plt.ylabel('V (DAC units)')
+#    
+#            fname = tools.getUniqueName(self.filename)
+#            fname = fname + '_scan_plot'
+#            plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
+#                        orientation='portrait', papertype=None, format=None,
+#                        transparent=False, bbox_inches=None, pad_inches=0.1,
+#                        frameon=None)
+#        
+#        # restar the slow axis
+#        
+#        self.y_offset = 0
+#
+#        # move to initial position smoothly
+#
+#        if self.scantype == 'xy':
+#
+#            self.moveTo(self.x_i, self.y_i, self.z_i)
+#
+#        if self.scantype == 'xz':
+#
+#            self.moveTo(self.x_i, self.y_i + self.scanRange/2,
+#                        self.z_i - self.scanRange/2)
+#
+#        if self.scantype == 'yz':
+#
+#            self.moveTo(self.x_i + self.scanRange/2, self.y_i,
+#                        self.z_i - self.scanRange/2)
+#
+#        self.i = 0
+#
+#        # start updateView timer
+#
+#        self.viewtimer.start(self.viewtimer_time)
+#
+#    def frame_acquisition_stop(self):
+#
+#        self.viewtimer.stop()
+#
+#        # experiment parameters
+#
+#        name = tools.getUniqueName(self.filename)
+#        now = time.strftime("%c")
+#        tools.saveConfig(self, now, name)
+#
+#        # save image
+#
+#        data = self.image
+#
+#        result = Image.fromarray(data.astype('uint16'))
+#        result.save(r'{}.tiff'.format(name))
+#        
+#        print(name)
+#
+#        self.imageNumber += 1
+#        
+#        self.emit_param()
+#        self.frameIsDone.emit(self.feedback_active)   
+#        
+#        print('frame is done')
         
 #        self.gui.acquireFrameButton.setChecked(False)
         
 #        self.frameAcqSignal.emit(data, self.imageNumber)
         
-    def stop_continous_acq(self):
-        
-        self.frame_acquisition_stop()
-        self.frame_acquisition_ON = False
-        
-    def start_continous_acq(self):
-        
-        self.frame_acquisition_ON = True
+#    def stop_continous_acq(self):
+#        
+#        self.frame_acquisition_stop()
+#        self.frame_acquisition_ON = False
+#        
+#    def start_continous_acq(self):
+#        
+#        self.frame_acquisition_ON = True
         
         
     def save_current_frame(self):
         
         # experiment parameters
         
-        print('self.filename', self.filename)
         name = tools.getUniqueName(self.filename)
-        print('name', name)
         now = time.strftime("%c")
         tools.saveConfig(self, now, name)
 
         # save image
         
-        print(self.image_to_save)
-
         data = self.image_to_save
         result = Image.fromarray(data.astype('uint16'))
         result.save(r'{}.tiff'.format(name))
         
-        print(name)
+        print('[scan] Saved current frame', name)
 
 #        self.gui.currentFrameButton.setChecked(False)
         
@@ -1376,7 +1364,7 @@ class Backend(QtCore.QObject):
         
         else: # only for lines longer than 240 ms
             
-            print('linetime longer than 240 ms')
+            print('[scan] Linetime longer than 240 ms')
             
             line_time = (1/1000) * self.data_t[-1]  # in ms
             wait_time = line_time * 1.05
@@ -1463,7 +1451,7 @@ class Backend(QtCore.QObject):
 
         else:
 
-            print('Frame ended')
+            print('[scan] Frame ended')
 
             self.i = 0
             self.y_offset = 0
@@ -1500,7 +1488,7 @@ class Backend(QtCore.QObject):
             self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
             
-            print('shutter opened')
+            print('[scan] Shutter opened')
             
         if val is False:
             
@@ -1511,22 +1499,33 @@ class Backend(QtCore.QObject):
             self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
 
-            print('shutter closed')
+            print('[scan] Shutter closed')
+            
+    @pyqtSlot()
+    def get_ROI_center_request(self):
+        
+        print(datetime.now(), '[scan] got ROI request')
+        
+    def emit_ROI_center(self):
+        
+        self.ROIcenterSignal.emit()
+        
+        print('[scan] ROI center emitted')
 
                       
     def make_connection(self, frontend):
         
 #        frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.liveviewSignal.connect(self.liveview)
-        frontend.frameacqSignal.connect(self.frame_acquisition)
-        frontend.frameacqSignal.connect(self.start_continous_acq)
-        frontend.stopAcquireFrameButton.clicked.connect(self.stop_continous_acq)
-        frontend.acquireFrameButton.clicked.connect(self.frame_acquisition)
+#        frontend.frameacqSignal.connect(self.frame_acquisition)
+#        frontend.frameacqSignal.connect(self.start_continous_acq)
+#        frontend.stopAcquireFrameButton.clicked.connect(self.stop_continous_acq)
+#        frontend.acquireFrameButton.clicked.connect(self.frame_acquisition)
         frontend.currentFrameButton.clicked.connect(self.save_current_frame)
         frontend.moveToButton.clicked.connect(self.moveTo_action)
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
-        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
+#        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
 
         

@@ -10,7 +10,7 @@ import time
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
 from scipy import optimize as opt
-from datetime import date
+from datetime import date, datetime
 import os
 
 import pyqtgraph as pg
@@ -139,14 +139,14 @@ class Frontend(QtGui.QFrame):
         if self.liveviewButton.isChecked():
             
             self.liveviewSignal.emit(True)
-            print('focus live view started')
+            print(datetime.now(), '[focus] focus live view started')
         
         else:
             
             self.liveviewSignal.emit(False)
             self.liveviewButton.setChecked(False)
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
-            print('focus live view stopped')
+            print(datetime.now(), '[focus] focus live view stopped')
             
     def emit_save_data_state(self):
         
@@ -308,7 +308,6 @@ class Frontend(QtGui.QFrame):
 #        self.focusSetPoint = self.focusGraph.plot.addLine(y=self.setPoint, pen='r')
 
 
-
         # GUI layout
         
         grid = QtGui.QGridLayout()
@@ -321,7 +320,7 @@ class Frontend(QtGui.QFrame):
                                        QtGui.QFrame.Raised)
         
         self.paramWidget.setFixedHeight(230)
-        self.paramWidget.setFixedWidth(150)
+        self.paramWidget.setFixedWidth(120)
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
@@ -473,19 +472,19 @@ class Backend(QtCore.QObject):
             self.set_actuator_param()
             self.adw.Start_Process(3)
             
-            print('Feedback loop ON')
+            print(datetime.now(), ' [focus] Feedback loop ON')
             
         if val is False:
             
             self.feedback_active = False
-            print('Feedback loop OFF')
+            print(datetime.now(), ' [focus] Feedback loop OFF')
     
     @pyqtSlot()    
     def setup_feedback(self):
         
         ''' set up on/off feedback loop'''
         
-        print('set point is', self.focusSignal)
+#        print(datetime.now(), '[focus] Set-point set to', self.focusSignal)
         self.setPoint = self.focusSignal * self.pxSize
         initialZ = tools.convert(self.adw.Get_FPar(72), 'UtoX') # current Z position of the piezo
         self.currentZ = initialZ # set initialZ as currentZ
@@ -513,7 +512,7 @@ class Backend(QtCore.QObject):
     
         if np.abs(dz) > security_thr:
             
-            print('Correction movement larger than 200 nm, active correction turned OFF')
+            print(datetime.now(), '[focus] Correction movement larger than 200 nm, active correction turned OFF')
             
         else:
             
@@ -603,10 +602,10 @@ class Backend(QtCore.QObject):
 #        
 #        self.setup_feedback()
         
-    @pyqtSlot(float, float, float)
-    def confocal_drift_correction(self, x, y, z):
+    @pyqtSlot(bool)
+    def single_z_correction(self, val):
         
-        initialPos = np.array([x, y, z])
+#        initialPos = np.array([x, y, z])
         
 #        self.camera.start_live_video(framerate='20 Hz')
 #        time.sleep(0.050)
@@ -686,18 +685,35 @@ class Backend(QtCore.QObject):
         
         np.savetxt(filename, savedData.T, header='t (s), z (px)')
         
-        print('z data exported to', filename)
+        print(datetime.now(), '[focus] z data exported to', filename)
         
-    @pyqtSlot(bool)
-    def get_lock(self, lockbool):
-        self.lock_focus(lockbool)
+#    @pyqtSlot(bool)
+#    def get_lock(self, lockbool):
+#        self.lock_focus(lockbool)
+        
+    @pyqtSlot()    
+    def get_lock_signal(self):
+        
+        self.reset()
+        self.reset_data_arrays()
+        
+        self.toggle_feedback(True)
+        self.save_data_state = True
+        
+        # TO DO: fix updateGUIcheckboxSignal    
+        
+#        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+#                                          self.feedback_active, 
+#                                          self.save_data_state)
+        
+        print(datetime.now(), '[focus] System focus locked')
             
     @pyqtSlot(np.ndarray)
     def get_newROI(self, val):
 
         self.cropped = True
         self.camera._set_AOI(*val)
-        print('focus lock ROI changed to', self.camera._get_AOI())
+        print(datetime.now(), '[focus] ROI changed to', self.camera._get_AOI())
         
     @pyqtSlot(bool, str)   
     def get_tcspc_signal(self, val, fname):
@@ -748,7 +764,12 @@ class Backend(QtCore.QObject):
     def get_save_data_state(self, val):
         
         self.save_data_state = val
-        print('save_data_state = {}'.format(val))
+        
+    @pyqtSlot(str)    
+    def get_end_measurement_signal(self, fname):
+        
+        self.filename = fname
+        self.export_data()
         
     def make_connection(self, frontend):
           
@@ -799,7 +820,7 @@ class Backend(QtCore.QObject):
     
             self.aux_moveTo(x_0, y_0, z_0)
             
-        print('Focus lock stopped')
+        print(datetime.now(), '[focus] Focus stopped')
         
         # clean up aux files from NiceLib
         
@@ -814,7 +835,7 @@ if __name__ == '__main__':
     app.setStyle(QtGui.QStyleFactory.create('fusion'))
 #    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
-    print('Focus lock module running in stand-alone mode')
+    print(datetime.now(), '[focus] Focus lock module running in stand-alone mode')
     
     # initialize devices
     

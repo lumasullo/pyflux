@@ -8,6 +8,7 @@ Created on Fri Jun  1 14:18:19 2018
 import numpy as np
 import time
 import os
+from datetime import date, datetime
 
 from threading import Thread
 
@@ -21,6 +22,7 @@ import lantz.drivers.andor.ccd as ccd
 import drivers.picoharp as picoharp
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from tkinter import Tk, filedialog
 
 import drivers
 import drivers.ADwin as ADwin
@@ -29,6 +31,8 @@ import focus
 import scan
 import tcspc
 import xy_tracking
+import measurements.minflux as minflux
+import measurements.psf as psf
 
 import tools.tools as tools
 
@@ -53,7 +57,8 @@ class Frontend(QtGui.QMainWindow):
         menubar = self.menuBar()
         fileMenu = menubar.addMenu('Measurement')
         
-        self.psfWidget = psf_meas_widget()
+        self.psfWidget = psf.Frontend()
+        self.minfluxWidget = minflux.Frontend()
 
         self.psfMeasAction = QtGui.QAction('PSF measurement', self)
         self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
@@ -64,6 +69,8 @@ class Frontend(QtGui.QMainWindow):
         self.minfluxMeasAction = QtGui.QAction('MINFLUX measurement', self)
         self.minfluxMeasAction.setStatusTip('Routine to perform a tcspc-MINFLUX measurement')
         fileMenu.addAction(self.minfluxMeasAction)
+        
+        self.minfluxMeasAction.triggered.connect(self.minflux_measurement)
 
         # GUI layout
 
@@ -124,10 +131,17 @@ class Frontend(QtGui.QMainWindow):
         backend.scanWorker.make_connection(self.scanWidget)
         backend.tcspcWorker.make_connection(self.tcspcWidget)
         backend.xyWorker.make_connection(self.xyWidget)
+        
+        backend.minfluxWorker.make_connection(self.minfluxWidget)
 
     def psf_measurement(self):
 
         self.psfWidget.show()
+        
+    def minflux_measurement(self):
+        
+        self.minfluxWidget.show()
+        self.minfluxWidget.emit_filename()
 
     def closeEvent(self, *args, **kwargs):
         
@@ -138,7 +152,12 @@ class Frontend(QtGui.QMainWindow):
         
 class Backend(QtCore.QObject):
     
-    measurePSFSignal = pyqtSignal()
+    askROIcenterSignal = pyqtSignal()
+    moveToSignal = pyqtSignal(np.ndarray)
+    tcspcStartSignal = pyqtSignal(str, int, int)
+    xyzStartSignal = pyqtSignal()
+    xyzEndSignal = pyqtSignal(str)
+    xyMoveAndLockSignal = pyqtSignal(np.ndarray)
     
     def __init__(self, adw, ph, ccd, scmos, *args, **kwargs):
         
@@ -149,35 +168,28 @@ class Backend(QtCore.QObject):
         self.tcspcWorker = tcspc.Backend(ph, adw)
         self.xyWorker = xy_tracking.Backend(ccd, adw)
         
-        self.i = 0 # counter
-        self.n = 1
-        self.acqtime = 1 # in s
-        self.r = np.array([0, 0])
-        
-    def start_minflux_meas(self):
-        
-        """ Starts minflux measurement
-        
-        n positions 
-        with acqtime in each position
-        
-        """
-        
-        self.tcspcStartSignal.emit()
-        self.xyzStartSignal.emit(self.acqtime, self.r[0, :])
-     
-    @pyqtSlot()    
-    def get_xy_done_signal(self):
-        
-        if self.i < self.n:
-        
-            self.xyMoveAndLockSignal.emit(self.acqtime, self.r[self.i, :])
-            self.i += 1
+        self.minfluxWorker = minflux.Backend()
             
-        else:
-            
-            print('MINFLUX measurement done')
-
+    def setup_minflux_connections(self):
+        
+        self.minfluxWorker.askROIcenterSignal.connect(self.scanWorker.get_ROI_center_request)
+        self.scanWorker.ROIcenterSignal.connect(self.minfluxWorker.get_ROI_center)
+        
+        self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_single_move_signal)
+        self.minfluxWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_minflux)
+        self.minfluxWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_minflux)
+        
+        self.minfluxWorker.xyzStartSignal.connect(self.xyWorker.get_lock_signal)
+        self.minfluxWorker.xyzStartSignal.connect(self.focusWorker.get_lock_signal)
+        
+        self.minfluxWorker.xyMoveAndLockSignal.connect(self.xyWorker.get_minflux_signal)
+        self.xyWorker.partialMinfluxMeasDone.connect(self.minfluxWorker.get_xy_done_signal)
+        
+        self.tcspcWorker.tcspcDoneSignal.connect(self.minfluxWorker.get_tcspc_done_signal)
+        
+        self.minfluxWorker.xyzEndSignal.connect(self.xyWorker.get_end_measurement_signal)
+        self.minfluxWorker.xyzEndSignal.connect(self.focusWorker.get_end_measurement_signal)
+        
     def make_connection(self, frontend):
         
         frontend.focusWidget.make_connection(self.focusWorker)
@@ -185,7 +197,13 @@ class Backend(QtCore.QObject):
         frontend.tcspcWidget.make_connection(self.tcspcWorker)
         frontend.xyWidget.make_connection(self.xyWorker)
         frontend.closeSignal.connect(self.stop)
-            
+        
+        frontend.minfluxWidget.filenameSignal.connect(self.minfluxWorker.get_minflux_filename)
+        frontend.minfluxWidget.startButton.clicked.connect(self.minfluxWorker.start_minflux_meas)
+        frontend.minfluxWidget.make_connection(self.minfluxWorker)
+
+        self.setup_minflux_connections()
+        
     def stop(self):
         
         self.scanWorker.stop()
@@ -193,48 +211,11 @@ class Backend(QtCore.QObject):
         self.tcspcWorker.stop()
         self.xyWorker.stop()
 
-        
-class psf_meas_widget(QtGui.QWidget):
-     
-    def __init__(self, *args, **kwargs):
-
-        super().__init__(*args, **kwargs)
-        
-        self.setWindowTitle('PSF measurement')
-
-        grid = QtGui.QGridLayout()
-
-        self.setLayout(grid)
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-
-        grid.addWidget(self.paramWidget, 0, 0)
-        
-        subgrid = QtGui.QGridLayout()
-        self.paramWidget.setLayout(subgrid)
-        
-        self.NframesLabel = QtGui.QLabel('Number of frames')
-        self.NframesEdit = QtGui.QLineEdit('10')
-        self.doughnutLabel = QtGui.QLabel('Doughnut label')
-        self.doughnutEdit = QtGui.QLineEdit('')
-        self.startButton = QtGui.QPushButton('Start PSF measurement')
-        self.progress = QtGui.QProgressBar(self)
-        
-        subgrid.addWidget(self.NframesLabel, 0, 0)
-        subgrid.addWidget(self.NframesEdit, 1, 0)
-        subgrid.addWidget(self.doughnutLabel, 2, 0)
-        subgrid.addWidget(self.doughnutEdit, 3, 0)
-        subgrid.addWidget(self.startButton, 4, 0)
-        subgrid.addWidget(self.progress, 5, 0)
-        
-
-
 if __name__ == '__main__':
 
     app = QtGui.QApplication([])
-#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     gui = Frontend()
     
@@ -251,46 +232,13 @@ if __name__ == '__main__':
     gui.make_connection(worker)
     worker.make_connection(gui)
     
-    # confocal drift correction connections
-    
-    worker.scanWorker.frameIsDone.connect(worker.xyWorker.discrete_xy_correction)
-    worker.xyWorker.XYdriftCorrectionIsDone.connect(worker.focusWorker.confocal_drift_correction)
-    worker.focusWorker.ZdriftCorrectionIsDone.connect(worker.scanWorker.get_drift_corrected_param)
-    worker.scanWorker.paramSignal.connect(worker.xyWorker.get_scan_parameters)
-    
-    gui.scanWidget.feedbackLoopBox.stateChanged.connect(gui.xyWidget.emit_roi_info)
-    gui.scanWidget.feedbackLoopBox.stateChanged.connect(worker.focusWorker.setup_feedback)
-    
-    # tcspc drift correction connections
-    
-#    worker.xyWorker.XYtcspcIsDone.connect(worker.focusWorker.tcspc_drift_correction)
-#    worker.focusWorker.ZtcspcIsDone.connect(worker.xyWorker.get_z_tscpsc_signal)
-#    worker.xyWorker.XYtcspcCorrection.connect(worker.xyWorker.xy_tcspc_correction)
-
-#    gui.xyWidget.tcspcFeedbackBox.stateChanged.connect(worker.focusWorker.setup_feedback)
-    
-    # tcspc export data connections    # TO DO: turn this all into MINFLUX measurement
-    
-#    gui.tcspcWidget.exportDataButton.clicked.connect(worker.xyWorker.export_data)
-#    gui.tcspcWidget.exportDataButton.clicked.connect(worker.focusWorker.export_data)
-    
-    # tcspc measure connections
-    
-    worker.tcspcWorker.xyzSignal.connect(worker.xyWorker.get_tcspc_signal)
-    worker.tcspcWorker.xyzSignal.connect(worker.focusWorker.get_tcspc_signal)
-    
-#    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset)
-#    gui.tcspcWidget.measureButton.clicked.connect(worker.xyWorker.reset_data_arrays)
-#    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset)
-#    gui.tcspcWidget.measureButton.clicked.connect(worker.focusWorker.reset_data_arrays)
-#    
-#    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.xyWorker.get_save_data_state(True))
-#    gui.tcspcWidget.measureButton.clicked.connect(lambda: worker.focusWorker.get_save_data_state(True))
-
     # initial parameters
     
     gui.scanWidget.emit_param()
     worker.scanWorker.emit_param()
+    
+    gui.minfluxWidget.emit_param_to_backend()
+    worker.minfluxWorker.emit_param_to_frontend()
       
     # focus thread
 
@@ -303,10 +251,10 @@ if __name__ == '__main__':
     
     # focus GUI thread
     
-    focusGUIThread = QtCore.QThread()
-    gui.focusWidget.moveToThread(focusGUIThread)
-    
-    focusGUIThread.start()
+#    focusGUIThread = QtCore.QThread()
+#    gui.focusWidget.moveToThread(focusGUIThread)
+#    
+#    focusGUIThread.start()
 #    
 #    # xy worker thread
 #    
@@ -319,10 +267,10 @@ if __name__ == '__main__':
     
     # xy GUI thread
     
-    xyGUIThread = QtCore.QThread()
-    gui.xyWidget.moveToThread(xyGUIThread)
-    
-    xyGUIThread.start()
+#    xyGUIThread = QtCore.QThread()
+#    gui.xyWidget.moveToThread(xyGUIThread)
+#    
+#    xyGUIThread.start()
 
     # tcspc thread
     
@@ -340,6 +288,18 @@ if __name__ == '__main__':
     worker.scanWorker.viewtimer.timeout.connect(worker.scanWorker.update_view)
 
     scanThread.start()
+    
+    # minflux worker thread
+    
+    minfluxThread = QtCore.QThread()
+    worker.minfluxWorker.moveToThread(minfluxThread)
+    
+    minfluxThread.start()
+    
+    # minflux measurement connections
+    
+    
+        
     
     gui.show()
     app.exec_()
