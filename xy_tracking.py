@@ -530,7 +530,7 @@ class Backend(QtCore.QObject):
     def update(self):
         """ General update method """
         
-        print(datetime.now(), '[xy_tracking] entered update')
+#        print(datetime.now(), '[xy_tracking] entered update')
         
         self.update_view()
 
@@ -578,12 +578,12 @@ class Backend(QtCore.QObject):
         
         if val is True:
             
-            self.tracking_value = True
-            self.counter = 0
-            
             self.reset()
             self.reset_data_arrays()
-        
+            
+            self.tracking_value = True
+            self.counter = 0
+                    
         if val is False:
         
             self.tracking_value = False
@@ -608,6 +608,10 @@ class Backend(QtCore.QObject):
             
             self.feedback_active = False
             print(datetime.now(), '[xy_tracking] Feedback loop OFF')
+            
+        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+                                          self.feedback_active, 
+                                          self.save_data_state)
             
     def gaussian_fit(self):
         
@@ -705,6 +709,7 @@ class Backend(QtCore.QObject):
         except(RuntimeError, ValueError):
             
             print(datetime.now(), '[xy_tracking] Gaussian fit did not work')
+            self.toggle_feedback(False)
                
         if self.initial is True:
             
@@ -742,7 +747,7 @@ class Backend(QtCore.QObject):
             threshold = 7
             far_threshold = 15
             correct_factor = 0.6
-            security_thr = 0.2 # in µm
+            security_thr = 0.15 # in µm
             
             if np.abs(self.x) > threshold:
                 
@@ -767,6 +772,7 @@ class Backend(QtCore.QObject):
             if dx > security_thr or dy > security_thr:
                 
                 print(datetime.now(), '[xy_tracking] Correction movement larger than 200 nm, active correction turned OFF')
+                self.toggle_feedback(False)
                 
             else:
                 
@@ -810,7 +816,7 @@ class Backend(QtCore.QObject):
         
     def actuator_xy(self, x_f, y_f):
         
-        print(datetime.now(), '[xy_tracking] actuator x, y =', x_f, y_f)
+#        print(datetime.now(), '[xy_tracking] actuator x, y =', x_f, y_f)
         
         x_f = tools.convert(x_f, 'XtoU')
         y_f = tools.convert(y_f, 'XtoU')
@@ -893,14 +899,6 @@ class Backend(QtCore.QObject):
         self.save_data_state = val
         print(datetime.now(), '[xy_tracking] save_data_state = {}'.format(val))
     
-#    @pyqtSlot(dict)
-#    def get_scan_parameters(self, params):
-#
-#        self.initialPos = params['initialPos']
-#        self.piezoXposition, self.piezoYposition, self.piezoZposition = self.initialPos
-#        
-#        print(datetime.now(), '[xy_tracking] Got scan position')
-                
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
         
@@ -910,10 +908,7 @@ class Backend(QtCore.QObject):
      
     @pyqtSlot()    
     def get_lock_signal(self):
-        
-        self.reset()
-        self.reset_data_arrays()
-        
+                
         self.toggle_tracking(True)
         self.toggle_feedback(True)
         self.save_data_state = True
@@ -924,42 +919,6 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[xy_tracking] System xy locked')
         
-        
-#    @pyqtSlot(bool, str)   
-#    def get_tcspc_signal(self, val, fname):
-#        
-#        """ 
-#        Get signal to start/stop xy position tracking and lock during 
-#        tcspc acquisition. It also gets the name of the tcspc file to produce
-#        the corresponding xy_data file
-#        
-#        bool val
-#        True: starts the tracking and feedback loop
-#        False: stops saving the data and exports the data during tcspc measurement
-#        tracking and feedback are not stopped automatically 
-#        
-#        """
-#        
-#        self.filename = fname
-#        
-#        if val is True:
-#            
-#            self.reset()
-#            self.reset_data_arrays()
-#            
-#            self.toggle_tracking(True)
-#            self.toggle_feedback(True)
-#            self.save_data_state = True
-#            
-#        else:
-#            
-#            self.export_data()
-#            self.save_data_state = False
-#            
-#        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
-#                                          self.feedback_active, 
-#                                          self.save_data_state)
-        
     @pyqtSlot(bool, str)   
     def get_psf_signal(self, val, fname):
         
@@ -967,13 +926,14 @@ class Backend(QtCore.QObject):
         Get signal to stop continous xy tracking/feedback if active and to
         go to discrete xy tracking/feedback mode if required
         """
-    @pyqtSlot(np.ndarray)    
-    def get_minflux_signal(self, r):
+    @pyqtSlot(np.ndarray, np.ndarray)    
+    def get_minflux_signal(self, r, r_rel):
         
         print(datetime.now(), '[xy_tracking] Got minflux measurement signal for position', r)
         
         # Unlock
-                
+        
+#        self.toggle_tracking(True)
         self.toggle_feedback(False)
         
         self.updateGUIcheckboxSignal.emit(self.tracking_value, 
@@ -984,14 +944,18 @@ class Backend(QtCore.QObject):
         
         x_f, y_f = r
         self.actuator_xy(x_f, y_f)
-        
+           
         print(datetime.now(), '[xy_tracking] Moved to', r)
         
-        # Lock again
+#        # Lock again
         
-        self.initial = False # to lock at a new position
-        self.toggle_feedback(True)
-        
+#        print(datetime.now(), '[xy_tracking] initial x and y', self.initialx, self.initialy)
+#        print(datetime.now(), '[xy_tracking] dx, dy', r_rel)
+##        self.initial = True # to lock at a new position, TO DO: fix relative position tracking
+#        self.initialx = self.currentx - r_rel[0] * 1000 # r_rel to nm
+#        self.initialy = self.currenty - r_rel[1] * 1000 # r_rel to nm
+#        print(datetime.now(), '[xy_tracking] initial x and y', self.initialx, self.initialy)
+
         self.updateGUIcheckboxSignal.emit(self.tracking_value, 
                                           self.feedback_active, 
                                           self.save_data_state)
@@ -1000,6 +964,11 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[xy_tracking] Minflux measurement for position ', r, ' is done, moved to next position')
        
+        x_piezo = tools.convert(self.adw.Get_FPar(70),'UtoX')
+        y_piezo = tools.convert(self.adw.Get_FPar(71),'UtoX')
+        print(datetime.now(), '[xy_tracking] piezo position', x_piezo, y_piezo)
+        
+        
     @pyqtSlot(np.ndarray)   
     def get_single_move_signal(self, pos_xy):
         
@@ -1030,6 +999,10 @@ class Backend(QtCore.QObject):
         self.adw.Set_FPar(25, z_f)
 
         self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
+        
+#    def get_liveViewIsON_signal(self):
+#        
+#        self.toggle_feedback(False)
 
     def moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
 

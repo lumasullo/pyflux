@@ -22,8 +22,6 @@
 'par_51: 1 -> open flipper, 0 -> close flipper
 'par_58: 1 -> proceed to flipper action (open/close), 0 -> wait until flag value is 1
 
-
-
 'README:
 'Very simpe process to digitally control the Thorlabs shutter
 
@@ -47,6 +45,8 @@ EVENT:
     Digout(16, par_50)
   
     par_57 = 0
+    
+    End
   
   endif
 
@@ -59,6 +59,8 @@ EVENT:
     Digout(17, par_51)
   
     par_58 = 0
+    
+    End
 
   endif
   

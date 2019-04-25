@@ -118,6 +118,15 @@ class Frontend(QtGui.QMainWindow):
         xyDock.addWidget(self.xyWidget)
         dockArea.addDock(xyDock, 'top', focusDock)
 #        dockArea.addDock(xyDock, 'top')
+        
+#        ## minflux measurement
+#        
+#        minfluxDock = Dock("minflux measurement")
+#
+#        self.minfluxWidget = minflux.Frontend()
+
+#        minfluxDock.addWidget(self.minfluxWidget)
+#        dockArea.addDock(minfluxDock, 'below', tcspcDock)
 
         # sizes to fit my screen properly
 
@@ -172,7 +181,7 @@ class Backend(QtCore.QObject):
             
     def setup_minflux_connections(self):
         
-        self.minfluxWorker.askROIcenterSignal.connect(self.scanWorker.get_ROI_center_request)
+#        self.minfluxWorker.askROIcenterSignal.connect(self.scanWorker.get_ROI_center_request)
         self.scanWorker.ROIcenterSignal.connect(self.minfluxWorker.get_ROI_center)
         
         self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_single_move_signal)
@@ -180,10 +189,10 @@ class Backend(QtCore.QObject):
         self.minfluxWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_minflux)
         
         self.minfluxWorker.xyzStartSignal.connect(self.xyWorker.get_lock_signal)
-        self.minfluxWorker.xyzStartSignal.connect(self.focusWorker.get_lock_signal)
+#        self.minfluxWorker.xyzStartSignal.connect(self.focusWorker.get_lock_signal)
         
         self.minfluxWorker.xyMoveAndLockSignal.connect(self.xyWorker.get_minflux_signal)
-        self.xyWorker.partialMinfluxMeasDone.connect(self.minfluxWorker.get_xy_done_signal)
+        self.xyWorker.partialMinfluxMeasDone.connect(self.minfluxWorker.partial_measurement)
         
         self.tcspcWorker.tcspcDoneSignal.connect(self.minfluxWorker.get_tcspc_done_signal)
         
@@ -239,7 +248,7 @@ if __name__ == '__main__':
     
     gui.minfluxWidget.emit_param_to_backend()
     worker.minfluxWorker.emit_param_to_frontend()
-      
+          
     # focus thread
 
     focusThread = QtCore.QThread()
@@ -251,11 +260,11 @@ if __name__ == '__main__':
     
     # focus GUI thread
     
-#    focusGUIThread = QtCore.QThread()
-#    gui.focusWidget.moveToThread(focusGUIThread)
-#    
-#    focusGUIThread.start()
-#    
+    focusGUIThread = QtCore.QThread()
+    gui.focusWidget.moveToThread(focusGUIThread)
+    
+    focusGUIThread.start()
+    
 #    # xy worker thread
 #    
     xyThread = QtCore.QThread()
@@ -297,9 +306,6 @@ if __name__ == '__main__':
     minfluxThread.start()
     
     # minflux measurement connections
-    
-    
-        
     
     gui.show()
     app.exec_()

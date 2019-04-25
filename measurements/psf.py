@@ -65,3 +65,44 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.startButton, 4, 0)
         subgrid.addWidget(self.progress, 5, 0)
         
+class Backend(QtCore.QObject):
+    
+        def __init__(self, *args, **kwargs):
+        
+            super().__init__(*args, **kwargs)
+            
+            self.i = 0
+            self.n = 0 # TO DO: get from GUI
+         
+        @pyqtSlot() 
+        def get_scan_parameters(self):
+            
+            self.Npixels = 50
+            
+            # TO DO: build config file
+            
+        def start_psf_measurement(self):
+            
+            self.data = np.zeros()
+            
+            self.xySignal.emit()
+            self.zSignal.emit()
+            
+            time.sleep(1)
+            
+            self.confocalSignal.emit()
+            
+        @pyqtSlot()  
+        def psf_measurement(self):
+            
+            if self.i < self.n:
+            
+                self.xySignal.emit()
+                self.zSignal.emit()
+                
+                time.sleep(1)
+                
+                self.confocalSignal.emit()
+            
+            
+        

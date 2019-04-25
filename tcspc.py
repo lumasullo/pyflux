@@ -50,8 +50,7 @@ class Frontend(QtGui.QFrame):
     def start_measurement(self):
         
         self.measureSignal.emit()
-        
-        self.measureButton.setChecked(False)
+#        self.measureButton.setChecked(True) TO DO: signal from backend that toggles button
     
     def load_folder(self):
 
@@ -82,8 +81,13 @@ class Frontend(QtGui.QFrame):
     @pyqtSlot(float, float)
     def get_backend_parameters(self, cts0, cts1):
         
-        self.channel0Label.setText(('Input0 (sync) = {} c/s'.format(cts0)))
-        self.channel1Label.setText(('Input1 (APD) = {} c/s'.format(cts1)))
+        # conversion to kHz
+        
+        cts0_khz = cts0/1000 
+        cts1_khz = cts1/1000
+        
+        self.channel0Value.setText(('{}'.format(cts0_khz)))
+        self.channel1Value.setText(('{}'.format(cts1_khz)))
     
     @pyqtSlot(np.ndarray, np.ndarray)    
     def plot_data(self, relTime, absTime):
@@ -121,8 +125,8 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(400)
-        self.paramWidget.setFixedWidth(250)
+        self.paramWidget.setFixedHeight(250)
+        self.paramWidget.setFixedWidth(230)
         
 #        phParamTitle = QtGui.QLabel('<h2><strong>TCSPC settings</strong></h2>')
         phParamTitle = QtGui.QLabel('<h2>TCSPC settings</h2>')
@@ -132,14 +136,27 @@ class Frontend(QtGui.QFrame):
         
         self.dataWidget = pg.GraphicsLayoutWidget()
         
+        # file/folder widget
+        
+        self.fileWidget = QtGui.QFrame()
+        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                      QtGui.QFrame.Raised)
+        
+        self.fileWidget.setFixedHeight(120)
+        self.fileWidget.setFixedWidth(230)
+        
         # Shutter button
         
         self.shutterButton = QtGui.QPushButton('Shutter open/close')
         self.shutterButton.setCheckable(True)
         
+        # Prepare button
+        
+        self.prepareButton = QtGui.QPushButton('Prepare TTTR')
+        
         # Measure button
 
-        self.measureButton = QtGui.QPushButton('Measure')
+        self.measureButton = QtGui.QPushButton('Measure TTTR')
         self.measureButton.setCheckable(True)
         
         # forced stop measurement
@@ -158,14 +175,20 @@ class Frontend(QtGui.QFrame):
         
         # TCSPC parameters
 
-        self.acqtimeLabel = QtGui.QLabel('Acquisition time (s)')
+        self.acqtimeLabel = QtGui.QLabel('Acquisition time [s]')
         self.acqtimeEdit = QtGui.QLineEdit('1')
-        self.resolutionLabel = QtGui.QLabel('Resolution (ps)')
+        self.resolutionLabel = QtGui.QLabel('Resolution [ps]')
         self.resolutionEdit = QtGui.QLineEdit('8')
-        self.offsetLabel = QtGui.QLabel('Offset (ns)')
+        self.offsetLabel = QtGui.QLabel('Offset [ns]')
         self.offsetEdit = QtGui.QLineEdit('0')
-        self.channel0Label = QtGui.QLabel('Input0 (sync) = --- c/s')
-        self.channel1Label = QtGui.QLabel('Input1 (APD) = --- c/s')
+        
+        self.channel0Label = QtGui.QLabel('Input0 (sync) [kHz]')
+        self.channel0Value = QtGui.QLineEdit('')
+        self.channel0Value.setReadOnly(True)
+        
+        self.channel1Label = QtGui.QLabel('Input1 (APD) [kHz]')
+        self.channel1Value = QtGui.QLineEdit('')
+        self.channel1Value.setReadOnly(True)
         
         self.filenameLabel = QtGui.QLabel('File name')
         self.filenameEdit = QtGui.QLineEdit('filename')
@@ -209,12 +232,15 @@ class Frontend(QtGui.QFrame):
         self.acqtimeEdit.textChanged.connect(self.emit_param)
         self.resolutionEdit.textChanged.connect(self.emit_param)
 
-        # GUI layout
+        # general GUI layout
 
         grid = QtGui.QGridLayout()
         self.setLayout(grid)
         grid.addWidget(self.paramWidget, 0, 0)
-        grid.addWidget(self.dataWidget, 0, 1)
+        grid.addWidget(self.fileWidget, 1, 0)
+        grid.addWidget(self.dataWidget, 0, 1, 2, 2)
+        
+        # param Widget layout
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
@@ -227,19 +253,24 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.offsetLabel, 6, 0)
         subgrid.addWidget(self.offsetEdit, 6, 1)
         subgrid.addWidget(self.channel0Label, 8, 0)
+        subgrid.addWidget(self.channel0Value, 8, 1)
         subgrid.addWidget(self.channel1Label, 9, 0)
+        subgrid.addWidget(self.channel1Value, 9, 1)
         
-        subgrid.addWidget(self.filenameLabel, 11, 0)
-        subgrid.addWidget(self.filenameEdit, 11, 1)
-        subgrid.addWidget(self.folderLabel, 13, 0)
-        subgrid.addWidget(self.folderEdit, 13, 1)
-        subgrid.addWidget(self.browseFolderButton, 15, 0)
+        subgrid.addWidget(self.measureButton, 17, 0)
+        subgrid.addWidget(self.prepareButton, 18, 0)
+        subgrid.addWidget(self.shutterButton, 19, 0)
+        subgrid.addWidget(self.stopButton, 17, 1)
+        subgrid.addWidget(self.clearButton, 18, 1)
         
-        subgrid.addWidget(self.shutterButton, 17, 0)
-        subgrid.addWidget(self.measureButton, 18, 0)
-        subgrid.addWidget(self.stopButton, 19, 0)
-#        subgrid.addWidget(self.exportDataButton, 20, 0)
-        subgrid.addWidget(self.clearButton, 21, 0)
+        file_subgrid = QtGui.QGridLayout()
+        self.fileWidget.setLayout(file_subgrid)
+        
+        file_subgrid.addWidget(self.filenameLabel, 0, 0, 1, 2)
+        file_subgrid.addWidget(self.filenameEdit, 1, 0, 1, 2)
+        file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
+        file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
+        file_subgrid.addWidget(self.browseFolderButton, 4, 0)
         
 class Backend(QtCore.QObject):
 
@@ -271,6 +302,10 @@ class Backend(QtCore.QObject):
         
         self.ph.syncDivider = 4 # this parameter must be set such that the count rate at channel 0 (sync) is equal or lower than 10MHz
         self.ph.resolution = self.resolution # desired resolution in ps
+        
+        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
+                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+
         self.ph.offset = 0
         self.ph.tacq = self.tacq * 1000 # time in ms
         
@@ -282,6 +317,8 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[tcspc] Resolution = {} ps'.format(self.ph.resolution))
         print(datetime.now(), '[tcspc] Acquisition time = {} s'.format(self.ph.tacq))
     
+        print(datetime.now(), '[tcspc] Picoharp 300 prepared for TTTR measurement')
+    
     @pyqtSlot()           
     def measure(self):
         
@@ -289,13 +326,14 @@ class Backend(QtCore.QObject):
 
         self.currentfname = tools.getUniqueName(self.fname)
         
-        delay = 4.0 # 4.0 s is the typical time that the PH takes to start a measurement
+#        delay = 4.0 # 4.0 s is the typical time that the PH takes to start a measurement
         
 #        self.xyzSignal.emit(True, self.currentfname)
         
-        self.prepare_ph()
-        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
-                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+#        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
+#                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+        
+#        self.prepare_ph()
 
         t1 = time.time()
         
@@ -409,7 +447,6 @@ class Backend(QtCore.QObject):
             
             self.adw.Set_Par(55, 0)
             self.adw.Set_Par(50, 1)
-            self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
             
             print(datetime.now(), '[tcspc] Shutter opened')
@@ -420,7 +457,6 @@ class Backend(QtCore.QObject):
             
             self.adw.Set_Par(55, 0)
             self.adw.Set_Par(50, 0)
-            self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
 
             print(datetime.now(), '[tcspc] Shutter closed')
@@ -429,6 +465,7 @@ class Backend(QtCore.QObject):
 
         frontend.paramSignal.connect(self.get_frontend_parameters)
         frontend.measureSignal.connect(self.measure)
+        frontend.prepareButton.clicked.connect(self.prepare_ph)
         frontend.stopButton.clicked.connect(self.stop_measure)
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
 

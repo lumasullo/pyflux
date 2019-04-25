@@ -175,7 +175,7 @@ class Backend(QtCore.QObject):
     tcspcStartSignal = pyqtSignal()
     xyzStartSignal = pyqtSignal()
     xyzEndSignal = pyqtSignal(str)
-    xyMoveAndLockSignal = pyqtSignal(np.ndarray)
+    xyMoveAndLockSignal = pyqtSignal(np.ndarray, np.ndarray)
     
     paramSignal = pyqtSignal(np.ndarray, np.ndarray, int)
     
@@ -183,24 +183,27 @@ class Backend(QtCore.QObject):
         
         super().__init__(*args, **kwargs)
 
-        self.i = 2 # counter
-        self.n = 4 # number of movements after initial movement
+        self.i = 1 # counter
+        self.n = 6 # number of movements after initial movement
         self.r0 = np.array([3.0, 3.0]) # TO DO: get this from scan or ADwin
-        self._r = np.array([[0.00, 0.00], [0.07, 0.00], [0.07, 0.07], [0.00, 0.07]])
-        self.acqtime = 1 # in s
+        self._r = np.array([[0.035, 0.035], [0.00, 0.00], [0.07, 0.00], [0.07, 0.07], [0.00, 0.07], [0.035, 0.035]])
+        self.acqtime = 5 # in s
         
         self.update_param()
         self.emit_param_to_frontend()
         # TO DO: get parameters from GUI
         
-    def ask_ROI_center(self):
-        
-        self.askROIcenterSignal.emit()
+#    def ask_ROI_center(self):
+#        
+#        self.askROIcenterSignal.emit()
     
     @pyqtSlot(np.ndarray)    
     def get_ROI_center(self, center):
         
         self.r0 = center
+        time.sleep(0.4)
+        self.xyzStartSignal.emit()
+        
         
     @pyqtSlot(np.ndarray, np.ndarray, int)
     def get_frontend_param(self, r0, _r, acqt):
@@ -208,6 +211,7 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[minflux] r0, _r', r0, _r)
         print(datetime.now(), '[minflux] Type r0, _r', type(r0), type(_r))
+        print(datetime.now(), '[minflux] acqtime', acqt)
         
         self._r = np.array(_r)
         self.r0 = np.array(r0)
@@ -237,9 +241,9 @@ class Backend(QtCore.QObject):
         
         """
         
-        self.ask_ROI_center()
+#        self.ask_ROI_center()
         self.update_param()
-        self.moveToSignal.emit(self.r[0]) # signal emitted to xy for smooth, long movement
+#        self.moveToSignal.emit(self.r[0]) # signal emitted to xy for smooth, long movement
         self.tcspcPrepareSignal.emit(self.currentfname, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
         print(datetime.now(), '[minflux] movement', 0)
 
@@ -248,24 +252,35 @@ class Backend(QtCore.QObject):
         
         self.tcspcStartSignal.emit()
         self.xyzStartSignal.emit()
-        time.sleep(self.acqtime)
-        self.xyMoveAndLockSignal.emit(self.r[1]) # singal emitted to xy and z modules to start the feedback and wait for acqtime, then move to next position
-        print(datetime.now(), '[minflux] movement', 1)
+        
+#        self.partial_measurement()
+#        time.sleep(self.acqtime)
+        
+#        time0 = time.time()
+#        time1 = time.time()
+#        
+#        while (time1 - time0 < self.acqtime):
+#            time1 = time.time()
+        
+        self.xyMoveAndLockSignal.emit(self.r[0], self._r[0]) # singal emitted to xy and z modules to start the feedback and wait for acqtime, then move to next position
+        print(datetime.now(), '[minflux] movement', 0)
         
     @pyqtSlot()    
-    def get_xy_done_signal(self):
+    def partial_measurement(self):
         
         if self.i < self.n:
         
             time.sleep(self.acqtime)
             print(datetime.now(), '[minflux] movement', self.i)
-            self.xyMoveAndLockSignal.emit(self.r[self.i])
+            self.xyMoveAndLockSignal.emit(self.r[self.i], self._r[self.i])
             self.i += 1
             
         else:
             
             print(datetime.now(), '[minflux] last movement done')
-     
+            self.i = 2
+        
+        
     @pyqtSlot()  
     def get_tcspc_done_signal(self):
         

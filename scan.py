@@ -146,9 +146,9 @@ class Frontend(QtGui.QFrame):
         
 #        print(initialPos)
         
-        self.frameTimeValue.setText('Frame time = {} s'.format(np.around(frameTime, 2)))
-        self.pxSizeValue.setText('Pixel size = {} nm'.format(np.around(1000 * pxSize, 5))) # in nm
-        self.maxCountsLabel.setText('Counts limit per pixel = {}'.format(maxCounts)) 
+        self.frameTimeValue.setText('{}'.format(np.around(frameTime, 2)))
+        self.pxSizeValue.setText('{}'.format(np.around(1000 * pxSize, 3))) # in nm
+        self.maxCountsValue.setText('{}'.format(maxCounts)) 
         self.initialPosEdit.setText('{} {} {}'.format(*initialPos))
         
         self.pxSize = pxSize
@@ -551,6 +551,11 @@ class Frontend(QtGui.QFrame):
         self.shutterButton = QtGui.QPushButton('Shutter open/close')
         self.shutterButton.setCheckable(True)
         
+        # Flipper button
+        
+        self.flipperButton = QtGui.QPushButton('Flipper 100x up/down')
+        self.flipperButton.setCheckable(True)
+        
         # Save current frame button
 
         self.currentFrameButton = QtGui.QPushButton('Save current frame')
@@ -560,6 +565,12 @@ class Frontend(QtGui.QFrame):
         self.preview_scanButton = QtGui.QPushButton('Scan preview')
         self.preview_scanButton.setCheckable(True)
         self.preview_scanButton.clicked.connect(self.preview_scan)
+        
+        # move to center button
+        
+        self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
+        self.moveToROIcenterButton.clicked.connect(self.select_ROI)
+
         
         # line profile button
         
@@ -576,21 +587,24 @@ class Frontend(QtGui.QFrame):
         self.scanRangeEdit = QtGui.QLineEdit('8')
         self.pxTimeLabel = QtGui.QLabel('Pixel time (µs)')
         self.pxTimeEdit = QtGui.QLineEdit('500')
-        self.maxCountsLabel = QtGui.QLabel('')
         self.NofPixelsLabel = QtGui.QLabel('Number of pixels')
         self.NofPixelsEdit = QtGui.QLineEdit('80')
-        self.pxSizeValue = QtGui.QLabel('')
-        self.frameTimeValue = QtGui.QLabel('')
         
-#        self.NframesLabel = QtGui.QLabel('Number of frames')
-#        self.NframesEdit = QtGui.QLineEdit('10')
-
+        self.pxSizeLabel = QtGui.QLabel('Pixel size (nm)')
+        self.pxSizeValue = QtGui.QLineEdit('')
+        self.pxSizeValue.setReadOnly(True)
+        self.frameTimeLabel = QtGui.QLabel('Frame time (s)')
+        self.frameTimeValue = QtGui.QLineEdit('')
+        self.frameTimeValue.setReadOnly(True)
+        self.maxCountsLabel = QtGui.QLabel('Max counts per pixel')
+        self.maxCountsValue = QtGui.QLineEdit('')
+        self.frameTimeValue.setReadOnly(True)
+        
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
         self.advancedButton.clicked.connect(self.toggle_advanced)
         
-#        self.emitParamButton = QtGui.QPushButton('Emit parameters')
-#        self.emitParamButton.clicked.connect(self.emit_param)
+
         
         self.auxAccelerationLabel = QtGui.QLabel('Aux acc'
                                                  ' (% of a_max)')
@@ -674,19 +688,14 @@ class Frontend(QtGui.QFrame):
                                       QtGui.QFrame.Raised)
         
         self.xUpButton = QtGui.QPushButton("(+x) ►")  # →
-#        self.xUpButton.pressed.connect(self.xMoveUp)
         self.xDownButton = QtGui.QPushButton("◄ (-x)")  # ←
-#        self.xDownButton.pressed.connect(self.xMoveDown)
 
         self.yUpButton = QtGui.QPushButton("(+y) ▲")  # ↑
-#        self.yUpButton.pressed.connect(self.yMoveUp)
         self.yDownButton = QtGui.QPushButton("(-y) ▼")  # ↓
-#        self.yDownButton.pressed.connect(self.yMoveDown)
+
         
         self.zUpButton = QtGui.QPushButton("(+z) ▲")  # ↑
-#        self.zUpButton.pressed.connect(self.zMoveUp)
         self.zDownButton = QtGui.QPushButton("(-z) ▼")  # ↓
-#        self.zDownButton.pressed.connect(self.zMoveDown)
         
         self.xStepLabel = QtGui.QLabel('x step (µm)')
         self.xStepEdit = QtGui.QLineEdit('0.050')
@@ -738,38 +747,44 @@ class Frontend(QtGui.QFrame):
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
         
-        subgrid.addWidget(self.scanModeLabel, 2, 1)
-        subgrid.addWidget(self.scanMode, 3, 1)
-        subgrid.addWidget(self.detectorType, 4, 1)
+        subgrid.addWidget(scanParamTitle, 0, 0, 1, 3)
         
-        subgrid.addWidget(self.shutterButton, 5, 1, 2, 1)
-        subgrid.addWidget(self.liveviewButton, 6, 1, 2, 1)
-        subgrid.addWidget(self.currentFrameButton, 8, 1)
-        subgrid.addWidget(self.ROIButton, 9, 1)
-        subgrid.addWidget(self.select_ROIButton, 10, 1)
+        subgrid.addWidget(self.scanModeLabel, 2, 2)
+        subgrid.addWidget(self.scanMode, 3, 2)
+        subgrid.addWidget(self.detectorType, 4, 2)
+        subgrid.addWidget(self.liveviewButton, 5, 2)
+        
+        subgrid.addWidget(self.shutterButton, 7, 2)
+        subgrid.addWidget(self.flipperButton, 8, 2)
+        subgrid.addWidget(self.currentFrameButton, 9, 2)
+        subgrid.addWidget(self.ROIButton, 10, 2)
+        subgrid.addWidget(self.select_ROIButton, 11, 2)
+        
 #        subgrid.addWidget(self.acquireFrameButton, 11, 1)
 #        subgrid.addWidget(self.stopAcquireFrameButton, 12, 1)
-
-        subgrid.addWidget(self.lineProfButton, 14, 1)
-
-        subgrid.addWidget(scanParamTitle, 0, 0, 2, 3)
         
-        subgrid.addWidget(self.initialPosLabel, 2, 0)
-        subgrid.addWidget(self.initialPosEdit, 3, 0)
+        subgrid.addWidget(self.moveToROIcenterButton, 13, 2)
+        subgrid.addWidget(self.lineProfButton, 14, 2)
+
+        subgrid.addWidget(self.initialPosLabel, 2, 0, 1, 2)
+        subgrid.addWidget(self.initialPosEdit, 3, 0, 1, 2)
         subgrid.addWidget(self.scanRangeLabel, 4, 0)
-        subgrid.addWidget(self.scanRangeEdit, 5, 0)
-        subgrid.addWidget(self.pxTimeLabel, 6, 0)
-        subgrid.addWidget(self.pxTimeEdit, 7, 0)
-        subgrid.addWidget(self.NofPixelsLabel, 8, 0)
-        subgrid.addWidget(self.NofPixelsEdit, 9, 0)
+        subgrid.addWidget(self.scanRangeEdit, 4, 1)
+        subgrid.addWidget(self.pxTimeLabel, 5, 0)
+        subgrid.addWidget(self.pxTimeEdit, 5, 1)
+        subgrid.addWidget(self.NofPixelsLabel, 6, 0)
+        subgrid.addWidget(self.NofPixelsEdit, 6, 1)
         
-        subgrid.addWidget(self.pxSizeValue, 10, 0)
-        subgrid.addWidget(self.frameTimeValue, 11, 0)
-        subgrid.addWidget(self.maxCountsLabel, 12, 0)
+        subgrid.addWidget(self.pxSizeLabel, 7, 0)
+        subgrid.addWidget(self.pxSizeValue, 7, 1)
+        subgrid.addWidget(self.frameTimeLabel, 8, 0)
+        subgrid.addWidget(self.frameTimeValue, 8, 1)
+        subgrid.addWidget(self.maxCountsLabel, 9, 0)
+        subgrid.addWidget(self.maxCountsValue, 9, 1)
         
 #        subgrid.addWidget(self.emitParamButton, 13, 0)
         
-        subgrid.addWidget(self.advancedButton, 14, 0)
+        subgrid.addWidget(self.advancedButton, 11, 0)
         
         subgrid.addWidget(self.auxAccelerationLabel, 15, 0)
         subgrid.addWidget(self.auxAccEdit, 16, 0)
@@ -777,18 +792,17 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.waitingTimeEdit, 18, 0)
         subgrid.addWidget(self.preview_scanButton, 19, 0)
         
-        subgrid.addWidget(self.filenameLabel, 2, 2)
-        subgrid.addWidget(self.filenameEdit, 3, 2)
-        subgrid.addWidget(self.folderLabel, 4, 2)
-        subgrid.addWidget(self.folderEdit, 5, 2)
-        subgrid.addWidget(self.browseFolderButton, 6, 2)
-        
+        subgrid.addWidget(self.filenameLabel, 2, 3)
+        subgrid.addWidget(self.filenameEdit, 3, 3)
+        subgrid.addWidget(self.folderLabel, 4, 3)
+        subgrid.addWidget(self.folderEdit, 5, 3)
+        subgrid.addWidget(self.browseFolderButton, 6, 3)
     
-
-        self.paramWidget.setFixedHeight(400)
-        self.paramWidget.setFixedWidth(450)
+        self.paramWidget.setFixedHeight(350)
+        self.paramWidget.setFixedWidth(400)
         
-        subgrid.setColumnMinimumWidth(1, 130)
+#        subgrid.setColumnMinimumWidth(1, 130)
+#        subgrid.setColumnMinimumWidth(1, 50)
         
         imageWidget.setFixedHeight(500)
         imageWidget.setFixedWidth(500)
@@ -864,12 +878,12 @@ class Backend(QtCore.QObject):
     
     paramSignal = pyqtSignal(dict)
     imageSignal = pyqtSignal(np.ndarray)
-    xyDriftSignal = pyqtSignal()
-    zDriftSignal = pyqtSignal()
+#    xyDriftSignal = pyqtSignal()
+#    zDriftSignal = pyqtSignal()
     
 #    frameAcqSignal = pyqtSignal(np.ndarray, int)
     frameIsDone = pyqtSignal(bool)  # the bool is whether feedback is ON (True) or OFF (False)
-    newFrameSignal = pyqtSignal(bool)
+#    newFrameSignal = pyqtSignal(bool)
     ROIcenterSignal = pyqtSignal(np.ndarray)
     
     def __init__(self, adwin, *args, **kwargs):
@@ -1130,6 +1144,15 @@ class Backend(QtCore.QObject):
 
         self.moveTo(*self.moveToPos)
         
+    def moveTo_roi_center(self):
+        
+        self.ROIcenter = self.initialPos + np.array([self.scanRange/2, self.scanRange/2, 0])
+        
+        print('[scan] self.initialPos[0:2]', self.initialPos[0:2])
+        print('[scan] center', self.ROIcenter)
+        
+        self.moveTo(*self.ROIcenter)
+        self.ROIcenterSignal.emit(self.ROIcenter)
         
     def relative_move(self, axis, direction):
         
@@ -1380,6 +1403,7 @@ class Backend(QtCore.QObject):
         
         if lvbool:
             
+            self.acquisitionMode = 'liveview'
             self.liveview_start()
             
         else:
@@ -1389,8 +1413,6 @@ class Backend(QtCore.QObject):
     def liveview_start(self):
         
 #        self.plot_scan_signal()
-
-        self.acquisitionMode = 'liveview'
 
         if self.scantype == 'xy':
 
@@ -1451,7 +1473,7 @@ class Backend(QtCore.QObject):
 
         else:
 
-            print('[scan] Frame ended')
+            print(datetime.now(), '[scan] Frame ended')
 
             self.i = 0
             self.y_offset = 0
@@ -1472,7 +1494,9 @@ class Backend(QtCore.QObject):
                             self.z_i - self.scanRange/2)
                 
             if self.acquisitionMode == 'frame':
-                self.frame_acquisition_stop()
+                
+                self.liveview_stop()
+                self.frameIsDone.emit()
                 
             self.update_device_param()  
             
@@ -1485,7 +1509,6 @@ class Backend(QtCore.QObject):
             
             self.adw.Set_Par(55, 0)
             self.adw.Set_Par(50, 1)
-            self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
             
             print('[scan] Shutter opened')
@@ -1496,19 +1519,41 @@ class Backend(QtCore.QObject):
             
             self.adw.Set_Par(55, 0)
             self.adw.Set_Par(50, 0)
-            self.adw.Set_Par(57, 1)
             self.adw.Start_Process(5)
 
             print('[scan] Shutter closed')
             
-    @pyqtSlot()
-    def get_ROI_center_request(self):
+    @pyqtSlot(bool)
+    def toggle_flipper(self, val):
         
-        print(datetime.now(), '[scan] got ROI request')
+        if val is True:
+            
+            self.flipper_state = True
+            
+            self.adw.Set_Par(55, 1)
+            self.adw.Set_Par(51, 1)
+            self.adw.Start_Process(5)
+            
+            print('[scan] Flipper up')
+            
+        if val is False:
+            
+            self.flipper_state = False
+            
+            self.adw.Set_Par(55, 1)
+            self.adw.Set_Par(51, 0)
+            self.adw.Start_Process(5)
+
+            print('[scan] Flipper down')
+            
+#    @pyqtSlot()
+#    def get_ROI_center_request(self):
+#        
+#        print(datetime.now(), '[scan] got ROI request')
         
     def emit_ROI_center(self):
         
-        self.ROIcenterSignal.emit()
+        self.ROIcenterSignal.emit(self.ROIcenter)
         
         print('[scan] ROI center emitted')
 
@@ -1521,13 +1566,14 @@ class Backend(QtCore.QObject):
 #        frontend.frameacqSignal.connect(self.start_continous_acq)
 #        frontend.stopAcquireFrameButton.clicked.connect(self.stop_continous_acq)
 #        frontend.acquireFrameButton.clicked.connect(self.frame_acquisition)
+        frontend.moveToROIcenterButton.clicked.connect(self.moveTo_roi_center)
         frontend.currentFrameButton.clicked.connect(self.save_current_frame)
         frontend.moveToButton.clicked.connect(self.moveTo_action)
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
 #        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
-
+        frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
         
         frontend.xUpButton.pressed.connect(lambda: self.relative_move('x', 'up'))
         frontend.xDownButton.pressed.connect(lambda: self.relative_move('x', 'down'))
