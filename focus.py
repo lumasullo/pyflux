@@ -32,6 +32,7 @@ import tools.pi as pi
 import scan
 import drivers.ADwin as ADwin
 
+DEBUG = True
 
 def actuatorParameters(adwin, z_f, n_pixels_z=50, pixeltime=1000):
 
@@ -63,7 +64,7 @@ class Frontend(QtGui.QFrame):
 
         self.setup_gui()
 
-    def ROImethod(self):
+    def roi_method(self):
         
         if self.cropped is True:  # code to go back to the (1280 x 1024) ROI
             
@@ -101,7 +102,7 @@ class Frontend(QtGui.QFrame):
                                          translateSnap=True,
                                          pen=ROIpen)
             
-    def selectROI(self):
+    def select_roi(self):
         
         self.cropped = True
         self.getStats = True
@@ -254,8 +255,7 @@ class Frontend(QtGui.QFrame):
         self.saveDataBox = QtGui.QCheckBox("Save data")
                 
         self.clearDataButton = QtGui.QPushButton('Clear data')
-        
-        self.ROIbutton.clicked.connect(self.ROImethod)
+        self.ROIbutton.clicked.connect(self.roi_method)
 
         self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
         
@@ -263,7 +263,7 @@ class Frontend(QtGui.QFrame):
         
         self.liveviewButton.clicked.connect(self.toggle_liveview)
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
-        self.selectROIbutton.clicked.connect(self.selectROI)
+        self.selectROIbutton.clicked.connect(self.select_roi)
         self.clearDataButton.clicked.connect(self.clear_graph)
 
         # focus camera display
@@ -306,7 +306,6 @@ class Frontend(QtGui.QFrame):
  
         
 #        self.focusSetPoint = self.focusGraph.plot.addLine(y=self.setPoint, pen='r')
-
 
         # GUI layout
         
@@ -355,7 +354,7 @@ class Backend(QtCore.QObject):
     changedSetPoint = pyqtSignal(float)
     
     
-    ZdriftCorrectionIsDone = pyqtSignal(float, float, float)
+    zIsDone = pyqtSignal(bool)
     ZtcspcIsDone = pyqtSignal()
 
     def __init__(self, camera, adw, *args, **kwargs):
@@ -436,7 +435,9 @@ class Backend(QtCore.QObject):
         
         try:
             self.camera.stop_live_video()
-        except:
+            
+        except: # TO DO: change for specific Error
+            
             pass
            
         self.camera.start_live_video(framerate='20 Hz')
@@ -484,12 +485,17 @@ class Backend(QtCore.QObject):
         
         ''' set up on/off feedback loop'''
         
+        print(datetime.now(), '[focus] feedback setup 0')
+
+        
 #        print(datetime.now(), '[focus] Set-point set to', self.focusSignal)
         self.setPoint = self.focusSignal * self.pxSize
         initialZ = tools.convert(self.adw.Get_FPar(72), 'UtoX') # current Z position of the piezo
         self.currentZ = initialZ # set initialZ as currentZ
         
         self.changedSetPoint.emit(self.focusSignal)
+        
+        print(datetime.now(), '[focus] feedback setup 1')
 
         # TO DO: implement calibrated version of this
     
@@ -595,32 +601,43 @@ class Backend(QtCore.QObject):
                 
         self.massCenter = np.array(ndi.measurements.center_of_mass(image))
         self.focusSignal = self.massCenter[0]
+        print(datetime.now(), '[focus] self.focusSignal', self.focusSignal)
         self.currentTime = ptime.time() - self.startTime
         
-#    @pyqtSlot()
-#    def setup_discrete_feedback_loop(self):
-#        
-#        self.setup_feedback()
+    @pyqtSlot(bool, bool)
+    def single_z_correction(self, feedback_val, initial):
         
-    @pyqtSlot(bool)
-    def single_z_correction(self, val):
+        if initial:
         
-#        initialPos = np.array([x, y, z])
-        
-#        self.camera.start_live_video(framerate='20 Hz')
-#        time.sleep(0.050)
+            try:
+                self.camera.stop_live_video()
+                
+            except: # TO DO: change for specific Error
+                
+                pass
+            
+            self.camera.start_live_video(framerate='20 Hz')
+            self.camera._set_AOI(*self.roi_area)
+            
+            time.sleep(0.100)
         
         self.acquire_data()
         self.update_graph_data()
-        self.update_feedback()
+                
+        if initial:
+            
+            self.setup_feedback()
+            
+        else:
         
-        initialPos[2] = self.currentZ
-        self.ZdriftCorrectionIsDone.emit(*initialPos)
+            self.update_feedback()
         
         if self.save_data_state:
             
             self.time_array.append(self.time[-1])
             self.z_array.append(self.data[-1])
+                    
+        self.zIsDone.emit(True)
 
     def calibrate(self):
         
@@ -687,9 +704,18 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[focus] z data exported to', filename)
         
-#    @pyqtSlot(bool)
-#    def get_lock(self, lockbool):
-#        self.lock_focus(lockbool)
+    @pyqtSlot()    
+    def get_stop_signal(self):
+        
+        self.toggle_feedback(False)
+#        self.toggle_tracking(False) # TO DO: add toggle_tracking
+        self.liveview_stop()
+        
+        """
+        From: [psf]
+        Description: stops liveview, tracking, feedback if they where running to
+        start the psf measurement with discrete xy - z corrections
+        """
         
     @pyqtSlot()    
     def get_lock_signal(self):
@@ -709,11 +735,14 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[focus] System focus locked')
             
     @pyqtSlot(np.ndarray)
-    def get_newROI(self, val):
+    def get_new_roi(self, val):
+        
+        self.roi_area = val
+        self.camera._set_AOI(*self.roi_area)
 
-        self.cropped = True
-        self.camera._set_AOI(*val)
-        print(datetime.now(), '[focus] ROI changed to', self.camera._get_AOI())
+        
+        if DEBUG:
+            print(datetime.now(), '[focus] ROI changed to', self.camera._get_AOI())
         
     @pyqtSlot(bool, str)   
     def get_tcspc_signal(self, val, fname):
@@ -774,7 +803,7 @@ class Backend(QtCore.QObject):
     def make_connection(self, frontend):
           
         frontend.liveviewSignal.connect(self.liveview)
-        frontend.changedROI.connect(self.get_newROI)
+        frontend.changedROI.connect(self.get_new_roi)
         frontend.closeSignal.connect(self.stop)
 #        frontend.lockFocusSignal.connect(self.lock_focus)
         frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))

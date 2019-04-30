@@ -24,12 +24,13 @@ import tools.PSF as PSF
 import tools.tools as tools
 import scan
 
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QThread
 import qdarkstyle
 
 from lantz.drivers.andor import ccd 
 import drivers.ADwin as ADwin
 
+DEBUG = 'True'
 
 class Frontend(QtGui.QFrame):
     
@@ -73,7 +74,7 @@ class Frontend(QtGui.QFrame):
 #
 #            self.vb.removeItem(self.roi)
 #            self.roi.hide()
-        
+    
     def emit_roi_info(self):
         
 #        print('Set ROIs function')
@@ -82,7 +83,7 @@ class Frontend(QtGui.QFrame):
         
         if roinumber == 0:
             
-            print('Please select a valid ROI for beads tracking')
+            print(datetime.now(), '[xy_tracking] Please select a valid ROI for beads tracking')
             
         else:
             
@@ -126,10 +127,21 @@ class Frontend(QtGui.QFrame):
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
             print(datetime.now(), '[xy_tracking] Live view stopped')
         
+    @pyqtSlot()  
+    def get_roi_request(self):
+        
+        print(datetime.now(), '[xy_tracking] got ROI request')
+        
+        self.emit_roi_info()
+        
     @pyqtSlot(np.ndarray)
     def get_image(self, img):
         
+#        if DEBUG:
+#            print(datetime.now(),'[xy_tracking-frontend] got image signal')
+
         self.img.setImage(img, autoLevels=False)
+        
         
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
     def get_data(self, time, xData, yData):
@@ -218,6 +230,7 @@ class Frontend(QtGui.QFrame):
             
         backend.changedImage.connect(self.get_image)
         backend.changedData.connect(self.get_data)
+        backend.askROISignal.connect(self.emit_roi_info)
         backend.updateGUIcheckboxSignal.connect(self.get_backend_states)
         
     def setup_gui(self):
@@ -321,9 +334,14 @@ class Frontend(QtGui.QFrame):
         
         # create ROI button
     
-        self.ROIButton = QtGui.QPushButton('add ROI')
+        self.ROIButton = QtGui.QPushButton('ROI')
         self.ROIButton.setCheckable(True)
         self.ROIButton.clicked.connect(self.craete_roi)
+        
+        # select ROI
+        
+        self.selectROIbutton = QtGui.QPushButton('Select ROI')
+        self.selectROIbutton.clicked.connect(self.emit_roi_info)
         
         # delete ROI button
         
@@ -360,9 +378,10 @@ class Frontend(QtGui.QFrame):
 
         subgrid.addWidget(self.liveviewButton, 0, 0)
         subgrid.addWidget(self.ROIButton, 1, 0)
-        subgrid.addWidget(self.delete_roiButton, 2, 0)
-        subgrid.addWidget(self.exportDataButton, 3, 0)
-        subgrid.addWidget(self.clearDataButton, 4, 0)
+        subgrid.addWidget(self.selectROIbutton, 2, 0)
+        subgrid.addWidget(self.delete_roiButton, 3, 0)
+        subgrid.addWidget(self.exportDataButton, 4, 0)
+        subgrid.addWidget(self.clearDataButton, 5, 0)
         subgrid.addWidget(self.trackingBeadsBox, 1, 1)
         subgrid.addWidget(self.feedbackLoopBox, 2, 1)
         subgrid.addWidget(self.saveDataBox, 3, 1)
@@ -386,12 +405,9 @@ class Backend(QtCore.QObject):
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
     updateGUIcheckboxSignal = pyqtSignal(bool, bool, bool)
 
-    XYdriftCorrectionIsDone = pyqtSignal(float, float, float)  # signal to emit new piezo position after drift correction
-    
-    XYtcspcIsDone = pyqtSignal()
-    XYtcspcCorrection = pyqtSignal()
-    
+    xyIsDone = pyqtSignal(bool)  # signal to emit new piezo position after drift correction
     partialMinfluxMeasDone = pyqtSignal()
+    askROISignal = pyqtSignal()
 
     def __init__(self, andor, adw, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -536,7 +552,7 @@ class Backend(QtCore.QObject):
 
         if self.tracking_value:
                 
-            self.tracking()
+            self.track()
             self.update_graph_data()
             
     def update_view(self):
@@ -602,12 +618,15 @@ class Backend(QtCore.QObject):
             self.set_actuator_param()
             self.adw.Start_Process(4)
             
-            print(datetime.now(), '[xy_tracking] Feedback loop ON')
+            if DEBUG:
+                print(datetime.now(), '[xy_tracking] Feedback loop ON')
             
         if val is False:
             
             self.feedback_active = False
-            print(datetime.now(), '[xy_tracking] Feedback loop OFF')
+            
+            if DEBUG:
+                print(datetime.now(), '[xy_tracking] Feedback loop OFF')
             
         self.updateGUIcheckboxSignal.emit(self.tracking_value, 
                                           self.feedback_active, 
@@ -623,12 +642,6 @@ class Backend(QtCore.QObject):
         # select the data of the image corresponding to the ROI
 
         array = self.image[xmin:xmax, ymin:ymax]
-        
-#        result = Image.fromarray(self.image.astype('uint16'))
-#        result.save(r'C:\Data\{}.tiff'.format('512x512'))
-#        
-#        result = Image.fromarray(array.astype('uint16')) # TO DO: clean up this save
-#        result.save(r'C:\Data\{}.tiff'.format('20x20'))
         
         # set new reference frame
         
@@ -693,7 +706,7 @@ class Backend(QtCore.QObject):
         self.currenty = y0 + My_nm[xmin_id, ymin_id]
         
             
-    def tracking(self):
+    def track(self):
         
         """ 
         Function to track fiducial markers (fluorescent beads) from the selected ROI.
@@ -739,63 +752,66 @@ class Backend(QtCore.QObject):
                 print(datetime.now(), '[xy_tracking] Data array, longer than buffer size, data_array reset')
                 
         if self.feedback_active:
-            
-#            print('feedback starting...')
-            
-            dx = 0
-            dy = 0
-            threshold = 7
-            far_threshold = 15
-            correct_factor = 0.6
-            security_thr = 0.15 # in µm
-            
-            if np.abs(self.x) > threshold:
-                
-                if dx < far_threshold:
                     
-                    dx = correct_factor * dx
-                
-                dx = - (self.x)/1000 # conversion to µm
-
-#                print('dx', dx)
-                
-            if np.abs(self.y) > threshold:
-                
-                if dy < far_threshold:
-                    
-                    dy = correct_factor * dy
-                
-                dy = - (self.y)/1000 # conversion to µm
-                
-#                print('dy', dy)
-        
-            if dx > security_thr or dy > security_thr:
-                
-                print(datetime.now(), '[xy_tracking] Correction movement larger than 200 nm, active correction turned OFF')
-                self.toggle_feedback(False)
-                
-            else:
-                
-                # compensate for the mismatch between camera/piezo system of reference
-                
-                theta = np.radians(-3.7)   # 86.3 (or 3.7) is the angle between camera and piezo (measured)
-                c, s = np.cos(theta), np.sin(theta)
-                R = np.array(((c,-s), (s, c)))
-                
-                dy, dx = np.dot(R, np.asarray([dx, dy]))
-                
-                # add correction to piezo position
-                
-                self.piezoXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
-                self.piezoYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
-    
-                self.piezoXposition = self.piezoXposition + dx  
-                self.piezoYposition = self.piezoYposition + dy  
-                
-                self.actuator_xy(self.piezoXposition, self.piezoYposition)
+            self.correct()
                          
         self.counter += 1  # counter to check how many times this function is executed
 
+    def correct(self):
+
+        dx = 0
+        dy = 0
+        threshold = 7
+        far_threshold = 15
+        correct_factor = 0.6
+        security_thr = 0.15 # in µm
+        
+        if np.abs(self.x) > threshold:
+            
+            if dx < far_threshold:
+                
+                dx = correct_factor * dx
+            
+            dx = - (self.x)/1000 # conversion to µm
+
+#                print('dx', dx)
+            
+        if np.abs(self.y) > threshold:
+            
+            if dy < far_threshold:
+                
+                dy = correct_factor * dy
+            
+            dy = - (self.y)/1000 # conversion to µm
+            
+#                print('dy', dy)
+    
+        if dx > security_thr or dy > security_thr:
+            
+            print(datetime.now(), '[xy_tracking] Correction movement larger than 200 nm, active correction turned OFF')
+            self.toggle_feedback(False)
+            
+        else:
+            
+            # compensate for the mismatch between camera/piezo system of reference
+            
+            theta = np.radians(-3.7)   # 86.3 (or 3.7) is the angle between camera and piezo (measured)
+            c, s = np.cos(theta), np.sin(theta)
+            R = np.array(((c,-s), (s, c)))
+            
+            dy, dx = np.dot(R, np.asarray([dx, dy]))
+            
+            # add correction to piezo position
+            
+            self.piezoXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
+            self.piezoYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
+
+            self.piezoXposition = self.piezoXposition + dx  
+            self.piezoYposition = self.piezoYposition + dy  
+            
+            self.actuator_xy(self.piezoXposition, self.piezoYposition)
+            
+            print(datetime.now(), '[xy_tracking] corrected to', self.piezoXposition, self.piezoYposition)
         
     def set_actuator_param(self, pixeltime=1000):
 
@@ -824,34 +840,33 @@ class Backend(QtCore.QObject):
         self.adw.Set_FPar(40, x_f)
         self.adw.Set_FPar(41, y_f)
         
-        self.adw.Set_Par(40, 1)
-            
-    @pyqtSlot(bool)
-    def single_xy_correction(self, val): # TO DO: change name to single_xy_correction
+        self.adw.Set_Par(40, 1)    
         
-        print(datetime.now(), '[xy_tracking] Feedback {}'.format(val))
-        
-        self.feedback_active = val
-        
-#        self.andor.shutter(0, 1, 0, 0, 0)
-        
-        self.andor.start_acquisition()
-        
-        time.sleep(self.expTime * 3)
-        
-        self.image = self.andor.most_recent_image16(self.shape)
+    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+                         n_pixels_z=128, pixeltime=2000):
 
-        self.changedImage.emit(self.image)
+        x_f = tools.convert(x_f, 'XtoU')
+        y_f = tools.convert(y_f, 'XtoU')
+        z_f = tools.convert(z_f, 'XtoU')
+
+        self.adw.Set_Par(21, n_pixels_x)
+        self.adw.Set_Par(22, n_pixels_y)
+        self.adw.Set_Par(23, n_pixels_z)
+
+        self.adw.Set_FPar(23, x_f)
+        self.adw.Set_FPar(24, y_f)
+        self.adw.Set_FPar(25, z_f)
+
+        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
         
-        self.andor.abort_acquisition()
-        
-        self.tracking()
-        
-        self.update_graph_data()
-        
-        self.singleXYCorrectionIsDone.emit()
-        
-        print(datetime.now(), '[xy_tracking] single xy correction ended')
+#    def get_liveViewIsON_signal(self):
+#        
+#        self.toggle_feedback(False)
+
+    def moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
+
+        self.set_moveTo_param(x_f, y_f, z_f)
+        self.adw.Start_Process(2)
             
     def reset(self):
         
@@ -892,22 +907,87 @@ class Backend(QtCore.QObject):
         np.savetxt(filename, savedData.T,  header='t (s), x (nm), y(nm)') # transpose for easier loading
         
         print(datetime.now(), '[xy_tracking] xy data exported to', filename)
+           
+    @pyqtSlot(bool, bool)
+    def single_xy_correction(self, feedback_val, initial): 
         
+        """
+        Connected to: [psf] xySignal
+        Description: Starts acquisition of the camera and makes one single xy
+        track and, if feedback_val is True, corrects for the drift
+        """
+#        if DEBUG:
+#            print(datetime.now(), '[xy_tracking] Feedback {}'.format(feedback_val))
+        
+        if initial:
+            self.toggle_feedback(True)
+            print(datetime.now(), '[xy_tracking] initial', initial)
+            
+        self.andor.start_acquisition()
+        time.sleep(self.expTime * 3)
+
+        self.image = self.andor.most_recent_image16(self.shape)
+        self.changedImage.emit(self.image)
+            
+        self.andor.abort_acquisition()
+        
+        self.track()
+        self.update_graph_data()
+                
+        self.xyIsDone.emit(True)
+        
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] single xy correction ended')        
+
+    @pyqtSlot()    
+    def get_stop_signal(self):
+        
+        self.toggle_feedback(False)
+        self.toggle_tracking(False)
+        
+        self.reset()
+        self.reset_data_arrays()
+        
+        self.liveview_stop()
+                
+        """
+        From: [psf]
+        Description: stops liveview, tracking, feedback if they where running to
+        start the psf measurement with discrete xy - z corrections
+        """
+    
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
         
         self.save_data_state = val
-        print(datetime.now(), '[xy_tracking] save_data_state = {}'.format(val))
+        
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] save_data_state = {}'.format(val))
     
     @pyqtSlot(int, np.ndarray)
     def get_roi_info(self, N, coordinates_array):
         
-#        self.numberOfROIs = N
+        '''
+        From: [frontend]
+        Description: gets coordinates of the ROI in the GUI
+        
+        '''
+        
+        # TO DO: generalize to N ROIs
+        
         self.ROIcoordinates = coordinates_array.astype(int)
-        print(datetime.now(), '[xy_tracking] got ROI coordinates')
+        
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] got ROI coordinates')
      
     @pyqtSlot()    
     def get_lock_signal(self):
+        
+        '''
+        From: [minflux]
+        Description: activates tracking and feedback
+        
+        '''
                 
         self.toggle_tracking(True)
         self.toggle_feedback(True)
@@ -917,19 +997,30 @@ class Backend(QtCore.QObject):
                                           self.feedback_active, 
                                           self.save_data_state)
         
-        print(datetime.now(), '[xy_tracking] System xy locked')
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] System xy locked')
         
-    @pyqtSlot(bool, str)   
-    def get_psf_signal(self, val, fname):
-        
-        """ 
-        Get signal to stop continous xy tracking/feedback if active and to
-        go to discrete xy tracking/feedback mode if required
-        """
+#    @pyqtSlot(bool, str)   
+#    def get_psf_signal(self, val, fname):
+#        
+#        """ 
+#        Get signal to stop continous xy tracking/feedback if active and to
+#        go to discrete xy tracking/feedback mode if required
+#        
+#        """
     @pyqtSlot(np.ndarray, np.ndarray)    
     def get_minflux_signal(self, r, r_rel):
         
-        print(datetime.now(), '[xy_tracking] Got minflux measurement signal for position', r)
+        '''
+        From: [minflux]
+        Description: single movement during the measurement of different positions
+
+        '''
+        
+        # TO DO: fix so that it can actually lock at it position
+        
+
+        # print(datetime.now(), '[xy_tracking] Got minflux measurement signal for position', r)
         
         # Unlock
         
@@ -944,8 +1035,9 @@ class Backend(QtCore.QObject):
         
         x_f, y_f = r
         self.actuator_xy(x_f, y_f)
-           
-        print(datetime.now(), '[xy_tracking] Moved to', r)
+         
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] Moved to', r)
         
 #        # Lock again
         
@@ -962,52 +1054,35 @@ class Backend(QtCore.QObject):
         
         self.partialMinfluxMeasDone.emit()
         
-        print(datetime.now(), '[xy_tracking] Minflux measurement for position ', r, ' is done, moved to next position')
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] Minflux measurement for position ', r, ' is done, moved to next position')
        
         x_piezo = tools.convert(self.adw.Get_FPar(70),'UtoX')
         y_piezo = tools.convert(self.adw.Get_FPar(71),'UtoX')
-        print(datetime.now(), '[xy_tracking] piezo position', x_piezo, y_piezo)
+        
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] piezo position', x_piezo, y_piezo)
         
         
-    @pyqtSlot(np.ndarray)   
-    def get_single_move_signal(self, pos_xy):
-        
-        z_f = tools.convert(self.adw.Get_FPar(72),'UtoX') # z_f is read from the ADwin board
-        x_f, y_f = pos_xy
-        print(datetime.now(), '[xy_tracking] x_f, y_f, z_f', x_f, y_f, z_f)
-        self.moveTo(x_f, y_f, z_f)
+#    @pyqtSlot(np.ndarray)   
+#    def get_single_move_signal(self, pos_xy):
+#        
+#        z_f = tools.convert(self.adw.Get_FPar(72),'UtoX') # z_f is read from the ADwin board
+#        x_f, y_f = pos_xy
+#        print(datetime.now(), '[xy_tracking] x_f, y_f, z_f', x_f, y_f, z_f)
+#        self.moveTo(x_f, y_f, z_f)
     
     @pyqtSlot(str)    
     def get_end_measurement_signal(self, fname):
         
+        '''
+        From: [minflux] or [psf]
+        Description: at the end of the measurement exports the xy data
+
+        '''
+        
         self.filename = fname
         self.export_data()
-    
-    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
-                         n_pixels_z=128, pixeltime=2000):
-
-        x_f = tools.convert(x_f, 'XtoU')
-        y_f = tools.convert(y_f, 'XtoU')
-        z_f = tools.convert(z_f, 'XtoU')
-
-        self.adw.Set_Par(21, n_pixels_x)
-        self.adw.Set_Par(22, n_pixels_y)
-        self.adw.Set_Par(23, n_pixels_z)
-
-        self.adw.Set_FPar(23, x_f)
-        self.adw.Set_FPar(24, y_f)
-        self.adw.Set_FPar(25, z_f)
-
-        self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
-        
-#    def get_liveViewIsON_signal(self):
-#        
-#        self.toggle_feedback(False)
-
-    def moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
-
-        self.set_moveTo_param(x_f, y_f, z_f)
-        self.adw.Start_Process(2)
         
     def make_connection(self, frontend):
             
@@ -1079,7 +1154,7 @@ if __name__ == '__main__':
     worker.moveTo(10, 10, 10) # in µm
     
     time.sleep(0.200)
-    
+        
     worker.piezoXposition = 10.0 # in µm
     worker.piezoYposition = 10.0 # in µm
     worker.piezoZposition = 10.0 # in µm

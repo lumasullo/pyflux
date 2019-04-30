@@ -60,6 +60,9 @@ EVENT:
   if (currenty > POSMAX) then currenty = POSMAX 'check that set x position is not higher than POSMAX
   if (currenty < POSMIN) then currenty = POSMIN 'check that set x position is not lower than POSMIN
 
+  currentx = setpointx
+  currenty = setpointy
+  
   DAC(1, currentx)
   DAC(2, currenty)
   

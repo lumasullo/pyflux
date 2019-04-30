@@ -20,7 +20,7 @@
 'x --> fast axis
 'y --> slow axis
 
-'par_2: 0 flag meaning process started (0) or finished (1)
+'par_2 = 0 'flag meaning process started
 'par_3: digital input = 0 (APD), analog input = 1 (photodiode)
 
 'fpar_2: y_offset

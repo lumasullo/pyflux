@@ -17,14 +17,9 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 import qdarkstyle
 
-from instrumental.drivers.cameras import uc480
-import lantz.drivers.andor.ccd as ccd
-import drivers.picoharp as picoharp
-
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from tkinter import Tk, filedialog
 
-import tools.tools as tools
 
 π = np.pi
 
@@ -114,7 +109,7 @@ class Frontend(QtGui.QFrame):
         self.acqtimeLabel = QtGui.QLabel('Acq time per position (s)')
         self.acqtimeEdit = QtGui.QLineEdit('')
         
-        self.startButton = QtGui.QPushButton('Start minflux measurement')
+        self.startButton = QtGui.QPushButton('Start')
         self.progress = QtGui.QProgressBar(self)
         
         # filename
@@ -170,7 +165,7 @@ class Frontend(QtGui.QFrame):
 class Backend(QtCore.QObject):
     
     askROIcenterSignal = pyqtSignal()
-    moveToSignal = pyqtSignal(np.ndarray)
+#    moveToSignal = pyqtSignal(np.ndarray)
     tcspcPrepareSignal = pyqtSignal(str, int, int)
     tcspcStartSignal = pyqtSignal()
     xyzStartSignal = pyqtSignal()
@@ -207,11 +202,6 @@ class Backend(QtCore.QObject):
         
     @pyqtSlot(np.ndarray, np.ndarray, int)
     def get_frontend_param(self, r0, _r, acqt):
-        
-        
-        print(datetime.now(), '[minflux] r0, _r', r0, _r)
-        print(datetime.now(), '[minflux] Type r0, _r', type(r0), type(_r))
-        print(datetime.now(), '[minflux] acqtime', acqt)
         
         self._r = np.array(_r)
         self.r0 = np.array(r0)
@@ -253,16 +243,8 @@ class Backend(QtCore.QObject):
         self.tcspcStartSignal.emit()
         self.xyzStartSignal.emit()
         
-#        self.partial_measurement()
-#        time.sleep(self.acqtime)
-        
-#        time0 = time.time()
-#        time1 = time.time()
-#        
-#        while (time1 - time0 < self.acqtime):
-#            time1 = time.time()
-        
         self.xyMoveAndLockSignal.emit(self.r[0], self._r[0]) # singal emitted to xy and z modules to start the feedback and wait for acqtime, then move to next position
+       
         print(datetime.now(), '[minflux] movement', 0)
         
     @pyqtSlot()    
@@ -280,7 +262,6 @@ class Backend(QtCore.QObject):
             print(datetime.now(), '[minflux] last movement done')
             self.i = 2
         
-        
     @pyqtSlot()  
     def get_tcspc_done_signal(self):
         
@@ -289,5 +270,7 @@ class Backend(QtCore.QObject):
     def make_connection(self, frontend):
         
         frontend.paramSignal.connect(self.get_frontend_param)
+        frontend.filenameSignal.connect(self.get_minflux_filename)
+        frontend.startButton.clicked.connect(self.start_minflux_meas)
      
         
