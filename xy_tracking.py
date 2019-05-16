@@ -405,7 +405,7 @@ class Backend(QtCore.QObject):
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
     updateGUIcheckboxSignal = pyqtSignal(bool, bool, bool)
 
-    xyIsDone = pyqtSignal(bool)  # signal to emit new piezo position after drift correction
+    xyIsDone = pyqtSignal(bool, float, float)  # signal to emit new piezo position after drift correction
     partialMinfluxMeasDone = pyqtSignal()
     askROISignal = pyqtSignal()
 
@@ -540,8 +540,11 @@ class Backend(QtCore.QObject):
     def liveview_stop(self):
         
         self.viewtimer.stop()
+        
         self.andor.abort_acquisition()
+            
 #        self.andor.shutter(0, 2, 0, 0, 0)  # TO DO: implement toggle shutter
+
                     
     def update(self):
         """ General update method """
@@ -554,6 +557,13 @@ class Backend(QtCore.QObject):
                 
             self.track()
             self.update_graph_data()
+            
+            if self.feedback_active:
+                    
+                self.correct()
+                         
+        self.counter += 1  # counter to check how many times this function is executed
+
             
     def update_view(self):
         """ Image update while in Liveview mode """
@@ -605,9 +615,9 @@ class Backend(QtCore.QObject):
             self.tracking_value = False
             
     @pyqtSlot(bool)
-    def toggle_feedback(self, val):
+    def toggle_feedback(self, val, mode='continous'):
         ''' Toggles ON/OFF feedback for either continous (TCSPC) 
-        or discrete (confocal imaging) correction'''
+        or discrete (scan imaging) correction'''
         
         if val is True:
             
@@ -615,8 +625,10 @@ class Backend(QtCore.QObject):
 
             # set up and start actuator process
             
-            self.set_actuator_param()
-            self.adw.Start_Process(4)
+            if mode == 'continous':
+            
+                self.set_actuator_param()
+                self.adw.Start_Process(4)
             
             if DEBUG:
                 print(datetime.now(), '[xy_tracking] Feedback loop ON')
@@ -751,13 +763,7 @@ class Backend(QtCore.QObject):
                 
                 print(datetime.now(), '[xy_tracking] Data array, longer than buffer size, data_array reset')
                 
-        if self.feedback_active:
-                    
-            self.correct()
-                         
-        self.counter += 1  # counter to check how many times this function is executed
-
-    def correct(self):
+    def correct(self, mode='continous'):
 
         dx = 0
         dy = 0
@@ -803,15 +809,62 @@ class Backend(QtCore.QObject):
             
             # add correction to piezo position
             
-            self.piezoXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
-            self.piezoYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
+            currentXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
+            currentYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
 
-            self.piezoXposition = self.piezoXposition + dx  
-            self.piezoYposition = self.piezoYposition + dy  
+            targetXposition = currentXposition + dx  
+            targetYposition = currentYposition + dy  
             
-            self.actuator_xy(self.piezoXposition, self.piezoYposition)
+            if mode == 'continous':
             
-            print(datetime.now(), '[xy_tracking] corrected to', self.piezoXposition, self.piezoYposition)
+                self.actuator_xy(targetXposition, targetYposition)
+                
+            if mode == 'discrete':
+                
+#                self.moveTo(targetXposition, targetYposition, 
+#                            currentZposition, pixeltime=10)
+                
+                self.target_x = targetXposition
+                self.target_y = targetYposition
+            
+    @pyqtSlot(bool, bool)
+    def single_xy_correction(self, feedback_val, initial): 
+        
+        """
+        Connected to: [psf] xySignal
+        Description: Starts acquisition of the camera and makes one single xy
+        track and, if feedback_val is True, corrects for the drift
+        """
+#        if DEBUG:
+#            print(datetime.now(), '[xy_tracking] Feedback {}'.format(feedback_val))
+        
+        if initial:
+            self.toggle_feedback(True, mode='discrete')
+            self.initial = initial
+            print(datetime.now(), '[xy_tracking] initial', initial)
+            
+        self.andor.start_acquisition()
+        time.sleep(self.expTime * 3)
+
+        self.image = self.andor.most_recent_image16(self.shape)
+        self.changedImage.emit(self.image)
+            
+        self.andor.abort_acquisition()
+        
+        self.track()
+        self.update_graph_data()
+        self.correct(mode='discrete')
+                
+        target_x = np.round(self.target_x, 3)
+        target_y = np.round(self.target_y, 3)
+        
+        print(datetime.now(), '[xy_tracking] discrete correction to', 
+              target_x, target_y)
+    
+        self.xyIsDone.emit(True, target_x, target_y)
+        
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] single xy correction ended')  
         
     def set_actuator_param(self, pixeltime=1000):
 
@@ -819,11 +872,11 @@ class Backend(QtCore.QObject):
         
         # set-up actuator initial param
         
-        self.piezoXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
-        self.piezoYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
+        currentXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
+        currentYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
     
-        x_f = tools.convert(self.piezoXposition, 'XtoU')
-        y_f = tools.convert(self.piezoYposition, 'XtoU')
+        x_f = tools.convert(currentXposition, 'XtoU')
+        y_f = tools.convert(currentYposition, 'XtoU')
         
         self.adw.Set_FPar(40, x_f)
         self.adw.Set_FPar(41, y_f)
@@ -863,9 +916,9 @@ class Backend(QtCore.QObject):
 #        
 #        self.toggle_feedback(False)
 
-    def moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
+    def moveTo(self, x_f, y_f, z_f, pixeltime=2000): 
 
-        self.set_moveTo_param(x_f, y_f, z_f)
+        self.set_moveTo_param(x_f, y_f, z_f, pixeltime=2000)
         self.adw.Start_Process(2)
             
     def reset(self):
@@ -907,37 +960,6 @@ class Backend(QtCore.QObject):
         np.savetxt(filename, savedData.T,  header='t (s), x (nm), y(nm)') # transpose for easier loading
         
         print(datetime.now(), '[xy_tracking] xy data exported to', filename)
-           
-    @pyqtSlot(bool, bool)
-    def single_xy_correction(self, feedback_val, initial): 
-        
-        """
-        Connected to: [psf] xySignal
-        Description: Starts acquisition of the camera and makes one single xy
-        track and, if feedback_val is True, corrects for the drift
-        """
-#        if DEBUG:
-#            print(datetime.now(), '[xy_tracking] Feedback {}'.format(feedback_val))
-        
-        if initial:
-            self.toggle_feedback(True)
-            print(datetime.now(), '[xy_tracking] initial', initial)
-            
-        self.andor.start_acquisition()
-        time.sleep(self.expTime * 3)
-
-        self.image = self.andor.most_recent_image16(self.shape)
-        self.changedImage.emit(self.image)
-            
-        self.andor.abort_acquisition()
-        
-        self.track()
-        self.update_graph_data()
-                
-        self.xyIsDone.emit(True)
-        
-        if DEBUG:
-            print(datetime.now(), '[xy_tracking] single xy correction ended')        
 
     @pyqtSlot()    
     def get_stop_signal(self):
@@ -1094,7 +1116,9 @@ class Backend(QtCore.QObject):
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
         frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
-        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+#        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+        
+        # TO DO: clean-up checkbox create continous and discrete feedback loop
         
         # lambda function and gui_###_state are used to toggle both backend
         # states and checkbox status so that they always correspond 

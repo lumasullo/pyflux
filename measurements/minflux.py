@@ -112,32 +112,6 @@ class Frontend(QtGui.QFrame):
         self.startButton = QtGui.QPushButton('Start')
         self.progress = QtGui.QProgressBar(self)
         
-        # filename
-
-        self.filenameLabel = QtGui.QLabel('File name')
-        self.filenameEdit = QtGui.QLineEdit('filename')
-        self.filenameEdit.textChanged.connect(self.emit_filename)
-
-        # folder
-        
-        today = str(date.today()).replace('-', '')
-        root = r'C:\\Data\\'
-        folder = root + today
-        
-        try:  
-            os.mkdir(folder)
-        except OSError:  
-            print(datetime.now(), '[minflux] Directory {} already exists'.format(folder))
-        else:  
-            print(datetime.now(), '[minflux] Successfully created the directory {}'.format(folder))
-        
-        self.folderLabel = QtGui.QLabel('Folder')
-        self.folderEdit = QtGui.QLineEdit(folder)
-
-        self.browseFolderButton = QtGui.QPushButton('Browse')
-        self.browseFolderButton.setCheckable(True)
-        self.browseFolderButton.clicked.connect(self.load_folder)
-        
         subgrid.addWidget(self.absolutePosLabel, 0, 0)
         subgrid.addWidget(self.absolutePosEdit, 1, 0)
         
@@ -148,11 +122,47 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.startButton, 6, 0)
         subgrid.addWidget(self.progress, 7, 0)
         
-        subgrid.addWidget(self.filenameLabel, 0, 1)
-        subgrid.addWidget(self.filenameEdit, 1, 1)
-        subgrid.addWidget(self.folderLabel, 2, 1)
-        subgrid.addWidget(self.folderEdit, 3, 1)
-        subgrid.addWidget(self.browseFolderButton, 4, 1)
+        # file/folder widget
+        
+        self.fileWidget = QtGui.QFrame()
+        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                      QtGui.QFrame.Raised)
+        
+        self.fileWidget.setFixedHeight(120)
+        self.fileWidget.setFixedWidth(150)
+        
+        # folder
+        
+        # TO DO: move this to backend
+        
+        today = str(date.today()).replace('-', '')
+        root = r'C:\\Data\\'
+        folder = root + today
+        
+        try:  
+            os.mkdir(folder)
+        except OSError:  
+            print(datetime.now(), '[tcspc] Directory {} already exists'.format(folder))
+        else:  
+            print(datetime.now(), '[tcspc] Successfully created the directory {}'.format(folder))
+
+        self.folderLabel = QtGui.QLabel('Folder')
+        self.folderEdit = QtGui.QLineEdit(folder)
+        self.browseFolderButton = QtGui.QPushButton('Browse')
+        self.browseFolderButton.setCheckable(True)
+        self.filenameLabel = QtGui.QLabel('File name')
+        self.filenameEdit = QtGui.QLineEdit('filename')
+        
+        grid.addWidget(self.fileWidget, 0, 1)
+        
+        file_subgrid = QtGui.QGridLayout()
+        self.fileWidget.setLayout(file_subgrid)
+        
+        file_subgrid.addWidget(self.filenameLabel, 0, 0, 1, 2)
+        file_subgrid.addWidget(self.filenameEdit, 1, 0, 1, 2)
+        file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
+        file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
+        file_subgrid.addWidget(self.browseFolderButton, 4, 0)
         
         self.folderEdit.textChanged.connect(self.emit_filename)
         self.positionsEdit.textChanged.connect(self.emit_param_to_backend)

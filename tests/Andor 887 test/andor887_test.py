@@ -13,14 +13,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 myAndor = ccd.CCD()
+
 #myAndor.cameraIndex = 0
 #print(myAndor.camera_handle(cam))
 #a = myAndor.lib.GetAvailableCameras()
 #print(a)
 
-cam = 0
+#cam = 0
+#myAndor.current_camera = myAndor.camera_handle(cam)
 
-myAndor.current_camera = myAndor.camera_handle(cam)
 myAndor.lib.Initialize()
 
 print('idn:', myAndor.idn)

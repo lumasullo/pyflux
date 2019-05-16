@@ -21,6 +21,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from tkinter import Tk, filedialog
 
 import tools.tools as tools
+import tifffile
 
 π = np.pi
 
@@ -38,11 +39,29 @@ class Frontend(QtGui.QFrame):
         
     def emit_param(self):
         
+        filename = os.path.join(self.folderEdit.text(),
+                                self.filenameEdit.text())
+        
         params = dict()
         params['label'] = self.doughnutLabel.text()
         params['nframes'] = int(self.NframesEdit.text())
+        params['filename'] = filename
+        params['folder'] = self.folderEdit.text()
         
         self.paramSignal.emit(params)
+        
+    def load_folder(self):
+
+        try:
+            root = Tk()
+            root.withdraw()
+            folder = filedialog.askdirectory(parent=root,
+                                             initialdir=self.initialDir)
+            root.destroy()
+            if folder != '':
+                self.folderEdit.setText(folder)
+        except OSError:
+            pass
     
     @pyqtSlot(float)
     def get_progress_signal(self, completed):
@@ -52,6 +71,8 @@ class Frontend(QtGui.QFrame):
     def setup_gui(self):
         
         self.setWindowTitle('PSF measurement')
+        
+        self.resize(230, 250)
 
         grid = QtGui.QGridLayout()
 
@@ -59,6 +80,9 @@ class Frontend(QtGui.QFrame):
         self.paramWidget = QtGui.QFrame()
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
+        
+        self.paramWidget.setFixedHeight(180)
+        self.paramWidget.setFixedWidth(170)
 
         grid.addWidget(self.paramWidget, 0, 0)
         
@@ -69,6 +93,8 @@ class Frontend(QtGui.QFrame):
         self.NframesEdit = QtGui.QLineEdit('10')
         self.doughnutLabel = QtGui.QLabel('Doughnut label')
         self.doughnutEdit = QtGui.QLineEdit('Black, Blue, Yellow, Orange')
+        self.filenameLabel = QtGui.QLabel('File name')
+        self.filenameEdit = QtGui.QLineEdit('psf')
         self.startButton = QtGui.QPushButton('Start')
         self.stopButton = QtGui.QPushButton('Stop')
         self.progressBar = QtGui.QProgressBar(self)
@@ -77,10 +103,60 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.NframesEdit, 1, 0)
         subgrid.addWidget(self.doughnutLabel, 2, 0)
         subgrid.addWidget(self.doughnutEdit, 3, 0)
-        subgrid.addWidget(self.startButton, 4, 0)
-        subgrid.addWidget(self.progressBar, 5, 0)
-        subgrid.addWidget(self.stopButton, 6, 0)
+        subgrid.addWidget(self.filenameLabel, 4, 0)
+        subgrid.addWidget(self.filenameEdit, 5, 0)
+        subgrid.addWidget(self.progressBar, 6, 0)
+        subgrid.addWidget(self.startButton, 7, 0)
+        subgrid.addWidget(self.stopButton, 8, 0)
         
+        # file/folder widget
+        
+        self.fileWidget = QtGui.QFrame()
+        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                      QtGui.QFrame.Raised)
+        
+        self.fileWidget.setFixedHeight(120)
+        self.fileWidget.setFixedWidth(150)
+        
+        # folder
+        
+        # TO DO: move this to backend
+        
+        today = str(date.today()).replace('-', '')
+        root = r'C:\\Data\\'
+        folder = root + today
+        
+        try:  
+            os.mkdir(folder)
+        except OSError:  
+            print(datetime.now(), '[tcspc] Directory {} already exists'.format(folder))
+        else:  
+            print(datetime.now(), '[tcspc] Successfully created the directory {}'.format(folder))
+
+        self.folderLabel = QtGui.QLabel('Folder')
+        self.folderEdit = QtGui.QLineEdit(folder)
+        self.browseFolderButton = QtGui.QPushButton('Browse')
+        self.browseFolderButton.setCheckable(True)
+        
+        grid.addWidget(self.fileWidget, 0, 1)
+        
+        file_subgrid = QtGui.QGridLayout()
+        self.fileWidget.setLayout(file_subgrid)
+        
+        file_subgrid.addWidget(self.filenameLabel, 0, 0, 1, 2)
+        file_subgrid.addWidget(self.filenameEdit, 1, 0, 1, 2)
+        file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
+        file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
+        file_subgrid.addWidget(self.browseFolderButton, 4, 0)
+        
+        
+        # connections
+        
+        self.filenameEdit.textChanged.connect(self.emit_param)
+        self.doughnutEdit.textChanged.connect(self.emit_param)
+        self.NframesEdit.textChanged.connect(self.emit_param)
+        self.browseFolderButton.clicked.connect(self.load_folder)
+
     def make_connection(self, backend):
     
         backend.progressSignal.connect(self.get_progress_signal)
@@ -94,7 +170,8 @@ class Backend(QtCore.QObject):
     zSignal = pyqtSignal(bool, bool)
     zStopSignal = pyqtSignal()
     
-    confocalSignal = pyqtSignal(bool, str)
+    scanSignal = pyqtSignal(bool, str, np.ndarray)
+    moveToInitialSignal = pyqtSignal()
 
     progressSignal = pyqtSignal(float)
 
@@ -103,11 +180,10 @@ class Backend(QtCore.QObject):
         super().__init__(*args, **kwargs)
         
         self.i = 0
-        self.nframes = 30
         
         self.xyIsDone = False
         self.zIsDone = False
-        self.confocalIsDone = False
+        self.scanIsDone = False
         
         self.measTimer = QtCore.QTimer()
         self.measTimer.timeout.connect(self.measurement_loop)
@@ -121,8 +197,12 @@ class Backend(QtCore.QObject):
         self.xyStopSignal.emit()
         self.zStopSignal.emit()
         
-        self.data = np.zeros((1, 1))  # data array (size, size, nframes)
-        self.xyz_flag = True
+        self.moveToInitialSignal.emit()
+        
+        self.data = np.zeros((self.nFrames, self.nPixels, self.nPixels))
+        print(datetime.now(), '[psf] data shape is', np.shape(self.data))
+        self.xy_flag = True
+        self.z_flag = True
         self.scan_flag = True
     
         self.measTimer.start(0)
@@ -140,56 +220,85 @@ class Backend(QtCore.QObject):
         self.export_data()
         
     def measurement_loop(self):
+        
+        if self.i == 0:
+            initial = True
+        else:
+            initial = False
                 
-        if self.xyz_flag:
+        if self.xy_flag:
             
-            if self.i is 0:
-                initial = True
-            else:
-                initial = False
-                
             self.xySignal.emit(True, initial)
-            self.zSignal.emit(True, initial)
+            self.xy_flag = False
             
             if DEBUG:
-                print(datetime.now(), '[psf] xy and z signals emitted ({})'.format(self.i))
+                print(datetime.now(), '[psf] xy signal emitted ({})'.format(self.i))
             
-            self.xyz_flag = False
+        if self.xyIsDone:
             
-        if self.xyIsDone and self.zIsDone:
-                
-            if self.scan_flag:
-                    
-                self.confocalSignal.emit(True, 'frame')
+            if self.z_flag:
+            
+                self.zSignal.emit(True, initial)
+                self.z_flag = False
                 
                 if DEBUG:
-                    print(datetime.now(), '[psf] scan signal emitted ({})'.format(self.i))
+                    print(datetime.now(), '[psf] z signal emitted ({})'.format(self.i))
+
+                
+            if self.zIsDone:
+    
+                if self.scan_flag:
+                        
+                    initialPos = np.array([self.target_x, self.target_y, 
+                                           self.target_z], dtype=np.float64)
+    
+                    print('[psf] initialPos here is', initialPos)
+    
+                    self.scanSignal.emit(True, 'frame', initialPos)
+                    self.scan_flag = False
                     
-                self.scan_flag = False
-                                        
-            if self.confocalIsDone:
-                
-                completed = ((self.i+1)/self.nframes) * 100
-                self.progressSignal.emit(completed)
-                                
-                self.xyz_flag = True
-                self.scan_flag = True
-                self.xyIsDone = False
-                self.zIsDone = False
-                self.confocalIsDone = False
-                
-                print(datetime.now(), '[psf] PSF {} of {}'.format(self.i+1, 
-                                                                  self.nframes))
-                
-                if self.i < self.nframes-1:
-                
-                    self.i += 1
-                
-                else:
+                    if DEBUG:
+                        print(datetime.now(), 
+                              '[psf] scan signal emitted ({})'.format(self.i))
+                        
+                if self.scanIsDone:
                     
-                    self.stop_measurement()
+                    completed = ((self.i+1)/self.nFrames) * 100
+                    self.progressSignal.emit(completed)
+                                    
+                    self.xy_flag = True
+                    self.z_flag = True
+                    self.scan_flag = True
+                    self.xyIsDone = False
+                    self.zIsDone = False
+                    self.scanIsDone = False
+                    
+                    self.data[self.i, :, :] = self.currentFrame
+                    
+                    print(datetime.now(), 
+                          '[psf] PSF {} of {}'.format(self.i+1, 
+                                                      self.nFrames))
+                    
+#                    self.data[:, :, self.i] = self.currentFrame    TO DO: save each frame into data array
+                    
+                    if self.i < self.nFrames-1:
+                    
+                        self.i += 1
+                    
+                    else:
+                        
+                        self.stop_measurement()
                     
     def export_data(self):
+    
+        # TO DO: export self.data with self.filename
+        # TO DO: export config file
+        # TO DO: save and export xdata and ydata
+        
+        fname = self.filename
+        self.data = np.array(self.data, dtype=np.float32)
+        print(datetime.now(), '[psf] data shape', np.shape(self.data))
+        tifffile.imsave(fname, self.data)
         
         pass
     
@@ -197,38 +306,44 @@ class Backend(QtCore.QObject):
     def get_frontend_param(self, params):
         
         self.label = params['label']
-        self.nframes = params['nframes']
+        self.nFrames = params['nframes']
+        
+        today = str(date.today()).replace('-', '')
+        self.filename = params['filename'] + '_' + today
+        
+        print(datetime.now(), '[psf] file name', self.filename)
                 
-    @pyqtSlot(bool) 
-    def get_xy_is_done(self, val):
+    @pyqtSlot(bool, float, float) 
+    def get_xy_is_done(self, val, x, y):
         
         self.xyIsDone = True
+        self.target_x = x
+        self.target_y = y
         
-    @pyqtSlot(bool) 
-    def get_z_is_done(self, val):
+    @pyqtSlot(bool, float) 
+    def get_z_is_done(self, val, z):
         
-        self.zIsDone = True       
+        self.zIsDone = True     
+        self.target_z = z
         
-    @pyqtSlot(bool) 
-    def get_confocal_is_done(self, val):
+    @pyqtSlot(bool, np.ndarray) 
+    def get_scan_is_done(self, val, image):
         
-        self.confocalIsDone = True
-        
-    def ask_scan_parameters(self):
-        
-        pass
-        
+        self.scanIsDone = True
+        self.currentFrame = image
+               
     @pyqtSlot(dict) 
     def get_scan_parameters(self, params):
         
-        self.Npixels = int(params['NofPixels'])
-        
+        self.nPixels = int(params['NofPixels'])
+                    
         # TO DO: build config file
         
     def make_connection(self, frontend):
         
         frontend.startButton.clicked.connect(self.start_measurement)
         frontend.stopButton.clicked.connect(self.stop_measurement)
+        frontend.paramSignal.connect(self.get_frontend_param)
             
             
             

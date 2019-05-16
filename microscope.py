@@ -84,7 +84,7 @@ class Frontend(QtGui.QMainWindow):
 
         ## scanner
 
-        scanDock = Dock('Confocal scan', size=(1, 1))
+        scanDock = Dock('scan scan', size=(1, 1))
 
         self.scanWidget = scan.Frontend()
 
@@ -194,13 +194,14 @@ class Backend(QtCore.QObject):
         
     def setup_psf_connections(self):
         
-        self.psfWorker.confocalSignal.connect(self.scanWorker.liveview)
+        self.psfWorker.scanSignal.connect(self.scanWorker.get_scan_signal)
         self.psfWorker.xySignal.connect(self.xyWorker.single_xy_correction)
         self.psfWorker.zSignal.connect(self.zWorker.single_z_correction)
         self.psfWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
         self.psfWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
+        self.psfWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
         
-        self.scanWorker.frameIsDone.connect(self.psfWorker.get_confocal_is_done)
+        self.scanWorker.frameIsDone.connect(self.psfWorker.get_scan_is_done)
         self.xyWorker.xyIsDone.connect(self.psfWorker.get_xy_is_done)
         self.zWorker.zIsDone.connect(self.psfWorker.get_z_is_done)
     
@@ -216,6 +217,9 @@ class Backend(QtCore.QObject):
     
         self.setup_minflux_connections()
         self.setup_psf_connections()
+        
+        frontend.scanWidget.paramSignal.connect(self.psfWorker.get_scan_parameters)
+        # TO DO: write this in a cleaner way, i. e. not in this section, not using frontend
         
         frontend.closeSignal.connect(self.stop)
         
@@ -254,6 +258,8 @@ if __name__ == '__main__':
     
     gui.minfluxWidget.emit_param_to_backend()
     worker.minfluxWorker.emit_param_to_frontend()
+    
+    gui.psfWidget.emit_param()
     
 #    # GUI thread
 #    

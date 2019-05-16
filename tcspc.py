@@ -67,6 +67,8 @@ class Frontend(QtGui.QFrame):
         
     def emit_param(self):
         
+        # TO DO: change for dictionary
+        
         filename = os.path.join(self.folderEdit.text(),
                                 self.filenameEdit.text())
         

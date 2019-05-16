@@ -142,9 +142,9 @@ class Frontend(QtGui.QFrame):
         frameTime = params['frameTime']
         pxSize = params['pxSize']
         maxCounts = params['maxCounts']
-        initialPos = params['initialPos']
+        initialPos = np.round(params['initialPos'], 2)
         
-#        print(initialPos)
+#        print(datetime.now(), '[scan-frontend] got initialPos', initialPos)
         
         self.frameTimeValue.setText('{}'.format(np.around(frameTime, 2)))
         self.pxSizeValue.setText('{}'.format(np.around(1000 * pxSize, 3))) # in nm
@@ -836,7 +836,7 @@ class Backend(QtCore.QObject):
     
     paramSignal = pyqtSignal(dict)
     imageSignal = pyqtSignal(np.ndarray)
-    frameIsDone = pyqtSignal(bool) 
+    frameIsDone = pyqtSignal(bool, np.ndarray) 
     ROIcenterSignal = pyqtSignal(np.ndarray)
     
     def __init__(self, adwin, *args, **kwargs):
@@ -1105,6 +1105,11 @@ class Backend(QtCore.QObject):
         self.moveTo(*self.ROIcenter)
         self.ROIcenterSignal.emit(self.ROIcenter)
         
+    @pyqtSlot()
+    def get_moveTo_initial_signal(self):
+        
+        self.moveTo(*self.initialPos)
+    
     def relative_move(self, axis, direction):
         
         if axis == 'x' and direction == 'up':
@@ -1151,22 +1156,6 @@ class Backend(QtCore.QObject):
     
         self.update_device_param()
         self.emit_param()    
-        
-    def plot_scan_signal(self):
-        
-        # save scan plot (x vs t)
-        plt.figure()
-        plt.title('Scan plot x vs t')
-        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
-        plt.xlabel('t (ADwin time)')
-        plt.ylabel('V (DAC units)')
-
-        fname = tools.getUniqueName(self.filename)
-        fname = fname + '_scan_plot'
-        plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
-                    orientation='portrait', papertype=None, format=None,
-                    transparent=False, bbox_inches=None, pad_inches=0.1,
-                    frameon=None)
             
     def save_current_frame(self):
         
@@ -1186,17 +1175,29 @@ class Backend(QtCore.QObject):
 
 #        self.gui.currentFrameButton.setChecked(False)
         
+    @pyqtSlot(bool, str, np.ndarray)
+    def get_scan_signal(self, lvbool, mode, initialPos):
+        
+        self.initialPos = initialPos
+        print('[scan] got scan signal from [psf], initialPos', self.initialPos)
+        self.calculate_derived_param()
+        
+        self.liveview(lvbool, mode)
+        
     def line_acquisition(self):
         
         self.adw.Start_Process(1)
         
         line_time = (1/1000) * self.data_t[-1]  # target linetime in ms
-        wait_time = line_time * 1.01
+        wait_time = line_time * 1.05
         
         time.sleep(wait_time/1000) # in s
 
         line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
 #        line_data = np.random.rand(self.tot_pixels)
+        
+        line_data[0] = 0  # TO DO: fix the high count error on first element
+
 
         return line_data
 
@@ -1225,7 +1226,7 @@ class Backend(QtCore.QObject):
 #        line_data[0] = 0  # TO DO: fix the high count error on first element
 #
 #        return line_data
-    
+        
     @pyqtSlot(bool, str)
     def liveview(self, lvbool, mode):
         
@@ -1240,7 +1241,7 @@ class Backend(QtCore.QObject):
 
     def liveview_start(self):
         
-#        self.plot_scan_signal()
+#        self.plot_scan()
 
         if self.scantype == 'xy':
 
@@ -1325,7 +1326,7 @@ class Backend(QtCore.QObject):
             if self.acquisitionMode == 'frame':
                 
                 self.liveview_stop()
-                self.frameIsDone.emit(True)
+                self.frameIsDone.emit(True, self.image)
                 
             self.update_device_param()  
             
@@ -1385,6 +1386,22 @@ class Backend(QtCore.QObject):
         self.ROIcenterSignal.emit(self.ROIcenter)
         
         print('[scan] ROI center emitted')
+        
+    def plot_scan(self):
+        
+        # save scan plot (x vs t)
+        plt.figure()
+        plt.title('Scan plot x vs t')
+        plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
+        plt.xlabel('t (ADwin time)')
+        plt.ylabel('V (DAC units)')
+
+        fname = tools.getUniqueName(self.filename)
+        fname = fname + '_scan_plot'
+        plt.savefig(fname, dpi=None, facecolor='w', edgecolor='w',
+                    orientation='portrait', papertype=None, format=None,
+                    transparent=False, bbox_inches=None, pad_inches=0.1,
+                    frameon=None)
 
                       
     def make_connection(self, frontend):
@@ -1453,7 +1470,7 @@ if __name__ == '__main__':
     scanThread.start()
 
     
-    gui.setWindowTitle('Confocal scan')
+    gui.setWindowTitle('scan scan')
     gui.show()
 
     app.exec_()

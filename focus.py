@@ -197,31 +197,41 @@ class Frontend(QtGui.QFrame):
                 zMean = np.mean(position)
                 zStDev = np.std(position)
                 
-                self.focusMean.setValue(zMean)
-                self.focusStDev0.setValue(zMean - zStDev)
-                self.focusStDev1.setValue(zMean + zStDev)
+                # TO DO: fix focus stats
+                
+#                self.focusMean.setValue(zMean)
+#                self.focusStDev0.setValue(zMean - zStDev)
+#                self.focusStDev1.setValue(zMean + zStDev)
       
     @pyqtSlot(float)          
     def get_setpoint(self, value):
         
         self.setPoint = value
         
-        self.focusSetPoint = self.focusGraph.zPlot.addLine(y=self.setPoint,
-                                                           pen=pg.mkPen('r', width=2))
-        self.focusMean = self.focusGraph.zPlot.addLine(y=self.setPoint,
-                                                       pen='c')
-        self.focusStDev0 = self.focusGraph.zPlot.addLine(y=self.setPoint,
-                                                         pen='c')
+        print('[focus] set point', value)
         
-        self.focusStDev1 = self.focusGraph.zPlot.addLine(y=self.setPoint,
-                                                         pen='c')
+        # TO DO: fix setpoint line
+        
+#        self.focusSetPoint = self.focusGraph.zPlot.addLine(y=self.setPoint,
+#                                                           pen=pg.mkPen('r', width=2))
+#        self.focusMean = self.focusGraph.zPlot.addLine(y=self.setPoint,
+#                                                       pen='c')
+#        self.focusStDev0 = self.focusGraph.zPlot.addLine(y=self.setPoint,
+#                                                         pen='c')
+#        
+#        self.focusStDev1 = self.focusGraph.zPlot.addLine(y=self.setPoint,
+#                                                         pen='c')
         
     def clear_graph(self):
         
-        self.focusGraph.zPlot.removeItem(self.focusSetPoint)
-        self.focusGraph.zPlot.removeItem(self.focusMean)
-        self.focusGraph.zPlot.removeItem(self.focusStDev0)
-        self.focusGraph.zPlot.removeItem(self.focusStDev1)
+        # TO DO: fix setpoint line
+        
+#        self.focusGraph.zPlot.removeItem(self.focusSetPoint)
+#        self.focusGraph.zPlot.removeItem(self.focusMean)
+#        self.focusGraph.zPlot.removeItem(self.focusStDev0)
+#        self.focusGraph.zPlot.removeItem(self.focusStDev1)
+        
+        pass
             
     def make_connection(self, backend):
             
@@ -354,7 +364,7 @@ class Backend(QtCore.QObject):
     changedSetPoint = pyqtSignal(float)
     
     
-    zIsDone = pyqtSignal(bool)
+    zIsDone = pyqtSignal(bool, float)
     ZtcspcIsDone = pyqtSignal()
 
     def __init__(self, camera, adw, *args, **kwargs):
@@ -393,10 +403,6 @@ class Backend(QtCore.QObject):
 
         self.focusTime = 1000 / self.scansPerS
         self.focusTimer = QtCore.QTimer()
-
-#        self.currentZ = tools.convert(self.actuator.Get_FPar(72), 'UtoX')
-#        self.currentX = tools.convert(self.actuator.Get_FPar(70), 'UtoX')
-#        self.currentY = tools.convert(self.actuator.Get_FPar(71), 'UtoX')
         
         self.reset()
         self.reset_data_arrays()
@@ -457,9 +463,9 @@ class Backend(QtCore.QObject):
         self.camera._set_AOI(*val)
         
     @pyqtSlot(bool)
-    def toggle_feedback(self, val):
+    def toggle_feedback(self, val, mode='continous'):
         ''' Toggles ON/OFF feedback for either continous (TCSPC) 
-        or discrete (confocal imaging) correction'''
+        or discrete (scan imaging) correction'''
         
         if val is True:
             
@@ -470,8 +476,10 @@ class Backend(QtCore.QObject):
             
             # set up and start actuator process
             
-            self.set_actuator_param()
-            self.adw.Start_Process(3)
+            if mode == 'continous':
+            
+                self.set_actuator_param()
+                self.adw.Start_Process(3)
             
             print(datetime.now(), ' [focus] Feedback loop ON')
             
@@ -487,11 +495,9 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[focus] feedback setup 0')
 
-        
-#        print(datetime.now(), '[focus] Set-point set to', self.focusSignal)
-        self.setPoint = self.focusSignal * self.pxSize
-        initialZ = tools.convert(self.adw.Get_FPar(72), 'UtoX') # current Z position of the piezo
-        self.currentZ = initialZ # set initialZ as currentZ
+        self.setPoint = self.focusSignal * self.pxSize # define setpoint
+        initial_z = tools.convert(self.adw.Get_FPar(72), 'UtoX') # current z position of the piezo
+        self.target_z = initial_z # set initial_z as target_z
         
         self.changedSetPoint.emit(self.focusSignal)
         
@@ -499,7 +505,7 @@ class Backend(QtCore.QObject):
 
         # TO DO: implement calibrated version of this
     
-    def update_feedback(self):
+    def update_feedback(self, mode='continous'):
         
         dz = self.focusSignal * self.pxSize - self.setPoint
 
@@ -522,8 +528,17 @@ class Backend(QtCore.QObject):
             
         else:
             
-            self.currentZ = self.currentZ + dz/1000  # conversion to µm
-            self.actuator_z(self.currentZ)
+            self.target_z = self.target_z + dz/1000  # conversion to µm
+            
+            if mode is 'continous':
+                
+                self.actuator_z(self.target_z)
+                
+            if mode is 'discrete':
+                
+                pass  # it's enough to have saved the value self.target_z
+                
+                print(datetime.now(), '[focus] discrete correction to', self.target_z)
             
     def update_graph_data(self):
         
@@ -601,7 +616,7 @@ class Backend(QtCore.QObject):
                 
         self.massCenter = np.array(ndi.measurements.center_of_mass(image))
         self.focusSignal = self.massCenter[0]
-        print(datetime.now(), '[focus] self.focusSignal', self.focusSignal)
+#        print(datetime.now(), '[focus] self.focusSignal', self.focusSignal)
         self.currentTime = ptime.time() - self.startTime
         
     @pyqtSlot(bool, bool)
@@ -630,14 +645,14 @@ class Backend(QtCore.QObject):
             
         else:
         
-            self.update_feedback()
+            self.update_feedback(mode='discrete')
         
         if self.save_data_state:
             
             self.time_array.append(self.time[-1])
             self.z_array.append(self.data[-1])
                     
-        self.zIsDone.emit(True)
+        self.zIsDone.emit(True, self.target_z)
 
     def calibrate(self):
         
@@ -806,13 +821,13 @@ class Backend(QtCore.QObject):
         frontend.changedROI.connect(self.get_new_roi)
         frontend.closeSignal.connect(self.stop)
 #        frontend.lockFocusSignal.connect(self.lock_focus)
-        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+#        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         frontend.saveDataSignal.connect(self.get_save_data_state)
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.calibrationButton.clicked.connect(self.calibrate)
         
-    def set_aux_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
+    def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
 
         x_f = tools.convert(x_f, 'XtoU')
@@ -829,9 +844,9 @@ class Backend(QtCore.QObject):
 
         self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
 
-    def aux_moveTo(self, x_f, y_f, z_f): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
+    def moveTo(self, x_f, y_f, z_f, pixeltime=2000): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
 
-        self.set_aux_moveTo_param(x_f, y_f, z_f)
+        self.set_moveTo_param(x_f, y_f, z_f, pixeltime)
         self.adw.Start_Process(2)
         
     def stop(self):
@@ -847,7 +862,7 @@ class Backend(QtCore.QObject):
             y_0 = 0
             z_0 = 0
     
-            self.aux_moveTo(x_0, y_0, z_0)
+            self.moveTo(x_0, y_0, z_0)
             
         print(datetime.now(), '[focus] Focus stopped')
         
@@ -896,7 +911,7 @@ if __name__ == '__main__':
     worker.adw.Set_FPar(71, pos_zero)
     worker.adw.Set_FPar(72, pos_zero)
     
-    worker.aux_moveTo(10, 10, 10) # in µm
+    worker.moveTo(10, 10, 10) # in µm
     
     gui.setWindowTitle('Focus lock')
     gui.resize(1500, 500)
