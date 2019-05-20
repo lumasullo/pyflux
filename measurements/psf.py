@@ -170,6 +170,8 @@ class Backend(QtCore.QObject):
     zSignal = pyqtSignal(bool, bool)
     zStopSignal = pyqtSignal()
     
+    endSignal = pyqtSignal(str)
+    
     scanSignal = pyqtSignal(bool, str, np.ndarray)
     moveToInitialSignal = pyqtSignal()
 
@@ -212,6 +214,8 @@ class Backend(QtCore.QObject):
         self.measTimer.stop()
         self.progressSignal.emit(0)
         
+        self.endSignal.emit(self.filename)
+        
         self.xyStopSignal.emit()
         self.zStopSignal.emit()
         
@@ -244,7 +248,6 @@ class Backend(QtCore.QObject):
                 if DEBUG:
                     print(datetime.now(), '[psf] z signal emitted ({})'.format(self.i))
 
-                
             if self.zIsDone:
     
                 if self.scan_flag:
@@ -295,7 +298,9 @@ class Backend(QtCore.QObject):
         # TO DO: export config file
         # TO DO: save and export xdata and ydata
         
+        
         fname = self.filename
+        np.savetxt(fname + '.txt', [])
         self.data = np.array(self.data, dtype=np.float32)
         print(datetime.now(), '[psf] data shape', np.shape(self.data))
         tifffile.imsave(fname, self.data)
@@ -309,7 +314,7 @@ class Backend(QtCore.QObject):
         self.nFrames = params['nframes']
         
         today = str(date.today()).replace('-', '')
-        self.filename = params['filename'] + '_' + today
+        self.filename = tools.getUniqueName(params['filename'] + '_' + today)
         
         print(datetime.now(), '[psf] file name', self.filename)
                 

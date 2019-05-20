@@ -756,6 +756,8 @@ class Backend(QtCore.QObject):
             
             self.j += 1
             
+            print(datetime.now(), '[xy_tracking] x, y', self.x_array, self.y_array)
+            
             if self.j >= (self.buffersize - 5):    # TO DO: -5 bad fix
                 
                 self.export_data()
@@ -947,12 +949,12 @@ class Backend(QtCore.QObject):
         """
 
         fname = self.filename
-        filename = tools.getUniqueName(fname)
-        filename = filename + '_xydata.txt'
+#        filename = tools.getUniqueName(fname)    # TO DO: make compatible with psf measurement and stand alone
+        filename = fname + '_xydata.txt'
         
         size = self.j
         savedData = np.zeros((3, size))
-        
+
         savedData[0, :] = self.time_array[0:self.j]
         savedData[1, :] = self.x_array[0:self.j]
         savedData[2, :] = self.y_array[0:self.j]
@@ -969,6 +971,8 @@ class Backend(QtCore.QObject):
         
         self.reset()
         self.reset_data_arrays()
+        
+        self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
         
         self.liveview_stop()
                 

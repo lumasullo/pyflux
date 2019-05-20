@@ -649,8 +649,8 @@ class Backend(QtCore.QObject):
         
         if self.save_data_state:
             
-            self.time_array.append(self.time[-1])
-            self.z_array.append(self.data[-1])
+            self.time_array.append(self.currentTime)
+            self.z_array.append(self.focusSignal)
                     
         self.zIsDone.emit(True, self.target_z)
 
@@ -722,15 +722,21 @@ class Backend(QtCore.QObject):
     @pyqtSlot()    
     def get_stop_signal(self):
         
-        self.toggle_feedback(False)
-#        self.toggle_tracking(False) # TO DO: add toggle_tracking
-        self.liveview_stop()
-        
         """
         From: [psf]
         Description: stops liveview, tracking, feedback if they where running to
         start the psf measurement with discrete xy - z corrections
         """
+        
+        self.toggle_feedback(False)
+#        self.toggle_tracking(False) # TO DO: add toggle_tracking
+        
+        self.reset()
+        self.reset_data_arrays()
+        
+        self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
+
+        self.liveview_stop()
         
     @pyqtSlot()    
     def get_lock_signal(self):
@@ -812,9 +818,15 @@ class Backend(QtCore.QObject):
     @pyqtSlot(str)    
     def get_end_measurement_signal(self, fname):
         
+        """ 
+        From: [minflux] or [psf]
+        Description: at the end of the measurement exports the xy data
+
+        """ 
+        
         self.filename = fname
         self.export_data()
-        
+                
     def make_connection(self, frontend):
           
         frontend.liveviewSignal.connect(self.liveview)

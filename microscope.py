@@ -200,6 +200,8 @@ class Backend(QtCore.QObject):
         self.psfWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
         self.psfWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
         self.psfWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
+        self.psfWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
+        self.psfWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
         
         self.scanWorker.frameIsDone.connect(self.psfWorker.get_scan_is_done)
         self.xyWorker.xyIsDone.connect(self.psfWorker.get_xy_is_done)

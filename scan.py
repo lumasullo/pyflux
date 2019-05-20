@@ -433,11 +433,14 @@ class Frontend(QtGui.QFrame):
         
     def setup_gui(self):
                 
-        # widget where the liveview image will be displayed
+        # image widget set-up and layout
 
         imageWidget = pg.GraphicsLayoutWidget()
         self.vb = imageWidget.addViewBox(row=0, col=0)
         self.lplotWidget = linePlotWidget()
+        
+        imageWidget.setFixedHeight(500)
+        imageWidget.setFixedWidth(500)
         
         # Viewbox and image item where the liveview will be displayed
 
@@ -510,7 +513,6 @@ class Frontend(QtGui.QFrame):
         self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
         self.moveToROIcenterButton.clicked.connect(self.select_ROI)
 
-        
         # line profile button
         
         self.lineProfButton = QtGui.QPushButton('Line profile')
@@ -551,12 +553,16 @@ class Frontend(QtGui.QFrame):
         
         self.toggle_advanced()
 
-        # filename
+        # file/folder widget
+        
+        self.fileWidget = QtGui.QFrame()
+        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
+                                      QtGui.QFrame.Raised)
+        
+        self.fileWidget.setFixedHeight(120)
+        self.fileWidget.setFixedWidth(230)
 
-        self.filenameLabel = QtGui.QLabel('File name')
-        self.filenameEdit = QtGui.QLineEdit('filename')
-
-        # folder
+        # folder and buttons
         
         today = str(date.today()).replace('-', '')
         root = r'C:\\Data\\'
@@ -569,6 +575,8 @@ class Frontend(QtGui.QFrame):
         else:  
             print(datetime.now(), '[scan] Successfully created the directory {}'.format(folder))
         
+        self.filenameLabel = QtGui.QLabel('File name')
+        self.filenameEdit = QtGui.QLineEdit('filename')
         self.folderLabel = QtGui.QLabel('Folder')
         self.folderEdit = QtGui.QLineEdit(folder)
         self.browseFolderButton = QtGui.QPushButton('Browse')
@@ -673,13 +681,14 @@ class Frontend(QtGui.QFrame):
         paramDock.setOrientation(o="vertical", force=True)
         paramDock.updateStyle()
         paramDock.addWidget(self.paramWidget)
+        paramDock.addWidget(self.fileWidget)
         dockArea.addDock(paramDock, 'above', positionerDock)
         
         imageDock = Dock('Confocal view')
         imageDock.addWidget(imageWidget)
         dockArea.addDock(imageDock, 'right', paramDock)
-
-        # paramwidget layout
+        
+        # parameters widget layout
 
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
@@ -696,10 +705,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.currentFrameButton, 9, 2)
         subgrid.addWidget(self.ROIButton, 10, 2)
         subgrid.addWidget(self.select_ROIButton, 11, 2)
-        
-#        subgrid.addWidget(self.acquireFrameButton, 11, 1)
-#        subgrid.addWidget(self.stopAcquireFrameButton, 12, 1)
-        
+
         subgrid.addWidget(self.moveToROIcenterButton, 13, 2)
         subgrid.addWidget(self.lineProfButton, 14, 2)
 
@@ -719,30 +725,30 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.maxCountsLabel, 9, 0)
         subgrid.addWidget(self.maxCountsValue, 9, 1)
         
-#        subgrid.addWidget(self.emitParamButton, 13, 0)
+        subgrid.addWidget(self.advancedButton, 10, 0)
         
-        subgrid.addWidget(self.advancedButton, 11, 0)
+        subgrid.addWidget(self.auxAccelerationLabel, 11, 0)
+        subgrid.addWidget(self.auxAccEdit, 12, 0)
+        subgrid.addWidget(self.waitingTimeLabel, 13, 0)
+        subgrid.addWidget(self.waitingTimeEdit, 14, 0)
+        subgrid.addWidget(self.preview_scanButton, 15, 0)
         
-        subgrid.addWidget(self.auxAccelerationLabel, 15, 0)
-        subgrid.addWidget(self.auxAccEdit, 16, 0)
-        subgrid.addWidget(self.waitingTimeLabel, 17, 0)
-        subgrid.addWidget(self.waitingTimeEdit, 18, 0)
-        subgrid.addWidget(self.preview_scanButton, 19, 0)
-        
-        subgrid.addWidget(self.filenameLabel, 2, 3)
-        subgrid.addWidget(self.filenameEdit, 3, 3)
-        subgrid.addWidget(self.folderLabel, 4, 3)
-        subgrid.addWidget(self.folderEdit, 5, 3)
-        subgrid.addWidget(self.browseFolderButton, 6, 3)
-    
-        self.paramWidget.setFixedHeight(350)
-        self.paramWidget.setFixedWidth(400)
+        self.paramWidget.setFixedHeight(370)
+        self.paramWidget.setFixedWidth(300)
         
 #        subgrid.setColumnMinimumWidth(1, 130)
 #        subgrid.setColumnMinimumWidth(1, 50)
         
-        imageWidget.setFixedHeight(500)
-        imageWidget.setFixedWidth(500)
+        # file/folder widget layout
+        
+        file_subgrid = QtGui.QGridLayout()
+        self.fileWidget.setLayout(file_subgrid)
+        
+        file_subgrid.addWidget(self.filenameLabel, 0, 0, 1, 2)
+        file_subgrid.addWidget(self.filenameEdit, 1, 0, 1, 2)
+        file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
+        file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
+        file_subgrid.addWidget(self.browseFolderButton, 4, 0)
         
         # EBP widget layout
         
@@ -762,7 +768,7 @@ class Frontend(QtGui.QFrame):
         self.EBPWidget.setFixedHeight(150)
         self.EBPWidget.setFixedWidth(250)
         
-        # piezo navigation layout
+        # Piezo navigation widget layout
 
         layout = QtGui.QGridLayout()
         self.positioner.setLayout(layout)
