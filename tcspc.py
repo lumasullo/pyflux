@@ -279,7 +279,6 @@ class Backend(QtCore.QObject):
     ctRatesSignal = pyqtSignal(float, float)
     plotDataSignal = pyqtSignal(np.ndarray, np.ndarray)
     
-#    xyzSignal = pyqtSignal(bool, str)
     tcspcDoneSignal = pyqtSignal()
     
     def __init__(self, ph_device, adwin, *args, **kwargs): 
@@ -327,15 +326,6 @@ class Backend(QtCore.QObject):
         t0 = time.time()
 
         self.currentfname = tools.getUniqueName(self.fname)
-        
-#        delay = 4.0 # 4.0 s is the typical time that the PH takes to start a measurement
-        
-#        self.xyzSignal.emit(True, self.currentfname)
-        
-#        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
-#                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
-        
-#        self.prepare_ph()
 
         t1 = time.time()
         
@@ -347,7 +337,6 @@ class Backend(QtCore.QObject):
         while self.ph.measure_state is not 'done':
             pass
         
-#        self.xyzSignal.emit(False, self.currentfname)
         self.export_data()
         
     @pyqtSlot(str, int, int)
@@ -358,9 +347,7 @@ class Backend(QtCore.QObject):
         t0 = time.time()
 
         self.currentfname = tools.getUniqueName(fname)
-                
-#        self.xyzSignal.emit(True, self.currentfname)
-        
+                        
         self.prepare_ph()
         
         self.ph.tacq = acqtime * n * 1000 # TO DO: correspond to GUI !!!
@@ -404,7 +391,6 @@ class Backend(QtCore.QObject):
         numRecords = self.ph.numRecords # number of records
         globRes = 2.5e-8  # in ns, corresponds to sync @40 MHz
         timeRes = self.ph.resolution * 1e-12 # time resolution in s
-#        print(timeRes)
 
         relTime, absTime = Read_PTU.readPT3(inputfile, numRecords)
 

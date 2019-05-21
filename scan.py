@@ -344,7 +344,6 @@ class Frontend(QtGui.QFrame):
         
         self.emit_param()
         
-        
     def set_EBP(self):
         
         pxSize = self.pxSize
@@ -511,7 +510,7 @@ class Frontend(QtGui.QFrame):
         # move to center button
         
         self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
-        self.moveToROIcenterButton.clicked.connect(self.select_ROI)
+#        self.moveToROIcenterButton.clicked.connect(self.select_ROI)
 
         # line profile button
         
@@ -819,6 +818,11 @@ class Frontend(QtGui.QFrame):
       
 class Backend(QtCore.QObject):
     
+    paramSignal = pyqtSignal(dict)
+    imageSignal = pyqtSignal(np.ndarray)
+    frameIsDone = pyqtSignal(bool, np.ndarray) 
+    ROIcenterSignal = pyqtSignal(np.ndarray)
+    
     """
     Signals
     
@@ -840,11 +844,6 @@ class Backend(QtCore.QObject):
         
     """
     
-    paramSignal = pyqtSignal(dict)
-    imageSignal = pyqtSignal(np.ndarray)
-    frameIsDone = pyqtSignal(bool, np.ndarray) 
-    ROIcenterSignal = pyqtSignal(np.ndarray)
-    
     def __init__(self, adwin, *args, **kwargs):
         
         super().__init__(*args, **kwargs)
@@ -852,11 +851,7 @@ class Backend(QtCore.QObject):
         self.adw = adwin
         self.saveScanData = False
         self.feedback_active = False
-        
-#        # connect internal signal/slot
-#        
-#        self.newFrameSignal.connect(self.frame_acquisition)
-        
+
         # edited_scan: True --> size of the useful part of the scan
         # edited_scan: False --> size of the full scan including aux parts
         
@@ -1111,6 +1106,11 @@ class Backend(QtCore.QObject):
         self.moveTo(*self.ROIcenter)
         self.ROIcenterSignal.emit(self.ROIcenter)
         
+#        # keep track of the new position to where you've moved
+#        
+#        self.initialPos = self.ROIcenter
+#        self.emit_param()
+        
     @pyqtSlot()
     def get_moveTo_initial_signal(self):
         
@@ -1183,9 +1183,14 @@ class Backend(QtCore.QObject):
         
     @pyqtSlot(bool, str, np.ndarray)
     def get_scan_signal(self, lvbool, mode, initialPos):
+    
+        """
+        Connection: [psf] scanSignal
+        Description: get drift-corrected initial position, calculates the
+        derived parameters (and updates ADwin data)
+        """
         
         self.initialPos = initialPos
-        print('[scan] got scan signal from [psf], initialPos', self.initialPos)
         self.calculate_derived_param()
         
         self.liveview(lvbool, mode)
@@ -1381,11 +1386,6 @@ class Backend(QtCore.QObject):
             self.adw.Start_Process(5)
 
             print('[scan] Flipper down')
-            
-#    @pyqtSlot()
-#    def get_ROI_center_request(self):
-#        
-#        print(datetime.now(), '[scan] got ROI request')
         
     def emit_ROI_center(self):
         
@@ -1412,18 +1412,13 @@ class Backend(QtCore.QObject):
                       
     def make_connection(self, frontend):
         
-#        frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.liveviewSignal.connect(self.liveview)
-#        frontend.frameacqSignal.connect(self.frame_acquisition)
-#        frontend.frameacqSignal.connect(self.start_continous_acq)
-#        frontend.stopAcquireFrameButton.clicked.connect(self.stop_continous_acq)
-#        frontend.acquireFrameButton.clicked.connect(self.frame_acquisition)
         frontend.moveToROIcenterButton.clicked.connect(self.moveTo_roi_center)
         frontend.currentFrameButton.clicked.connect(self.save_current_frame)
         frontend.moveToButton.clicked.connect(self.moveTo_action)
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
-#        frontend.feedbackLoopBox.stateChanged.connect(self.toggle_feedback)
+        
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
         

@@ -25,11 +25,16 @@ import tifffile
 
 π = np.pi
 
-DEBUG = True
+DEBUG = False
 
 class Frontend(QtGui.QFrame):
     
     paramSignal = pyqtSignal(dict)
+    
+    """
+    Signals
+    
+    """
      
     def __init__(self, *args, **kwargs):
 
@@ -176,6 +181,11 @@ class Backend(QtCore.QObject):
     moveToInitialSignal = pyqtSignal()
 
     progressSignal = pyqtSignal(float)
+    
+    """
+    Signals
+    
+    """
 
     def __init__(self, *args, **kwargs):
     
@@ -188,9 +198,9 @@ class Backend(QtCore.QObject):
         self.scanIsDone = False
         
         self.measTimer = QtCore.QTimer()
-        self.measTimer.timeout.connect(self.measurement_loop)
+        self.measTimer.timeout.connect(self.loop)
 
-    def start_measurement(self):
+    def start(self):
         
         self.i = 0
         
@@ -209,7 +219,7 @@ class Backend(QtCore.QObject):
     
         self.measTimer.start(0)
         
-    def stop_measurement(self):
+    def stop(self):
         
         self.measTimer.stop()
         self.progressSignal.emit(0)
@@ -223,7 +233,7 @@ class Backend(QtCore.QObject):
         
         self.export_data()
         
-    def measurement_loop(self):
+    def loop(self):
         
         if self.i == 0:
             initial = True
@@ -255,8 +265,6 @@ class Backend(QtCore.QObject):
                     initialPos = np.array([self.target_x, self.target_y, 
                                            self.target_z], dtype=np.float64)
     
-                    print('[psf] initialPos here is', initialPos)
-    
                     self.scanSignal.emit(True, 'frame', initialPos)
                     self.scan_flag = False
                     
@@ -281,31 +289,25 @@ class Backend(QtCore.QObject):
                     print(datetime.now(), 
                           '[psf] PSF {} of {}'.format(self.i+1, 
                                                       self.nFrames))
-                    
-#                    self.data[:, :, self.i] = self.currentFrame    TO DO: save each frame into data array
-                    
+                                        
                     if self.i < self.nFrames-1:
                     
                         self.i += 1
                     
                     else:
                         
-                        self.stop_measurement()
+                        self.stop()
                     
     def export_data(self):
     
         # TO DO: export self.data with self.filename
         # TO DO: export config file
-        # TO DO: save and export xdata and ydata
-        
         
         fname = self.filename
         np.savetxt(fname + '.txt', [])
-        self.data = np.array(self.data, dtype=np.float32)
-        print(datetime.now(), '[psf] data shape', np.shape(self.data))
-        tifffile.imsave(fname, self.data)
         
-        pass
+        self.data = np.array(self.data, dtype=np.float32)
+        tifffile.imsave(fname, self.data)
     
     @pyqtSlot(dict)
     def get_frontend_param(self, params):
@@ -321,6 +323,10 @@ class Backend(QtCore.QObject):
     @pyqtSlot(bool, float, float) 
     def get_xy_is_done(self, val, x, y):
         
+        """
+        Connection: [xy_tracking] xyIsDone
+        
+        """
         self.xyIsDone = True
         self.target_x = x
         self.target_y = y
@@ -328,11 +334,21 @@ class Backend(QtCore.QObject):
     @pyqtSlot(bool, float) 
     def get_z_is_done(self, val, z):
         
+        """
+        Connection: [focus] zIsDone
+        
+        """
+        
         self.zIsDone = True     
         self.target_z = z
         
     @pyqtSlot(bool, np.ndarray) 
     def get_scan_is_done(self, val, image):
+        
+        """
+        Connection: [scan] scanIsDone
+        
+        """
         
         self.scanIsDone = True
         self.currentFrame = image
@@ -340,14 +356,17 @@ class Backend(QtCore.QObject):
     @pyqtSlot(dict) 
     def get_scan_parameters(self, params):
         
+        # TO DO: this function is connected to the scan frontend, it should
+        # be connected to a proper funciton in the scan backend
+        
         self.nPixels = int(params['NofPixels'])
                     
         # TO DO: build config file
         
     def make_connection(self, frontend):
         
-        frontend.startButton.clicked.connect(self.start_measurement)
-        frontend.stopButton.clicked.connect(self.stop_measurement)
+        frontend.startButton.clicked.connect(self.start)
+        frontend.stopButton.clicked.connect(self.stop)
         frontend.paramSignal.connect(self.get_frontend_param)
             
             

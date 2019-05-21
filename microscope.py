@@ -174,18 +174,15 @@ class Backend(QtCore.QObject):
             
     def setup_minflux_connections(self):
         
-#        self.minfluxWorker.askROIcenterSignal.connect(self.scanWorker.get_ROI_center_request)
         self.scanWorker.ROIcenterSignal.connect(self.minfluxWorker.get_ROI_center)
         
-#        self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_single_move_signal)
         self.minfluxWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_minflux)
         self.minfluxWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_minflux)
         
         self.minfluxWorker.xyzStartSignal.connect(self.xyWorker.get_lock_signal)
 #        self.minfluxWorker.xyzStartSignal.connect(self.zWorker.get_lock_signal)
         
-        self.minfluxWorker.xyMoveAndLockSignal.connect(self.xyWorker.get_minflux_signal)
-        self.xyWorker.partialMinfluxMeasDone.connect(self.minfluxWorker.partial_measurement)
+        self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_move_signal)
         
         self.tcspcWorker.tcspcDoneSignal.connect(self.minfluxWorker.get_tcspc_done_signal)
         
@@ -200,6 +197,7 @@ class Backend(QtCore.QObject):
         self.psfWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
         self.psfWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
         self.psfWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
+        
         self.psfWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
         self.psfWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
         
@@ -282,7 +280,7 @@ if __name__ == '__main__':
     focusThread = QtCore.QThread()
     worker.zWorker.moveToThread(focusThread)
     worker.zWorker.focusTimer.moveToThread(focusThread)
-    worker.zWorker.focusTimer.timeout.connect(worker.zWorker.update) # TO DO: this will probably call the update twice, fix!!
+    worker.zWorker.focusTimer.timeout.connect(worker.zWorker.update)
 
     focusThread.start()
     

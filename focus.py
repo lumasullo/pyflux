@@ -50,10 +50,26 @@ def zMoveTo(adwin, z_f):
 class Frontend(QtGui.QFrame):
     
     liveviewSignal = pyqtSignal(bool)
-    changedROI = pyqtSignal(np.ndarray)  # oass new roi size
+    changedROI = pyqtSignal(np.ndarray)  # sends new roi size
     closeSignal = pyqtSignal()
-    lockFocusSignal = pyqtSignal(bool)
     saveDataSignal = pyqtSignal(bool)
+    
+    """
+    Signals
+    
+    - liveviewSignal:
+        To: [backend] liveview
+        
+    - changedROI:
+        To: [backend] get_new_roi
+        
+    - closeSignal:
+        To: [backend] stop
+        
+    - saveDataSignal:
+        To: [backend] get_save_data_state
+
+    """
     
     def __init__(self, *args, **kwargs):
 
@@ -363,9 +379,24 @@ class Backend(QtCore.QObject):
     changedData = pyqtSignal(np.ndarray, np.ndarray)
     changedSetPoint = pyqtSignal(float)
     
-    
     zIsDone = pyqtSignal(bool, float)
-    ZtcspcIsDone = pyqtSignal()
+    
+    """
+    Signals
+    
+    - changedImage:
+        To: [frontend] get_image
+             
+    - changedData:
+        To: [frontend] get_data
+        
+    - changedSetPoint:
+        To: [frontend] get_setpoint
+        
+    - zIsDone:
+        To: [psf] get_z_is_done
+        
+    """
 
     def __init__(self, camera, adw, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -860,7 +891,8 @@ class Backend(QtCore.QObject):
 
         self.set_moveTo_param(x_f, y_f, z_f, pixeltime)
         self.adw.Start_Process(2)
-        
+     
+    @pyqtSlot()
     def stop(self):
         
         self.focusTimer.stop()

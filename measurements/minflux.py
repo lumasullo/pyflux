@@ -34,7 +34,6 @@ class Frontend(QtGui.QFrame):
         
         self.setup_gui()
         
-
     def emit_filename(self):  
         
         filename = os.path.join(self.folderEdit.text(),
@@ -110,7 +109,8 @@ class Frontend(QtGui.QFrame):
         self.acqtimeEdit = QtGui.QLineEdit('')
         
         self.startButton = QtGui.QPushButton('Start')
-        self.progress = QtGui.QProgressBar(self)
+        self.stopButton = QtGui.QPushButton('Stop')
+#        self.progress = QtGui.QProgressBar(self)
         
         subgrid.addWidget(self.absolutePosLabel, 0, 0)
         subgrid.addWidget(self.absolutePosEdit, 1, 0)
@@ -119,8 +119,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.positionsEdit, 3, 0)
         subgrid.addWidget(self.acqtimeLabel, 4, 0)
         subgrid.addWidget(self.acqtimeEdit, 5, 0)
-        subgrid.addWidget(self.startButton, 6, 0)
-        subgrid.addWidget(self.progress, 7, 0)
+#        subgrid.addWidget(self.progressBar, 6, 0)
+        subgrid.addWidget(self.startButton, 7, 0)
+        subgrid.addWidget(self.stopButton, 8, 0)
         
         # file/folder widget
         
@@ -142,9 +143,9 @@ class Frontend(QtGui.QFrame):
         try:  
             os.mkdir(folder)
         except OSError:  
-            print(datetime.now(), '[tcspc] Directory {} already exists'.format(folder))
+            print(datetime.now(), '[minflux] Directory {} already exists'.format(folder))
         else:  
-            print(datetime.now(), '[tcspc] Successfully created the directory {}'.format(folder))
+            print(datetime.now(), '[minflux] Successfully created the directory {}'.format(folder))
 
         self.folderLabel = QtGui.QLabel('Folder')
         self.folderEdit = QtGui.QLineEdit(folder)
@@ -174,13 +175,13 @@ class Frontend(QtGui.QFrame):
 
 class Backend(QtCore.QObject):
     
-    askROIcenterSignal = pyqtSignal()
-#    moveToSignal = pyqtSignal(np.ndarray)
     tcspcPrepareSignal = pyqtSignal(str, int, int)
     tcspcStartSignal = pyqtSignal()
+    
     xyzStartSignal = pyqtSignal()
     xyzEndSignal = pyqtSignal(str)
-    xyMoveAndLockSignal = pyqtSignal(np.ndarray, np.ndarray)
+    
+    moveToSignal = pyqtSignal(np.ndarray, np.ndarray)
     
     paramSignal = pyqtSignal(np.ndarray, np.ndarray, int)
     
@@ -188,35 +189,41 @@ class Backend(QtCore.QObject):
         
         super().__init__(*args, **kwargs)
 
-        self.i = 1 # counter
-        self.n = 6 # number of movements after initial movement
+        self.i = 0 # counter
         self.r0 = np.array([3.0, 3.0]) # TO DO: get this from scan or ADwin
         self._r = np.array([[0.035, 0.035], [0.00, 0.00], [0.07, 0.00], [0.07, 0.07], [0.00, 0.07], [0.035, 0.035]])
         self.acqtime = 5 # in s
+#        self.dt = 5
         
         self.update_param()
         self.emit_param_to_frontend()
-        # TO DO: get parameters from GUI
         
-#    def ask_ROI_center(self):
-#        
-#        self.askROIcenterSignal.emit()
-    
+        self.measTimer = QtCore.QTimer()
+        self.measTimer.timeout.connect(self.loop)
+            
     @pyqtSlot(np.ndarray)    
     def get_ROI_center(self, center):
         
-        self.r0 = center
+        ''' 
+        Connection: [scan] ROIcenterSignal
+        Description: gets the position selected by the user in [scan]
+        '''
+        
+        self.r0 = center[0:2]
         time.sleep(0.4)
         self.xyzStartSignal.emit()
-        
         
     @pyqtSlot(np.ndarray, np.ndarray, int)
     def get_frontend_param(self, r0, _r, acqt):
         
-        self._r = np.array(_r)
-        self.r0 = np.array(r0)
-        self.acqtime = acqt
+        """
+        Connection: [frontend] paramSignal
+        """
         
+        self._r = np.array(_r) # relative positions
+        self.r0 = np.array(r0) # offset position
+        self.acqtime = acqt
+                
         self.update_param()
         
     def emit_param_to_frontend(self):
@@ -224,63 +231,70 @@ class Backend(QtCore.QObject):
         self.paramSignal.emit(self.r0, self._r, self.acqtime)
      
     @pyqtSlot(str) 
-    def get_minflux_filename(self, val):
+    def get_filename(self, val):
+        
+        """
+        Connection: [frontend] filenameSignal
+        """
         
         self.currentfname = val
         
     def update_param(self):
         
-        self.r = self.r0 + self._r
+        self.r = self.r0 + self._r # absolute position
+        self.n = np.shape(self._r)[0]
+                
+    def start(self):
         
-    def start_minflux_meas(self):
+        self.i = 0
         
-        """ Starts minflux measurement
-        
-        n positions 
-        with acqtime in each position
-        
-        """
-        
-#        self.ask_ROI_center()
         self.update_param()
-#        self.moveToSignal.emit(self.r[0]) # signal emitted to xy for smooth, long movement
+        
         self.tcspcPrepareSignal.emit(self.currentfname, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
-        print(datetime.now(), '[minflux] movement', 0)
 
         phtime = 4  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
         time.sleep(phtime)
         
-        self.tcspcStartSignal.emit()
-        self.xyzStartSignal.emit()
+        self.t0 = time.time()
+        self.measTimer.start(0)
+    
+    def loop(self):
         
-        self.xyMoveAndLockSignal.emit(self.r[0], self._r[0]) # singal emitted to xy and z modules to start the feedback and wait for acqtime, then move to next position
-       
-        print(datetime.now(), '[minflux] movement', 0)
+        now = time.time()
         
-    @pyqtSlot()    
-    def partial_measurement(self):
+        if (now - (self.t0 + self.i * self.acqtime)) > self.acqtime:
+            
+            print(datetime.now(), '[minflux] loop', self.i)
+                        
+            self.moveToSignal.emit(self.r[self.i], self._r[self.i])
         
-        if self.i < self.n:
-        
-            time.sleep(self.acqtime)
-            print(datetime.now(), '[minflux] movement', self.i)
-            self.xyMoveAndLockSignal.emit(self.r[self.i], self._r[self.i])
             self.i += 1
             
-        else:
-            
-            print(datetime.now(), '[minflux] last movement done')
-            self.i = 2
+            if self.i == self.n:
+                                
+                self.stop()
+                
+                print(datetime.now(), '[minflux] measurement ended')
+
+                
+    def stop(self):
+        
+        self.measTimer.stop()
         
     @pyqtSlot()  
     def get_tcspc_done_signal(self):
+        
+        """
+        Connection: [tcspc] tcspcDoneSignal
+        """
         
         self.xyzEndSignal.emit(self.currentfname)
         
     def make_connection(self, frontend):
         
         frontend.paramSignal.connect(self.get_frontend_param)
-        frontend.filenameSignal.connect(self.get_minflux_filename)
-        frontend.startButton.clicked.connect(self.start_minflux_meas)
+        frontend.filenameSignal.connect(self.get_filename)
+        frontend.startButton.clicked.connect(self.start)
+        frontend.stopButton.clicked.connect(self.stop)
      
         
