@@ -401,9 +401,6 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.trackingBeadsBox, 1, 1)
         subgrid.addWidget(self.feedbackLoopBox, 2, 1)
         subgrid.addWidget(self.saveDataBox, 3, 1)
-
-#        subgrid.addWidget(self.tcspcFeedbackBox, 7, 0)  # TO DO: put this in the tcpsc widget (plus signals, etc) and not here
-
         
         grid.addWidget(self.xyGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1)
@@ -804,7 +801,7 @@ class Backend(QtCore.QObject):
             
             self.j += 1
                         
-            if self.j >= (self.buffersize - 5):    # TO DO: -5 bad fix
+            if self.j >= (self.buffersize - 5):    # TO DO: -5, arbitrary bad fix
                 
                 self.export_data()
                 self.reset_data_arrays()
@@ -1116,6 +1113,8 @@ class Backend(QtCore.QObject):
         
         self.filename = fname
         self.export_data()
+        
+        self.liveview_start()
         
     def make_connection(self, frontend):
             

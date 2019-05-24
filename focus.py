@@ -792,7 +792,6 @@ class Backend(QtCore.QObject):
         self.roi_area = val
         self.camera._set_AOI(*self.roi_area)
 
-        
         if DEBUG:
             print(datetime.now(), '[focus] ROI changed to', self.camera._get_AOI())
         
@@ -857,6 +856,10 @@ class Backend(QtCore.QObject):
         
         self.filename = fname
         self.export_data()
+        
+        self.liveview_start()
+        time.sleep(0.2)
+        self.camera._set_AOI(*self.roi_area)
                 
     def make_connection(self, frontend):
           
@@ -887,7 +890,7 @@ class Backend(QtCore.QObject):
 
         self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
 
-    def moveTo(self, x_f, y_f, z_f, pixeltime=2000): # TO DO: delete this two functions, only useful for the initial and final movement in stand-alone mode
+    def moveTo(self, x_f, y_f, z_f, pixeltime=2000):
 
         self.set_moveTo_param(x_f, y_f, z_f, pixeltime)
         self.adw.Start_Process(2)

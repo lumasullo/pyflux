@@ -154,7 +154,6 @@ class Frontend(QtGui.QFrame):
         file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
         file_subgrid.addWidget(self.browseFolderButton, 4, 0)
         
-        
         # connections
         
         self.filenameEdit.textChanged.connect(self.emit_param)
@@ -226,8 +225,8 @@ class Backend(QtCore.QObject):
         
         self.endSignal.emit(self.filename)
         
-        self.xyStopSignal.emit()
-        self.zStopSignal.emit()
+#        self.xyStopSignal.emit()
+#        self.zStopSignal.emit()
         
         print(datetime.now(), '[psf] measurement ended')
         
@@ -300,14 +299,13 @@ class Backend(QtCore.QObject):
                     
     def export_data(self):
     
-        # TO DO: export self.data with self.filename
         # TO DO: export config file
         
         fname = self.filename
         np.savetxt(fname + '.txt', [])
         
         self.data = np.array(self.data, dtype=np.float32)
-        tifffile.imsave(fname, self.data)
+        tifffile.imsave(fname + '.tiff', self.data)
     
     @pyqtSlot(dict)
     def get_frontend_param(self, params):

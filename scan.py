@@ -142,14 +142,14 @@ class Frontend(QtGui.QFrame):
         frameTime = params['frameTime']
         pxSize = params['pxSize']
         maxCounts = params['maxCounts']
-        initialPos = np.round(params['initialPos'], 2)
+#        initialPos = np.round(params['initialPos'], 2)
         
 #        print(datetime.now(), '[scan-frontend] got initialPos', initialPos)
         
         self.frameTimeValue.setText('{}'.format(np.around(frameTime, 2)))
         self.pxSizeValue.setText('{}'.format(np.around(1000 * pxSize, 3))) # in nm
         self.maxCountsValue.setText('{}'.format(maxCounts)) 
-        self.initialPosEdit.setText('{} {} {}'.format(*initialPos))
+#        self.initialPosEdit.setText('{} {} {}'.format(*initialPos))
         
         self.pxSize = pxSize
      
@@ -158,6 +158,13 @@ class Frontend(QtGui.QFrame):
         
         self.img.setImage(image, autoLevels=False)
         self.image = image
+        
+    def main_roi(self):
+        
+        # TO DO: move this function to backend and implement "typedfeat" variables
+        
+        self.scanRangeEdit.setText('8')
+        self.initialPosEdit.setText('{} {} {}'.format(*[3, 3, 10]))
     
     def toggle_advanced(self):
         
@@ -511,6 +518,11 @@ class Frontend(QtGui.QFrame):
         
         self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
 #        self.moveToROIcenterButton.clicked.connect(self.select_ROI)
+        
+        # main ROI button
+        
+        self.mainROIButton = QtGui.QPushButton('Go to main ROI') 
+        self.mainROIButton.clicked.connect(self.main_roi)
 
         # line profile button
         
@@ -706,7 +718,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.select_ROIButton, 11, 2)
 
         subgrid.addWidget(self.moveToROIcenterButton, 13, 2)
-        subgrid.addWidget(self.lineProfButton, 14, 2)
+        subgrid.addWidget(self.mainROIButton, 14, 2)
+        subgrid.addWidget(self.lineProfButton, 15, 2)
 
         subgrid.addWidget(self.initialPosLabel, 2, 0, 1, 2)
         subgrid.addWidget(self.initialPosEdit, 3, 0, 1, 2)
@@ -996,7 +1009,7 @@ class Backend(QtCore.QObject):
         params['frameTime'] = self.frameTime
         params['pxSize'] = self.pxSize
         params['maxCounts'] = self.maxCounts
-        params['initialPos'] = np.float64(self.initialPos)
+#        params['initialPos'] = np.float64(self.initialPos)
         
         self.paramSignal.emit(params)
         
@@ -1100,8 +1113,8 @@ class Backend(QtCore.QObject):
         
         self.ROIcenter = self.initialPos + np.array([self.scanRange/2, self.scanRange/2, 0])
         
-        print('[scan] self.initialPos[0:2]', self.initialPos[0:2])
-        print('[scan] center', self.ROIcenter)
+#        print('[scan] self.initialPos[0:2]', self.initialPos[0:2])
+        print('[scan] moved to center of ROI:', self.ROIcenter, 'µm')
         
         self.moveTo(*self.ROIcenter)
         self.ROIcenterSignal.emit(self.ROIcenter)
@@ -1200,44 +1213,17 @@ class Backend(QtCore.QObject):
         self.adw.Start_Process(1)
         
         line_time = (1/1000) * self.data_t[-1]  # target linetime in ms
-        wait_time = line_time * 1.05
+        wait_time = line_time * 1.05 # TO DO: optimize this, it should work with 1.00, or maybe even less?
+                                     # it should even work without the time.sleep()
         
         time.sleep(wait_time/1000) # in s
 
         line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
-#        line_data = np.random.rand(self.tot_pixels)
         
         line_data[0] = 0  # TO DO: fix the high count error on first element
 
-
         return line_data
-
-#    def line_acquisition(self):
-#
-#        # TO DO: fix problem of waiting time
-#
-#        self.adw.Start_Process(1)
-#
-##        # flag changes when process is finished
-#
-#        if (((1/1000) * self.data_t[-1]) < 240):   # in ms 
-#
-#            while self.flag == 0:
-#                self.flag = self.adw.Get_Par(2)
-#        
-#        else: # only for lines longer than 240 ms
-#            
-#            print('[scan] Linetime longer than 240 ms')
-#            
-#            line_time = (1/1000) * self.data_t[-1]  # in ms
-#            wait_time = line_time * 1.05
-#            time.sleep(wait_time/1000)
-#
-#        line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
-#        line_data[0] = 0  # TO DO: fix the high count error on first element
-#
-#        return line_data
-        
+   
     @pyqtSlot(bool, str)
     def liveview(self, lvbool, mode):
         
@@ -1471,7 +1457,7 @@ if __name__ == '__main__':
     scanThread.start()
 
     
-    gui.setWindowTitle('scan scan')
+    gui.setWindowTitle('scan')
     gui.show()
 
     app.exec_()
