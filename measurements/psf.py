@@ -95,7 +95,7 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setLayout(subgrid)
         
         self.NframesLabel = QtGui.QLabel('Number of frames')
-        self.NframesEdit = QtGui.QLineEdit('10')
+        self.NframesEdit = QtGui.QLineEdit('20')
         self.doughnutLabel = QtGui.QLabel('Doughnut label')
         self.doughnutEdit = QtGui.QLineEdit('Black, Blue, Yellow, Orange')
         self.filenameLabel = QtGui.QLabel('File name')
@@ -225,8 +225,8 @@ class Backend(QtCore.QObject):
         
         self.endSignal.emit(self.filename)
         
-#        self.xyStopSignal.emit()
-#        self.zStopSignal.emit()
+        self.xyStopSignal.emit()
+        self.zStopSignal.emit()
         
         print(datetime.now(), '[psf] measurement ended')
         
@@ -301,11 +301,16 @@ class Backend(QtCore.QObject):
     
         # TO DO: export config file
         
+#        fname = self.filename
+#        np.savetxt(fname + '.txt', [])
+        
         fname = self.filename
-        np.savetxt(fname + '.txt', [])
+        filename = tools.getUniqueName(fname)
+
+        np.savetxt(filename + '.txt', [])
         
         self.data = np.array(self.data, dtype=np.float32)
-        tifffile.imsave(fname + '.tiff', self.data)
+        tifffile.imsave(filename + '.tiff', self.data)
     
     @pyqtSlot(dict)
     def get_frontend_param(self, params):

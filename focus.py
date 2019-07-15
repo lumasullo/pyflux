@@ -54,6 +54,8 @@ class Frontend(QtGui.QFrame):
     closeSignal = pyqtSignal()
     saveDataSignal = pyqtSignal(bool)
     
+    paramSignal = pyqtSignal(dict)
+    
     """
     Signals
     
@@ -68,6 +70,10 @@ class Frontend(QtGui.QFrame):
         
     - saveDataSignal:
         To: [backend] get_save_data_state
+        
+    - paramSignal:
+        
+        To: [backend] get_frontend_param
 
     """
     
@@ -79,6 +85,13 @@ class Frontend(QtGui.QFrame):
         self.cropped = False
 
         self.setup_gui()
+        
+    def emit_param(self):
+        
+        params = dict()
+        params['pxSize'] = float(self.pxSizeEdit.text())
+        
+        self.paramSignal.emit(params)
 
     def roi_method(self):
         
@@ -282,7 +295,10 @@ class Frontend(QtGui.QFrame):
                 
         self.clearDataButton = QtGui.QPushButton('Clear data')
         self.ROIbutton.clicked.connect(self.roi_method)
-
+        
+        self.pxSizeLabel = QtGui.QLabel('Pixel size (nm)')
+        self.pxSizeEdit = QtGui.QLineEdit('10')
+                
         self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
         
         # gui connections
@@ -291,6 +307,8 @@ class Frontend(QtGui.QFrame):
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
         self.selectROIbutton.clicked.connect(self.select_roi)
         self.clearDataButton.clicked.connect(self.clear_graph)
+        self.pxSizeEdit.textChanged.connect(self.emit_param)
+
 
         # focus camera display
         
@@ -330,7 +348,6 @@ class Frontend(QtGui.QFrame):
         self.focusGraph.zPlot.showGrid(x=True, y=True)
         self.focusCurve = self.focusGraph.zPlot.plot(pen='y')
  
-        
 #        self.focusSetPoint = self.focusGraph.plot.addLine(y=self.setPoint, pen='r')
 
         # GUI layout
@@ -345,7 +362,7 @@ class Frontend(QtGui.QFrame):
                                        QtGui.QFrame.Raised)
         
         self.paramWidget.setFixedHeight(230)
-        self.paramWidget.setFixedWidth(120)
+        self.paramWidget.setFixedWidth(140)
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
@@ -354,8 +371,11 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.exportDataButton, 4, 0)
         subgrid.addWidget(self.clearDataButton, 5, 0)
         
-        subgrid.addWidget(self.feedbackLoopBox, 7, 0)
-        subgrid.addWidget(self.saveDataBox, 8, 0)
+        subgrid.addWidget(self.pxSizeLabel, 7, 0)
+        subgrid.addWidget(self.pxSizeEdit, 7, 1)
+        
+        subgrid.addWidget(self.feedbackLoopBox, 8, 0)
+        subgrid.addWidget(self.saveDataBox, 9, 0)
         
         subgrid.addWidget(self.liveviewButton, 1, 0)
         subgrid.addWidget(self.ROIbutton, 2, 0)
@@ -438,6 +458,13 @@ class Backend(QtCore.QObject):
         self.reset()
         self.reset_data_arrays()
         
+    @pyqtSlot(dict)
+    def get_frontend_param(self, params):
+        
+        self.pxSize = params['pxSize']
+        
+        print(datetime.now(), ' [focus] got px size', self.pxSize, ' nm')
+        
     def set_actuator_param(self, pixeltime=1000):
 
         self.adw.Set_FPar(36, tools.timeToADwin(pixeltime))
@@ -511,6 +538,7 @@ class Backend(QtCore.QObject):
             
                 self.set_actuator_param()
                 self.adw.Start_Process(3)
+                print(datetime.now(), '[focus] Process 3 started')
             
             print(datetime.now(), ' [focus] Feedback loop ON')
             
@@ -518,6 +546,12 @@ class Backend(QtCore.QObject):
             
             self.feedback_active = False
             print(datetime.now(), ' [focus] Feedback loop OFF')
+            
+            if mode == 'continous':
+            
+                self.adw.Stop_Process(3)
+                print(datetime.now(), '[focus] Process 3 stopped')
+
     
     @pyqtSlot()    
     def setup_feedback(self):
@@ -561,11 +595,11 @@ class Backend(QtCore.QObject):
             
             self.target_z = self.target_z + dz/1000  # conversion to µm
             
-            if mode is 'continous':
+            if mode == 'continous':
                 
                 self.actuator_z(self.target_z)
                 
-            if mode is 'discrete':
+            if mode == 'discrete':
                 
                 pass  # it's enough to have saved the value self.target_z
                 
@@ -663,9 +697,12 @@ class Backend(QtCore.QObject):
                 pass
             
             self.camera.start_live_video(framerate='20 Hz')
-            self.camera._set_AOI(*self.roi_area)
             
             time.sleep(0.100)
+            
+            self.camera._set_AOI(*self.roi_area)
+        
+            time.sleep(0.200)
         
         self.acquire_data()
         self.update_graph_data()
@@ -857,8 +894,10 @@ class Backend(QtCore.QObject):
         self.filename = fname
         self.export_data()
         
+        self.toggle_feedback(False)
+        
         self.liveview_start()
-        time.sleep(0.2)
+        time.sleep(0.4)
         self.camera._set_AOI(*self.roi_area)
                 
     def make_connection(self, frontend):
@@ -872,6 +911,8 @@ class Backend(QtCore.QObject):
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.calibrationButton.clicked.connect(self.calibrate)
+        
+        frontend.paramSignal.connect(self.get_frontend_param)
         
     def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
@@ -942,6 +983,8 @@ if __name__ == '__main__':
     
     worker.make_connection(gui)
     gui.make_connection(worker)
+    
+    gui.emit_param()
     
     focusThread = QtCore.QThread()
     worker.moveToThread(focusThread)

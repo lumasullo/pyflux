@@ -30,7 +30,7 @@ import qdarkstyle
 from lantz.drivers.andor import ccd 
 import drivers.ADwin as ADwin
 
-DEBUG = 'True'
+DEBUG = True
 
 class Frontend(QtGui.QFrame):
     
@@ -300,6 +300,7 @@ class Frontend(QtGui.QFrame):
         # xy drift graph (graph without a fixed range)
         
         self.xyGraph = pg.GraphicsWindow()
+    
 #        self.xyGraph.resize(200, 300)
         self.xyGraph.setAntialiasing(True)
         
@@ -312,6 +313,8 @@ class Frontend(QtGui.QFrame):
                             left=('Y position', 'nm'))   # TO DO: clean-up the x-y mess (they're interchanged)
         self.xyGraph.xPlot.showGrid(x=True, y=True)
         self.xCurve = self.xyGraph.xPlot.plot(pen='b')
+        
+
         
         self.xyGraph.yPlot = self.xyGraph.addPlot(row=0, col=0)
         self.xyGraph.yPlot.setLabels(bottom=('Time', 's'),
@@ -682,6 +685,11 @@ class Backend(QtCore.QObject):
             
             self.feedback_active = False
             
+            if mode == 'continous':
+
+#                self.adw.Stop_Process(4)
+                print(datetime.now(), '[xy_tracking] Process 4 stopped')
+            
             if DEBUG:
                 print(datetime.now(), '[xy_tracking] Feedback loop OFF')
             
@@ -987,9 +995,13 @@ class Backend(QtCore.QObject):
         Exports the x, y and t data into a .txt file
         """
 
+#        fname = self.filename
+##        filename = tools.getUniqueName(fname)    # TO DO: make compatible with psf measurement and stand alone
+#        filename = fname + '_xydata.txt'
+        
         fname = self.filename
-#        filename = tools.getUniqueName(fname)    # TO DO: make compatible with psf measurement and stand alone
-        filename = fname + '_xydata.txt'
+        filename = tools.getUniqueName(fname)
+        filename = filename + '_xydata.txt'
         
         size = self.j
         savedData = np.zeros((3, size))
@@ -1113,6 +1125,11 @@ class Backend(QtCore.QObject):
         
         self.filename = fname
         self.export_data()
+        
+        self.toggle_feedback(False) # TO DO: decide wether I want feedback ON/OFF at the end of measurement
+        
+        self.reset()
+        self.reset_data_arrays()
         
         self.liveview_start()
         

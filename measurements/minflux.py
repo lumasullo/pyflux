@@ -15,10 +15,11 @@ from threading import Thread
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
-import qdarkstyle
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from tkinter import Tk, filedialog
+
+import tools.tools as tools
 
 
 π = np.pi
@@ -26,8 +27,8 @@ from tkinter import Tk, filedialog
 class Frontend(QtGui.QFrame):
     
     filenameSignal = pyqtSignal(str)
-    paramSignal = pyqtSignal(np.ndarray, np.ndarray, int)
-    
+    paramSignal = pyqtSignal(dict)
+
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
@@ -39,36 +40,25 @@ class Frontend(QtGui.QFrame):
         filename = os.path.join(self.folderEdit.text(),
                                 self.filenameEdit.text())
         
+        today = str(date.today()).replace('-', '')
+        filename = tools.getUniqueName(filename + '_' + today)
+        
         self.filenameSignal.emit(filename)
+             
+    def emit_param(self):
         
-        print('[minflux] filename', filename)
-    
-    @pyqtSlot(np.ndarray, np.ndarray, int)     
-    def get_backend_param(self, r0, _r, acqt):
+        params = dict()
         
-        positions = str(_r)
-        acqtime = str(acqt)
-        r0 = str(r0)
+        filename = os.path.join(self.folderEdit.text(),
+                                self.filenameEdit.text())
         
-#        print(datetime.now(), '[minflux] positions', positions)
-#        print(datetime.now(), '[minflux] acqtime', acqtime)
+        params['measType'] = self.measType.currentText()
+        params['acqtime'] = int(self.acqtimeEdit.text())
+        params['filename'] = filename
+        params['patternType'] = self.patternType.currentText()
+        params['patternLength'] = float(self.lengthEdit.text())
         
-        self.absolutePosEdit.setText(r0)
-        self.positionsEdit.setText(positions)
-        self.acqtimeEdit.setText(acqtime)
-        
-    def emit_param_to_backend(self):
-        
-        try:
-            r0 = np.array(self.absolutePosEdit.text(), dtype=np.float)
-            _r = np.array(self.positionsEdit.text(), dtype=np.float)
-            acqtime = int(self.acqtimeEdit.text())
-            
-            self.paramSignal.emit(r0, _r, acqtime)
-            
-        except(ValueError):
-            
-            pass
+        self.paramSignal.emit(params)
         
     def load_folder(self):
 
@@ -83,6 +73,20 @@ class Frontend(QtGui.QFrame):
         except OSError:
             pass
         
+    def toggle_parameters(self):
+        
+        if self.measType.currentText() == 'Predefined positions':
+            
+            self.patternType.show()
+            self.lengthLabel.show()
+            self.lengthEdit.show()
+      
+        else:
+            
+            self.patternType.hide()
+            self.lengthLabel.hide()
+            self.lengthEdit.hide()
+                    
     def setup_gui(self):
         
         self.setWindowTitle('MINFLUX measurement')
@@ -99,29 +103,42 @@ class Frontend(QtGui.QFrame):
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
         
-        self.absolutePosLabel = QtGui.QLabel('Starting position (µm)')
-        self.absolutePosEdit = QtGui.QLineEdit('')
-    
-        self.positionsLabel = QtGui.QLabel('Realtive positions (µm)')
-        self.positionsEdit = QtGui.QLineEdit('')
+        self.measLabel = QtGui.QLabel('Measurement type')
         
-        self.acqtimeLabel = QtGui.QLabel('Acq time per position (s)')
-        self.acqtimeEdit = QtGui.QLineEdit('')
+        self.measType = QtGui.QComboBox()
+        self.measTypes = ['Standard', 'Predefined positions']
+        self.measType.addItems(self.measTypes)
+        
+        self.patternType = QtGui.QComboBox()
+        self.patternTypes = ['Row', 'Square', 'Triangle']
+        self.patternType.addItems(self.patternTypes)
+        
+        self.lengthLabel = QtGui.QLabel('L [nm]')
+        self.lengthEdit = QtGui.QLineEdit('30')
+        
+        self.patternType.hide()
+        self.lengthLabel.hide()
+        self.lengthEdit.hide()
+        
+        self.acqtimeLabel = QtGui.QLabel('Acq time [s]')
+        self.acqtimeEdit = QtGui.QLineEdit('5')
         
         self.startButton = QtGui.QPushButton('Start')
         self.stopButton = QtGui.QPushButton('Stop')
-#        self.progress = QtGui.QProgressBar(self)
+
+        subgrid.addWidget(self.measLabel, 0, 0, 1, 2)
+        subgrid.addWidget(self.measType, 1, 0, 1, 2)
         
-        subgrid.addWidget(self.absolutePosLabel, 0, 0)
-        subgrid.addWidget(self.absolutePosEdit, 1, 0)
+        subgrid.addWidget(self.patternType, 2, 0, 1, 2)
+#        subgrid.addWidget(self.patternTypes, 3, 0)
         
-        subgrid.addWidget(self.positionsLabel, 2, 0)
-        subgrid.addWidget(self.positionsEdit, 3, 0)
-        subgrid.addWidget(self.acqtimeLabel, 4, 0)
-        subgrid.addWidget(self.acqtimeEdit, 5, 0)
-#        subgrid.addWidget(self.progressBar, 6, 0)
-        subgrid.addWidget(self.startButton, 7, 0)
-        subgrid.addWidget(self.stopButton, 8, 0)
+        subgrid.addWidget(self.lengthLabel, 4, 0, 1, 1)
+        subgrid.addWidget(self.lengthEdit, 4, 1, 1, 1)
+        
+        subgrid.addWidget(self.acqtimeLabel, 6, 0, 1, 1)
+        subgrid.addWidget(self.acqtimeEdit, 6, 1, 1, 1)
+        subgrid.addWidget(self.startButton, 7, 0, 1, 2)
+        subgrid.addWidget(self.stopButton, 8, 0, 1, 2)
         
         # file/folder widget
         
@@ -152,7 +169,7 @@ class Frontend(QtGui.QFrame):
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
         self.filenameLabel = QtGui.QLabel('File name')
-        self.filenameEdit = QtGui.QLineEdit('filename')
+        self.filenameEdit = QtGui.QLineEdit('minflux')
         
         grid.addWidget(self.fileWidget, 0, 1)
         
@@ -165,13 +182,18 @@ class Frontend(QtGui.QFrame):
         file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
         file_subgrid.addWidget(self.browseFolderButton, 4, 0)
         
-        self.folderEdit.textChanged.connect(self.emit_filename)
-        self.positionsEdit.textChanged.connect(self.emit_param_to_backend)
-        self.acqtimeEdit.textChanged.connect(self.emit_param_to_backend)
+        self.measType.currentIndexChanged.connect(self.toggle_parameters)
+        
+        self.folderEdit.textChanged.connect(self.emit_param)
+        self.acqtimeEdit.textChanged.connect(self.emit_param)
+        self.lengthEdit.textChanged.connect(self.emit_param)
+        self.patternType.activated.connect(self.emit_param)
         
     def make_connection(self, backend):
         
-        backend.paramSignal.connect(self.get_backend_param)
+#        backend.paramSignal.connect(self.get_backend_param)
+        
+        pass
 
 class Backend(QtCore.QObject):
     
@@ -185,18 +207,15 @@ class Backend(QtCore.QObject):
     
     paramSignal = pyqtSignal(np.ndarray, np.ndarray, int)
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, adwin, *args, **kwargs):
         
         super().__init__(*args, **kwargs)
 
         self.i = 0 # counter
-        self.r0 = np.array([3.0, 3.0]) # TO DO: get this from scan or ADwin
-        self._r = np.array([[0.035, 0.035], [0.00, 0.00], [0.07, 0.00], [0.07, 0.07], [0.00, 0.07], [0.035, 0.035]])
-        self.acqtime = 5 # in s
-#        self.dt = 5
-        
-        self.update_param()
-        self.emit_param_to_frontend()
+        self.n = 1
+        self.adw = adwin
+  
+        self.pattern = np.array([[0, 0]])
         
         self.measTimer = QtCore.QTimer()
         self.measTimer.timeout.connect(self.loop)
@@ -204,69 +223,102 @@ class Backend(QtCore.QObject):
     @pyqtSlot(np.ndarray)    
     def get_ROI_center(self, center):
         
-        ''' 
-        Connection: [scan] ROIcenterSignal
-        Description: gets the position selected by the user in [scan]
-        '''
+#        ''' 
+#        Connection: [scan] ROIcenterSignal
+#        Description: gets the position selected by the user in [scan]
+#        '''
         
-        self.r0 = center[0:2]
+#        self.r0 = center[0:2]
+#        self.update_param()
+#        
         time.sleep(0.4)
+        
+        print(datetime.now(), '[minflux] got ROI center')
+        
         self.xyzStartSignal.emit()
         
-    @pyqtSlot(np.ndarray, np.ndarray, int)
-    def get_frontend_param(self, r0, _r, acqt):
+    @pyqtSlot(dict)
+    def get_frontend_param(self, params):
         
         """
         Connection: [frontend] paramSignal
         """
         
-        self._r = np.array(_r) # relative positions
-        self.r0 = np.array(r0) # offset position
-        self.acqtime = acqt
-                
+        self.acqtime = params['acqtime']
+        self.measType = params['measType']
+        
+        today = str(date.today()).replace('-', '')
+        self.filename = params['filename'] + '_' + today
+        
+        self.patternType = params['patternType']
+        self.patternLength = float(params['patternLength'])/1000 # in micrometer
+        
         self.update_param()
-        
-    def emit_param_to_frontend(self):
-        
-        self.paramSignal.emit(self.r0, self._r, self.acqtime)
-     
-    @pyqtSlot(str) 
-    def get_filename(self, val):
-        
-        """
-        Connection: [frontend] filenameSignal
-        """
-        
-        self.currentfname = val
         
     def update_param(self):
         
-        self.r = self.r0 + self._r # absolute position
-        self.n = np.shape(self._r)[0]
+        l = self.patternLength
+        h = np.sqrt(3/2)*l
+        
+        if self.patternType == 'Row':
+            
+            self.pattern = np.array([[0, 0], [0, l], [0, 2*l]])
+            
+        if self.patternType == 'Square':
+            
+            self.pattern = np.array([[0, 0], [l/2, l/2], [l/2, -l/2],
+                                    [-l/2, -l/2], [-l/2, l/2]])
+    
+        if self.patternType == 'Triangle':
+            
+            self.pattern = np.array([[0, 0], [0, (2/3)*h], [l/2, -(1/3)*h],
+                                    [-l/2, -(1/3)*h]])
+    
+        currentXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
+        currentYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
+        
+        self.r0 = np.array([currentXposition, currentYposition])
+        self.r = self.r0 + self.pattern
+        
+        self.n = np.shape(self.r)[0]
+        
+        print(datetime.now(), '[minflux] self.r', self.r)
+        print(datetime.now(), '[minflux] self.r.shape', self.r.shape)
                 
     def start(self):
         
         self.i = 0
         
-        self.update_param()
-        
-        self.tcspcPrepareSignal.emit(self.currentfname, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
-
-        phtime = 4  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
-        time.sleep(phtime)
-        
-        self.t0 = time.time()
-        self.measTimer.start(0)
+        if self.measType == 'Standard':
+            
+            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
+#            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
+#            time.sleep(phtime)
+            self.tcspcStartSignal.emit()
+            self.t0 = time.time()
+            
+        if self.measType == 'Predefined positions':
+            
+            print(datetime.now(), '[minflux] Predefined positions')
+            
+            self.update_param()
+            time.sleep(0.2)
+            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
+#            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
+#            time.sleep(phtime)
+            self.tcspcStartSignal.emit()
+            self.t0 = time.time()
+            self.measTimer.start(0)
     
     def loop(self):
         
         now = time.time()
         
-        if (now - (self.t0 + self.i * self.acqtime)) > self.acqtime:
+        if (now - (self.t0 + self.i * self.acqtime) + self.acqtime) > self.acqtime:
             
             print(datetime.now(), '[minflux] loop', self.i)
                         
-            self.moveToSignal.emit(self.r[self.i], self._r[self.i])
+            self.moveToSignal.emit(self.r[self.i], self.pattern[self.i])
         
             self.i += 1
             
@@ -275,7 +327,6 @@ class Backend(QtCore.QObject):
                 self.stop()
                 
                 print(datetime.now(), '[minflux] measurement ended')
-
                 
     def stop(self):
         
@@ -288,13 +339,13 @@ class Backend(QtCore.QObject):
         Connection: [tcspc] tcspcDoneSignal
         """
         
-        self.xyzEndSignal.emit(self.currentfname)
+        self.xyzEndSignal.emit(self.filename)
         
     def make_connection(self, frontend):
         
         frontend.paramSignal.connect(self.get_frontend_param)
-        frontend.filenameSignal.connect(self.get_filename)
+#        frontend.filenameSignal.connect(self.get_filename)
         frontend.startButton.clicked.connect(self.start)
         frontend.stopButton.clicked.connect(self.stop)
-     
+
         

@@ -27,6 +27,8 @@ from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5 import QtTest
 import qdarkstyle
 
+import tools.PSF as PSF
+
 import drivers.ADwin as ADwin
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
@@ -108,6 +110,7 @@ class Frontend(QtGui.QFrame):
         self.yStepEdit.textChanged.connect(self.emit_param)
         self.zStepEdit.textChanged.connect(self.emit_param)
         self.moveToEdit.textChanged.connect(self.emit_param)
+        self.powerEdit.textChanged.connect(self.emit_param)
         
     def emit_param(self):
         
@@ -132,8 +135,24 @@ class Frontend(QtGui.QFrame):
         params['xStep'] = float(self.xStepEdit.text())
         params['yStep'] = float(self.yStepEdit.text())
         params['zStep'] = float(self.zStepEdit.text())
-#        params['Nframes'] = float(self.NframesEdit.text())
-
+        params['power'] = float(self.powerEdit.text())
+        
+        if self.roi is not None:
+        
+            xmin, ymin = self.roi.pos()
+            xmax, ymax = self.roi.pos() + self.roi.size()
+            
+            ymin, ymax = [int(self.NofPixelsEdit.text()) - ymax, 
+                          int(self.NofPixelsEdit.text()) - ymin]
+            
+            coordinates = np.array([xmin, xmax, ymin, ymax])  
+            
+            params['ROIcoordinates'] = coordinates
+            
+        else:
+            
+            params['ROIcoordinates'] = None
+        
         self.paramSignal.emit(params)
         
     @pyqtSlot(dict)
@@ -156,8 +175,9 @@ class Frontend(QtGui.QFrame):
     @pyqtSlot(np.ndarray)
     def get_image(self, image):
         
-        self.img.setImage(image, autoLevels=False)
-        self.image = image
+#        self.img.setImage(image, autoLevels=False)
+        self.image = image.T[:,::-1]
+        self.img.setImage(self.image, autoLevels=False)
         
     def main_roi(self):
         
@@ -237,7 +257,8 @@ class Frontend(QtGui.QFrame):
                 pass
 
         else:
-            self.liveviewSignal.emit(False, 'liveview')   
+            self.liveviewSignal.emit(False, 'liveview')
+            self.emit_param()
             
     def toggle_frame_acq(self):
 
@@ -519,6 +540,11 @@ class Frontend(QtGui.QFrame):
         self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
 #        self.moveToROIcenterButton.clicked.connect(self.select_ROI)
         
+        # dougnhut fit
+        
+        self.doughnutFitButton = QtGui.QPushButton('Doughnut fit')
+        self.doughnutFitButton.clicked.connect(self.emit_param)
+        
         # main ROI button
         
         self.mainROIButton = QtGui.QPushButton('Go to main ROI') 
@@ -529,6 +555,11 @@ class Frontend(QtGui.QFrame):
         self.lineProfButton = QtGui.QPushButton('Line profile')
         self.lineProfButton.setCheckable(True)
         self.lineProfButton.clicked.connect(self.line_profile)
+        
+        # edited scan button
+        
+        self.FBavScanButton = QtGui.QPushButton('F and B average scan')
+        self.FBavScanButton.setCheckable(True)
 
         # Scanning parameters
 
@@ -551,6 +582,9 @@ class Frontend(QtGui.QFrame):
         self.maxCountsLabel = QtGui.QLabel('Max counts per pixel')
         self.maxCountsValue = QtGui.QLineEdit('')
         self.frameTimeValue.setReadOnly(True)
+        
+        self.powerLabel = QtGui.QLabel('Power at BFP (µW)')
+        self.powerEdit = QtGui.QLineEdit('0')
         
         self.advancedButton = QtGui.QPushButton('Advanced options')
         self.advancedButton.setCheckable(True)
@@ -648,7 +682,6 @@ class Frontend(QtGui.QFrame):
 
         self.yUpButton = QtGui.QPushButton("(+y) ▲")  # ↑
         self.yDownButton = QtGui.QPushButton("(-y) ▼")  # ↓
-
         
         self.zUpButton = QtGui.QPushButton("(+z) ▲")  # ↑
         self.zDownButton = QtGui.QPushButton("(-z) ▼")  # ↓
@@ -720,7 +753,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.moveToROIcenterButton, 13, 2)
         subgrid.addWidget(self.mainROIButton, 14, 2)
         subgrid.addWidget(self.lineProfButton, 15, 2)
-
+        subgrid.addWidget(self.FBavScanButton, 16, 2)
+        subgrid.addWidget(self.doughnutFitButton, 17, 2)
+        
         subgrid.addWidget(self.initialPosLabel, 2, 0, 1, 2)
         subgrid.addWidget(self.initialPosEdit, 3, 0, 1, 2)
         subgrid.addWidget(self.scanRangeLabel, 4, 0)
@@ -736,14 +771,16 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.frameTimeValue, 8, 1)
         subgrid.addWidget(self.maxCountsLabel, 9, 0)
         subgrid.addWidget(self.maxCountsValue, 9, 1)
+        subgrid.addWidget(self.powerLabel, 10, 0)
+        subgrid.addWidget(self.powerEdit, 10, 1)
         
-        subgrid.addWidget(self.advancedButton, 10, 0)
+        subgrid.addWidget(self.advancedButton, 11, 0)
         
-        subgrid.addWidget(self.auxAccelerationLabel, 11, 0)
-        subgrid.addWidget(self.auxAccEdit, 12, 0)
-        subgrid.addWidget(self.waitingTimeLabel, 13, 0)
-        subgrid.addWidget(self.waitingTimeEdit, 14, 0)
-        subgrid.addWidget(self.preview_scanButton, 15, 0)
+        subgrid.addWidget(self.auxAccelerationLabel, 12, 0)
+        subgrid.addWidget(self.auxAccEdit, 13, 0)
+        subgrid.addWidget(self.waitingTimeLabel, 14, 0)
+        subgrid.addWidget(self.waitingTimeEdit, 15, 0)
+        subgrid.addWidget(self.preview_scanButton, 16, 0)
         
         self.paramWidget.setFixedHeight(370)
         self.paramWidget.setFixedWidth(300)
@@ -865,10 +902,11 @@ class Backend(QtCore.QObject):
         self.saveScanData = False
         self.feedback_active = False
 
-        # edited_scan: True --> size of the useful part of the scan
-        # edited_scan: False --> size of the full scan including aux parts
+        # full_scan: True --> full scan including aux parts
+        # full_scan: False --> forward part of the scan
         
-        self.edited_scan = True
+        self.full_scan = False
+        self.FBaverage_scan = False
         
         # 5MHz is max count rate of the P. Elmer APD
         
@@ -917,6 +955,7 @@ class Backend(QtCore.QObject):
         self.NofPixels = int(params['NofPixels'])
         self.pxTime = params['pxTime']
         self.initialPos = params['initialPos']
+        self.powerBFP = params['power']
         
         self.waitingTime = params['waitingTime']
         self.a_aux_coeff = params['a_aux_coeff']
@@ -928,6 +967,10 @@ class Backend(QtCore.QObject):
         self.xStep = params['xStep']
         self.yStep = params['yStep']
         self.zStep = params['zStep']
+        
+        self.selectedCoord = params['ROIcoordinates']
+        
+        print('[scan] selected ROI coordinates are:', self.selectedCoord)
                 
         self.calculate_derived_param()
         
@@ -978,17 +1021,16 @@ class Backend(QtCore.QObject):
         self.viewtimer_time = 0  # timer will timeout as soon after it has executed all functions
 
         # Create blank image
-        # edited_scan = True --> size of the useful part of the scan
-        # edited_scan = False --> size of the full scan including aux parts
+        # full_scan = True --> size of the full scan including aux parts 
+        # full_scan = False --> size of the forward part of the scan
 
-        if self.edited_scan is True:
+        if self.full_scan is True:
 
-#            size = (2 * self.NofPixels, self.NofPixels)
-            size = (self.NofPixels, self.NofPixels)
-
+            size = (self.tot_pixels, self.tot_pixels)
+            
         else:
-
-            size = (self.tot_pixels, self.NofPixels)
+            
+            size = (self.NofPixels, self.NofPixels)
 
         self.blankImage = np.zeros(size)
         self.image = self.blankImage
@@ -1111,7 +1153,10 @@ class Backend(QtCore.QObject):
         
     def moveTo_roi_center(self):
         
-        self.ROIcenter = self.initialPos + np.array([self.scanRange/2, self.scanRange/2, 0])
+#        self.ROIcenter = self.initialPos + np.array([self.scanRange/2, self.scanRange/2, 0])
+        
+        xi, xf, yi, yf = self.selectedCoord
+        self.ROIcenter = self.initialPos + np.array([(xf+xi)/2, (yf+yi)/2, 0]) * self.pxSize
         
 #        print('[scan] self.initialPos[0:2]', self.initialPos[0:2])
         print('[scan] moved to center of ROI:', self.ROIcenter, 'µm')
@@ -1124,6 +1169,86 @@ class Backend(QtCore.QObject):
 #        self.initialPos = self.ROIcenter
 #        self.emit_param()
         
+    def doughnut_fit(self):
+        
+        # set main reference frame (relative to the confocal image)
+        
+        px_size_nm = self.pxSize * 1000 # in nm
+        
+        xmin, xmax, ymin, ymax = np.array(self.selectedCoord, dtype=np.int)
+        
+        # select the data of the image corresponding to the ROI
+
+#        array = self.image_copy[xmin:xmax, ymin:ymax]
+        array = self.image_copy[ymin:ymax, xmin:xmax]
+        
+        print('shape of array', array.shape)
+        
+        if array.shape[0] > array.shape[1]:
+            
+            xmax  = xmax + 1
+            array = self.image_copy[ymin:ymax, xmin:xmax]
+            
+        elif array.shape[1] > array.shape[0]:
+            
+            ymax = ymax + 1
+            array = self.image_copy[ymin:ymax, xmin:xmax]
+            
+        else:
+            
+            pass
+        
+        shape = array.shape
+        
+        print('shape of array', array.shape)
+        
+        plt.figure()
+        plt.imshow(array, cmap=cmaps.parula, interpolation='None')
+            
+        # create x and y arrays and meshgrid
+        
+        xmin_nm, xmax_nm, ymin_nm, ymax_nm = np.array([xmin, xmax, ymin, ymax]) * px_size_nm
+             
+        x_nm = np.arange(xmin_nm, xmax_nm, px_size_nm)
+        y_nm = np.arange(ymin_nm, ymax_nm, px_size_nm)
+        
+        (Mx_nm, My_nm) = np.meshgrid(x_nm, y_nm)
+        
+        print('shape grid', Mx_nm.shape)
+        
+        # make initial guess for parameters
+        
+        offset = np.min(array)
+        d = 300 # nm
+        x0 = (xmin_nm + xmax_nm)/2
+        y0 = (ymin_nm + ymax_nm)/2
+        A = np.max(array)*d**2 # check this estimation ????
+        
+        initial_guess = [A, x0, y0, d, offset]
+        
+        print('[scan] todo OK')
+         
+        popt, pcov = opt.curve_fit(PSF.doughnut2D, (Mx_nm, My_nm), array.ravel(), p0=initial_guess)
+        
+        # retrieve results
+
+        popt = np.around(popt, 3)
+        
+        print('[scan] doughnut fit parameters', popt)
+        
+        dougnutFit = PSF.doughnut2D((Mx_nm, My_nm), *popt).reshape(shape)
+        
+        plt.figure()
+        plt.imshow(dougnutFit, cmap=cmaps.parula, interpolation='None')
+        
+        doughnut_center = np.array([x0, y0, 0])/1000 # in µm
+        target_position = self.initialPos + doughnut_center 
+        
+        print('[scan] target position', target_position)
+        
+        self.moveTo(*target_position)
+        self.ROIcenterSignal.emit(target_position)
+
     @pyqtSlot()
     def get_moveTo_initial_signal(self):
         
@@ -1238,7 +1363,7 @@ class Backend(QtCore.QObject):
 
     def liveview_start(self):
         
-#        self.plot_scan()
+        self.plot_scan()
 
         if self.scantype == 'xy':
 
@@ -1276,21 +1401,49 @@ class Backend(QtCore.QObject):
 
         self.lineData = self.line_acquisition()
 
-        if self.edited_scan is True:
+        if self.full_scan is True:
 
+#            self.image[:, self.NofPixels-1-self.i] = self.lineData
+            self.image[self.i, :] = self.lineData
+            
+        elif self.FBaverage_scan is True:
+            
+            # display average of forward and backward image
+            
             c0 = self.NofAuxPixels
-            c1 = self.NofAuxPixels + self.NofPixels
+            c1 = self.NofPixels
+            
+            lineData_F = self.lineData[c0:c0+c1]
+            lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
+            
+            if self.i % 2 == 0:
+            
+#                self.image[:, self.NofPixels-1-self.i] = lineData_F
+                self.image[self.i, :] = lineData_F
+            
+            if self.i % 2 != 0:
+                
+#                self.image[:, self.NofPixels-1-self.i] = lineData_B[::-1]
+                self.image[self.i, :] = lineData_B[::-1]
 
-            self.lineData_edited = self.lineData[c0:c1]
-            self.image[:, self.NofPixels-1-self.i] = self.lineData_edited
+        else: 
 
-        else:
+            # displays only forward image
+            
+            c0 = self.NofAuxPixels
+            c1 = self.NofPixels
 
-            self.image[:, self.NofPixels-1-self.i] = self.lineData
-          
-#            # display image after every scanned line
+            lineData_F = self.lineData[c0:c0+c1]
+            lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
+            
+            self.image[self.i, :] = lineData_F
+
+        # display image after every scanned line
             
         self.image_to_save = self.image
+#        self.image_copy = np.rot90(self.image,  axes=(0,1))
+        self.image_copy = self.image
+        
         self.imageSignal.emit(self.image)
 #        print(datetime.now(), '[scan] Image emitted to frontend')
 
@@ -1372,6 +1525,17 @@ class Backend(QtCore.QObject):
             self.adw.Start_Process(5)
 
             print('[scan] Flipper down')
+    
+    @pyqtSlot(bool)        
+    def toggle_FBav_scan(self, val):
+        
+        if val is True:
+            
+            self.FBaverage_scan = True
+        
+        if val is False:
+            
+            self.FBaverage_scan = False
         
     def emit_ROI_center(self):
         
@@ -1405,8 +1569,11 @@ class Backend(QtCore.QObject):
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
         
+        frontend.doughnutFitButton.clicked.connect(self.doughnut_fit)
+        
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
+        frontend.FBavScanButton.clicked.connect(lambda: self.toggle_FBav_scan(frontend.FBavScanButton.isChecked()))
         
         frontend.xUpButton.pressed.connect(lambda: self.relative_move('x', 'up'))
         frontend.xDownButton.pressed.connect(lambda: self.relative_move('x', 'down'))

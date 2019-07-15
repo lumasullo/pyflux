@@ -127,7 +127,8 @@ def saveConfig(main, dateandtime, name, filename=None):
         'a_aux [a0, a1, a2, a3] (% of a_max)': main.a_aux_coeff,
         'Pixel size (µm)': main.pxSize,
         'Frame time (s)': main.frameTime,
-        'Scan type': main.scantype}
+        'Scan type': main.scantype,
+        'Power at BFP (µW)': main.powerBFP}
 
     with open(filename + '.txt', 'w') as configfile:
         config.write(configfile)

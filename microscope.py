@@ -169,7 +169,7 @@ class Backend(QtCore.QObject):
         self.tcspcWorker = tcspc.Backend(ph, adw)
         self.xyWorker = xy_tracking.Backend(ccd, adw)
         
-        self.minfluxWorker = minflux.Backend()
+        self.minfluxWorker = minflux.Backend(adw)
         self.psfWorker = psf.Backend()
             
     def setup_minflux_connections(self):
@@ -180,7 +180,9 @@ class Backend(QtCore.QObject):
         self.minfluxWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_minflux)
         
         self.minfluxWorker.xyzStartSignal.connect(self.xyWorker.get_lock_signal)
-#        self.minfluxWorker.xyzStartSignal.connect(self.zWorker.get_lock_signal)
+        self.minfluxWorker.xyzStartSignal.connect(self.zWorker.get_lock_signal)
+        
+        # TO DO: check if this is compatible with both psf and minflux measurement
         
         self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_move_signal)
         
@@ -256,8 +258,9 @@ if __name__ == '__main__':
     gui.scanWidget.emit_param()
     worker.scanWorker.emit_param()
     
-    gui.minfluxWidget.emit_param_to_backend()
-    worker.minfluxWorker.emit_param_to_frontend()
+    gui.minfluxWidget.emit_param()
+#    gui.minfluxWidget.emit_param_to_backend()
+#    worker.minfluxWorker.emit_param_to_frontend()
     
     gui.psfWidget.emit_param()
     

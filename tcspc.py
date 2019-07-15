@@ -184,16 +184,16 @@ class Frontend(QtGui.QFrame):
         self.offsetLabel = QtGui.QLabel('Offset [ns]')
         self.offsetEdit = QtGui.QLineEdit('0')
         
-        self.channel0Label = QtGui.QLabel('Input0 (sync) [kHz]')
+        self.channel0Label = QtGui.QLabel('Input 0 (sync) [kHz]')
         self.channel0Value = QtGui.QLineEdit('')
         self.channel0Value.setReadOnly(True)
         
-        self.channel1Label = QtGui.QLabel('Input1 (APD) [kHz]')
+        self.channel1Label = QtGui.QLabel('Input 1 (APD) [kHz]')
         self.channel1Value = QtGui.QLineEdit('')
         self.channel1Value.setReadOnly(True)
         
         self.filenameLabel = QtGui.QLabel('File name')
-        self.filenameEdit = QtGui.QLineEdit('filename')
+        self.filenameEdit = QtGui.QLineEdit('minfluxfile')
         
         # microTime histogram and timetrace
         
@@ -345,7 +345,7 @@ class Backend(QtCore.QObject):
         print(datetime.now(), ' [tcspc] preparing minflux measurement')
         
         t0 = time.time()
-
+        
         self.currentfname = tools.getUniqueName(fname)
                         
         self.prepare_ph()
@@ -367,9 +367,9 @@ class Backend(QtCore.QObject):
 
         self.ph.startTTTR(self.currentfname)
         
-        np.savetxt(self.currentfname + '.txt', [])
-        
-        while self.ph.measure_state is not 'done':
+        print(datetime.now(), '[tcspc] minflux measurement started')
+                
+        while self.ph.measure_state != 'done':
             pass
         
         self.tcspcDoneSignal.emit()
@@ -416,6 +416,8 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[tcspc] tcspc data exported')
         
+        np.savetxt(self.currentfname + '.txt', []) # TO DO: build config file, now empty file
+
     @pyqtSlot(list)
     def get_frontend_parameters(self, paramlist):
         
