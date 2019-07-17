@@ -45,6 +45,7 @@ def setupDevice(adw):
     PROCESS_3 = "actuator_z.TB3"
     PROCESS_4 = "actuator_xy.TB4"
     PROCESS_5 = "shutter.TB5"
+    PROCESS_6 = "trace.TB6"
     
     btl = adw.ADwindir + BTL
     adw.Boot(btl)
@@ -57,12 +58,14 @@ def setupDevice(adw):
     process_3 = os.path.join(process_folder, PROCESS_3)
     process_4 = os.path.join(process_folder, PROCESS_4)
     process_5 = os.path.join(process_folder, PROCESS_5)
+    process_6 = os.path.join(process_folder, PROCESS_6)
     
     adw.Load_Process(process_1)
     adw.Load_Process(process_2)
     adw.Load_Process(process_3)
     adw.Load_Process(process_4)
     adw.Load_Process(process_5)
+    adw.Load_Process(process_6)
     
     
 class Frontend(QtGui.QFrame):
@@ -71,6 +74,7 @@ class Frontend(QtGui.QFrame):
     closeSignal = pyqtSignal()
     liveviewSignal = pyqtSignal(bool, str)
     frameacqSignal = pyqtSignal(bool)
+    fitPSFSignal = pyqtSignal(np.ndarray)
 
     def __init__(self, *args, **kwargs):
 
@@ -137,22 +141,6 @@ class Frontend(QtGui.QFrame):
         params['zStep'] = float(self.zStepEdit.text())
         params['power'] = float(self.powerEdit.text())
         
-        if self.roi is not None:
-        
-            xmin, ymin = self.roi.pos()
-            xmax, ymax = self.roi.pos() + self.roi.size()
-            
-            ymin, ymax = [int(self.NofPixelsEdit.text()) - ymax, 
-                          int(self.NofPixelsEdit.text()) - ymin]
-            
-            coordinates = np.array([xmin, xmax, ymin, ymax])  
-            
-            params['ROIcoordinates'] = coordinates
-            
-        else:
-            
-            params['ROIcoordinates'] = None
-        
         self.paramSignal.emit(params)
         
     @pyqtSlot(dict)
@@ -178,6 +166,12 @@ class Frontend(QtGui.QFrame):
 #        self.img.setImage(image, autoLevels=False)
         self.image = image.T[:,::-1]
         self.img.setImage(self.image, autoLevels=False)
+        
+    @pyqtSlot(np.ndarray)
+    def get_real_position(self, val): 
+      
+      val = np.around(val, 3)
+      self.moveToEdit.setText('{} {} {}'.format(*val))
         
     def main_roi(self):
         
@@ -372,6 +366,25 @@ class Frontend(QtGui.QFrame):
         
         self.emit_param()
         
+    def emit_fit_ROI(self):
+      
+      if self.roi is not None:
+        
+            xmin, ymin = self.roi.pos()
+            xmax, ymax = self.roi.pos() + self.roi.size()
+            
+            ymin, ymax = [int(self.NofPixelsEdit.text()) - ymax, 
+                          int(self.NofPixelsEdit.text()) - ymin]
+            
+            coordinates = np.array([xmin, xmax, ymin, ymax])  
+          
+          
+            self.fitPSFSignal.emit(coordinates)
+            
+      else:
+            
+            print('[scan] no ROI for the fit was selected')
+        
     def set_EBP(self):
         
         pxSize = self.pxSize
@@ -542,8 +555,8 @@ class Frontend(QtGui.QFrame):
         
         # dougnhut fit
         
-        self.doughnutFitButton = QtGui.QPushButton('Doughnut fit')
-        self.doughnutFitButton.clicked.connect(self.emit_param)
+        self.psfFitButton = QtGui.QPushButton('PSF fit and move')
+        self.psfFitButton.clicked.connect(self.emit_fit_ROI)
         
         # main ROI button
         
@@ -754,7 +767,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.mainROIButton, 14, 2)
         subgrid.addWidget(self.lineProfButton, 15, 2)
         subgrid.addWidget(self.FBavScanButton, 16, 2)
-        subgrid.addWidget(self.doughnutFitButton, 17, 2)
+        subgrid.addWidget(self.psfFitButton, 17, 2)
         
         subgrid.addWidget(self.initialPosLabel, 2, 0, 1, 2)
         subgrid.addWidget(self.initialPosEdit, 3, 0, 1, 2)
@@ -857,6 +870,7 @@ class Frontend(QtGui.QFrame):
         
         backend.paramSignal.connect(self.get_backend_param)
         backend.imageSignal.connect(self.get_image)
+        backend.realPositionSignal.connect(self.get_real_position)
         
     def closeEvent(self, *args, **kwargs):
 
@@ -872,6 +886,8 @@ class Backend(QtCore.QObject):
     imageSignal = pyqtSignal(np.ndarray)
     frameIsDone = pyqtSignal(bool, np.ndarray) 
     ROIcenterSignal = pyqtSignal(np.ndarray)
+    realPositionSignal = pyqtSignal(np.ndarray)
+    auxFitSignal = pyqtSignal()
     
     """
     Signals
@@ -968,12 +984,20 @@ class Backend(QtCore.QObject):
         self.yStep = params['yStep']
         self.zStep = params['zStep']
         
-        self.selectedCoord = params['ROIcoordinates']
-        
-        print('[scan] selected ROI coordinates are:', self.selectedCoord)
+#        self.selectedCoord = params['ROIcoordinates']
+#        
+#        print('[scan] selected ROI coordinates are:', self.selectedCoord)
                 
         self.calculate_derived_param()
+    
+    @pyqtSlot(np.ndarray)
+    def get_ROI_coords_and_fit(self, array):
+      
+        self.selectedCoord = array
+        print('[scan] selected fit ROI coordinates are:', self.selectedCoord)
         
+        self.auxFitSignal.emit()
+      
     def calculate_derived_param(self):
         
         self.image_to_save = self.image
@@ -1032,8 +1056,12 @@ class Backend(QtCore.QObject):
             
             size = (self.NofPixels, self.NofPixels)
 
-        self.blankImage = np.zeros(size)
-        self.image = self.blankImage
+#        self.blankImage = np.zeros(size)
+        
+        self.image = np.zeros(size)
+        self.imageF = np.zeros(size)
+        self.imageB = np.zeros(size)
+        
         self.i = 0
 
         # load the new parameters into the ADwin system
@@ -1124,7 +1152,7 @@ class Backend(QtCore.QObject):
         self.adw.SetData_Long(self.data_y_adwin, 4, 1, self.space_range)
 
     def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
-                         n_pixels_z=128, pixeltime=500):
+                         n_pixels_z=128, pixeltime=2000):
 
         x_f = tools.convert(x_f, 'XtoU')
         y_f = tools.convert(y_f, 'XtoU')
@@ -1162,14 +1190,35 @@ class Backend(QtCore.QObject):
         print('[scan] moved to center of ROI:', self.ROIcenter, 'µm')
         
         self.moveTo(*self.ROIcenter)
-        self.ROIcenterSignal.emit(self.ROIcenter)
+#        self.ROIcenterSignal.emit(self.ROIcenter)
         
 #        # keep track of the new position to where you've moved
 #        
 #        self.initialPos = self.ROIcenter
 #        self.emit_param()
         
-    def doughnut_fit(self):
+    def psf_fit_FandB(self):
+        
+        target_F = self.psf_fit(self.imageF_copy, d='F')
+        target_B = self.psf_fit(self.imageB_copy, d='B')
+        
+        print('[scan] target_F', target_F)
+        print('[scan] target_B', target_B)
+        
+        target_position = 0.5*target_F + 0.5*target_B
+        
+        print('[scan] target_position', target_position)
+        
+        self.moveTo(*target_position)
+#        self.ROIcenterSignal.emit(target_position)
+        
+        self.realPositionSignal.emit(target_position)
+        
+        time.sleep(.2)
+        
+        self.trace_measurement()
+        
+    def psf_fit(self, image, d, function='gaussian'):
         
         # set main reference frame (relative to the confocal image)
         
@@ -1177,22 +1226,35 @@ class Backend(QtCore.QObject):
         
         xmin, xmax, ymin, ymax = np.array(self.selectedCoord, dtype=np.int)
         
+        if d == 'B':
+            
+            xmin = xmin - 8
+            xmax = xmax - 8
+        
+        elif d == 'F':
+            
+            pass
+        
+        else:
+            
+            print('[scan] Invalid direction of scan selected')
+        
         # select the data of the image corresponding to the ROI
 
 #        array = self.image_copy[xmin:xmax, ymin:ymax]
-        array = self.image_copy[ymin:ymax, xmin:xmax]
+        array = image[ymin:ymax, xmin:xmax]
         
         print('shape of array', array.shape)
         
         if array.shape[0] > array.shape[1]:
             
             xmax  = xmax + 1
-            array = self.image_copy[ymin:ymax, xmin:xmax]
+            array = image[ymin:ymax, xmin:xmax]
             
         elif array.shape[1] > array.shape[0]:
             
             ymax = ymax + 1
-            array = self.image_copy[ymin:ymax, xmin:xmax]
+            array = image[ymin:ymax, xmin:xmax]
             
         else:
             
@@ -1200,21 +1262,37 @@ class Backend(QtCore.QObject):
         
         shape = array.shape
         
-        print('shape of array', array.shape)
-        
-        plt.figure()
-        plt.imshow(array, cmap=cmaps.parula, interpolation='None')
+        print('[scan] shape of array', array.shape)
             
         # create x and y arrays and meshgrid
         
         xmin_nm, xmax_nm, ymin_nm, ymax_nm = np.array([xmin, xmax, ymin, ymax]) * px_size_nm
+        
+        print('[scan] xmin_nm, xmax_nm, ymin_nm, ymax_nm', xmin_nm, xmax_nm, ymin_nm, ymax_nm)
+        
+        extent = [xmin_nm + self.initialPos[0] * 1000, self.initialPos[0] * 1000 + xmax_nm,
+                  self.initialPos[1] * 1000 + ymax_nm, self.initialPos[1] * 1000 + ymin_nm]
+        
+        plt.figure()
+        plt.imshow(array, cmap=cmaps.parula, interpolation='None', extent=extent)
+        plt.xlabel('x (nm)')
+        plt.ylabel('y (nm)')
              
-        x_nm = np.arange(xmin_nm, xmax_nm, px_size_nm)
-        y_nm = np.arange(ymin_nm, ymax_nm, px_size_nm)
+#        x_nm = np.arange(xmin_nm + px_size_nm/2, xmax_nm + px_size_nm/2, px_size_nm) # TO DO: check +/- px_size_nm/2
+#        y_nm = np.arange(ymin_nm + px_size_nm/2, ymax_nm + px_size_nm/2, px_size_nm)
+        size = array.shape[0]
+        x_nm = np.linspace(xmin_nm + px_size_nm/2, xmax_nm + px_size_nm/2, size)
+        y_nm = np.linspace(ymin_nm + px_size_nm/2, ymax_nm + px_size_nm/2, size)
+        
+        print('[scan] x_nm', x_nm)
+        print('[scan] x_nm shape', x_nm.shape)
+        
+        print('[scan] y_nm', y_nm)
+        print('[scan] y_nm shape', y_nm.shape)
         
         (Mx_nm, My_nm) = np.meshgrid(x_nm, y_nm)
         
-        print('shape grid', Mx_nm.shape)
+        print('[scan] shape grid', Mx_nm.shape)
         
         # make initial guess for parameters
         
@@ -1224,30 +1302,55 @@ class Backend(QtCore.QObject):
         y0 = (ymin_nm + ymax_nm)/2
         A = np.max(array)*d**2 # check this estimation ????
         
-        initial_guess = [A, x0, y0, d, offset]
+        if function == 'doughnut':
         
-        print('[scan] todo OK')
-         
-        popt, pcov = opt.curve_fit(PSF.doughnut2D, (Mx_nm, My_nm), array.ravel(), p0=initial_guess)
+          initial_guess = [A, x0, y0, d, offset]
+      
+          popt, pcov = opt.curve_fit(PSF.doughnut2D, (Mx_nm, My_nm), array.ravel(), p0=initial_guess)
+          
+          # retrieve results
+  
+          print('[scan] doughnut fit parameters', popt)
+          
+          dougnutFit = PSF.doughnut2D((Mx_nm, My_nm), *popt).reshape(shape)
+          
+          plt.figure()
+          plt.imshow(dougnutFit, cmap=cmaps.parula, interpolation='None', extent=extent)
+          plt.xlabel('x (nm)')
+          plt.ylabel('y (nm)')
+          
+          x0_fit = popt[1]
+          y0_fit = popt[2]
+          
+          doughnut_center = np.array([x0_fit, y0_fit, 0], dtype=np.float64)/1000 # in µm
+          target = self.initialPos + doughnut_center 
+          
+          print('[scan] target', target)
+          
+        if function == 'gaussian':
+          
+          σ_x = 130
+          σ_y = 130
+          initial_guess = [A, x0, y0, σ_x, σ_y, offset]
+          
+          popt, pcov = opt.curve_fit(PSF.gaussian2D, (Mx_nm, My_nm), array.ravel(), p0=initial_guess)
         
-        # retrieve results
-
-        popt = np.around(popt, 3)
+          print('[scan] gaussian fit parameters', popt)
+          
+          gaussianFit = PSF.gaussian2D((Mx_nm, My_nm), *popt).reshape(shape)
+          
+          plt.figure()
+          plt.imshow(gaussianFit, cmap=cmaps.parula, interpolation='None', extent=extent)
+          plt.xlabel('x (nm)')
+          plt.ylabel('y (nm)')
+          
+          x0_fit = popt[1]
+          y0_fit = popt[2]
+          
+          gaussian_center = np.array([x0_fit, y0_fit, 0], dtype=np.float64)/1000 # in µm
+          target = self.initialPos + gaussian_center 
         
-        print('[scan] doughnut fit parameters', popt)
-        
-        dougnutFit = PSF.doughnut2D((Mx_nm, My_nm), *popt).reshape(shape)
-        
-        plt.figure()
-        plt.imshow(dougnutFit, cmap=cmaps.parula, interpolation='None')
-        
-        doughnut_center = np.array([x0, y0, 0])/1000 # in µm
-        target_position = self.initialPos + doughnut_center 
-        
-        print('[scan] target position', target_position)
-        
-        self.moveTo(*target_position)
-        self.ROIcenterSignal.emit(target_position)
+        return target
 
     @pyqtSlot()
     def get_moveTo_initial_signal(self):
@@ -1302,6 +1405,8 @@ class Backend(QtCore.QObject):
         self.emit_param()    
             
     def save_current_frame(self):
+      
+        self.save_FB = True
         
         # experiment parameters
         
@@ -1314,6 +1419,22 @@ class Backend(QtCore.QObject):
         data = self.image_to_save
         result = Image.fromarray(data.astype('uint16'))
         result.save(r'{}.tiff'.format(name))
+        
+        if self.save_FB is True:
+          
+          print('[scan] Saved current frame F and B', name)
+          
+          # save image F
+          
+          data = self.imageF_copy
+          result = Image.fromarray(data.astype('uint16'))
+          result.save(r'{} F.tiff'.format(name))
+          
+          # save image B
+          
+          data = self.imageB_copy
+          result = Image.fromarray(data.astype('uint16'))
+          result.save(r'{} B.tiff'.format(name))
         
         print('[scan] Saved current frame', name)
 
@@ -1386,69 +1507,83 @@ class Backend(QtCore.QObject):
         self.viewtimer.stop()
 
     def update_view(self):
-        
-        if self.scantype == 'xy':
+      
+        if self.i < self.NofPixels:
 
-            dy = tools.convert(self.dy, 'ΔXtoU')
-            self.y_offset = int(self.y_offset + dy)
-            self.adw.Set_FPar(2, self.y_offset)
-
-        if self.scantype == 'xz' or self.scantype == 'yz':
-
-            dz = tools.convert(self.dz, 'ΔXtoU')
-            self.z_offset = int(self.z_offset + dz)
-            self.adw.Set_FPar(2, self.z_offset)
-
-        self.lineData = self.line_acquisition()
-
-        if self.full_scan is True:
-
-#            self.image[:, self.NofPixels-1-self.i] = self.lineData
-            self.image[self.i, :] = self.lineData
-            
-        elif self.FBaverage_scan is True:
-            
-            # display average of forward and backward image
-            
-            c0 = self.NofAuxPixels
-            c1 = self.NofPixels
-            
-            lineData_F = self.lineData[c0:c0+c1]
-            lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
-            
-            if self.i % 2 == 0:
-            
-#                self.image[:, self.NofPixels-1-self.i] = lineData_F
-                self.image[self.i, :] = lineData_F
-            
-            if self.i % 2 != 0:
+            if self.scantype == 'xy':
+    
+                dy = tools.convert(self.dy, 'ΔXtoU')
+                self.y_offset = int(self.y_offset + dy)
+                self.adw.Set_FPar(2, self.y_offset)
+    
+            if self.scantype == 'xz' or self.scantype == 'yz':
+    
+                dz = tools.convert(self.dz, 'ΔXtoU')
+                self.z_offset = int(self.z_offset + dz)
+                self.adw.Set_FPar(2, self.z_offset)
+    
+            self.lineData = self.line_acquisition()
+    
+            if self.full_scan is True:
+    
+                self.image[self.i, :] = self.lineData
                 
-#                self.image[:, self.NofPixels-1-self.i] = lineData_B[::-1]
-                self.image[self.i, :] = lineData_B[::-1]
-
-        else: 
-
-            # displays only forward image
+            elif self.FBaverage_scan is True:
+                
+                # display average of forward and backward image
+                
+#                c0 = self.NofAuxPixels
+#                c1 = self.NofPixels
+                
+                c0 = self.NofAuxPixels+1  # this +1 is an empirical temporary fix
+                c1 = self.NofPixels
+                
+                lineData_F = self.lineData[c0:c0+c1]
+                lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
+                
+                if self.i % 2 == 0:
+                
+                    self.image[self.i, :] = lineData_F
+                
+                if self.i % 2 != 0:
+                    
+                    self.image[self.i, :] = lineData_B[::-1]
+    
+            else: 
+    
+                # displays only forward image
+                
+#                c0 = self.NofAuxPixels
+#                c1 = self.NofPixels
+                
+                c0 = self.NofAuxPixels+1  # this +1 is an empirical temporary fix
+                c1 = self.NofPixels
+                
+                print('[scan] c0', c0)
+                print('[scan] c1', c1)
+    
+                lineData_F = self.lineData[c0:c0+c1]
+                lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
+                
+                self.imageF[self.i, :] = lineData_F
+                self.imageB[self.i, :] = lineData_B[::-1]
+                
+                self.image[self.i, :] = lineData_F
+    
+            # display image after every scanned line
+                
+            self.image_to_save = self.image
+            self.imageF_copy = self.imageF     # TO DO: clean up with fit signal to avoid the copy image
+            self.imageB_copy = self.imageB
+    #        self.image_copy = self.image
             
-            c0 = self.NofAuxPixels
-            c1 = self.NofPixels
-
-            lineData_F = self.lineData[c0:c0+c1]
-            lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
-            
-            self.image[self.i, :] = lineData_F
-
-        # display image after every scanned line
-            
-        self.image_to_save = self.image
-#        self.image_copy = np.rot90(self.image,  axes=(0,1))
-        self.image_copy = self.image
-        
-        self.imageSignal.emit(self.image)
-#        print(datetime.now(), '[scan] Image emitted to frontend')
-
-        if self.i < self.NofPixels-1:
-
+            self.imageSignal.emit(self.image)
+    #        print(datetime.now(), '[scan] Image emitted to frontend')
+    
+    #        if self.i < self.NofPixels-1:
+    #
+    #            self.i = self.i + 1
+    
             self.i = self.i + 1
 
         else:
@@ -1543,6 +1678,50 @@ class Backend(QtCore.QObject):
         
         print('[scan] ROI center emitted')
         
+    def trace_measurement(self):
+      
+        n = 100
+        pxtime = 1000
+        trace_data = self.trace_acquisition(Npoints=n, pixeltime=pxtime)
+        
+        time = np.arange(n)
+        
+        plt.style.use('dark_background')
+        plt.figure()
+        plt.plot(time, trace_data)
+        plt.xlabel('Time (ms)')
+        plt.ylabel('Count rate (kHz)')
+        
+    def trace_acquisition(self, Npoints, pixeltime):
+      
+        """ 
+        Method to acquire a trace of photon counts at the current position.
+        
+        Npoints = number of points to be acquired (max = 1024)
+        pixeltime = time per point (in μs)
+        
+        
+        """
+        
+        # pixeltime in μs
+      
+        self.adw.Set_FPar(65, tools.timeToADwin(pixeltime))
+        self.adw.Set_Par(60, Npoints+1)
+
+        self.adw.Start_Process(6)
+        
+        trace_time = Npoints * (pixeltime/1000)  # target linetime in ms
+        wait_time = trace_time * 1.05 # TO DO: optimize this, it should work with 1.00, or maybe even less?
+                                     # it should even work without the time.sleep()
+        
+        time.sleep(wait_time/1000) # in s
+
+        trace_data = self.adw.GetData_Long(6, 0, Npoints+1)
+        
+        trace_data = trace_data[1:]# TO DO: fix the high count error on first element
+
+        return trace_data
+        
     def plot_scan(self):
         
         # save scan plot (x vs t)
@@ -1551,6 +1730,16 @@ class Backend(QtCore.QObject):
         plt.plot(self.data_t_adwin[0:-1], self.data_x_adwin, 'go')
         plt.xlabel('t (ADwin time)')
         plt.ylabel('V (DAC units)')
+        
+#        c0 = self.NofAuxPixels
+        c0 = self.NofAuxPixels+1
+        c1 = self.NofPixels
+        
+        plt.plot(self.data_t_adwin[c0], self.data_x_adwin[c0], 'r*')
+        plt.plot(self.data_t_adwin[c0+c1-1], self.data_x_adwin[c0+c1-1], 'r*')
+                
+        plt.plot(self.data_t_adwin[3*c0+c1], self.data_x_adwin[3*c0+c1], 'r*')
+        plt.plot(self.data_t_adwin[3*c0+2*c1-1], self.data_x_adwin[3*c0+2*c1-1], 'r*')
 
         fname = tools.getUniqueName(self.filename)
         fname = fname + '_scan_plot'
@@ -1569,7 +1758,8 @@ class Backend(QtCore.QObject):
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
         
-        frontend.doughnutFitButton.clicked.connect(self.doughnut_fit)
+        frontend.fitPSFSignal.connect(self.get_ROI_coords_and_fit)
+        self.auxFitSignal.connect(self.psf_fit_FandB)
         
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))

@@ -101,13 +101,16 @@ class Frontend(QtGui.QFrame):
 #        plt.xlabel('time (ns)')
 #        plt.ylabel('ocurrences')
 
-        timetrace, time = np.histogram(absTime, bins=50) # timetrace with 50 bins
+        counts, time = np.histogram(absTime, bins=50) # timetrace with 50 bins
+        
+        binwidth = time[-1]/50
+        timetrace_khz = counts/binwidth 
 
-        self.tracePlot.plot(time[0:-1], timetrace)
+        self.tracePlot.plot(time[0:-1], timetrace_khz)
 
 #        plt.plot(time[0:-1], timetrace)
-#        plt.xlabel('time (ms)')
-#        plt.ylabel('counts')
+        self.tracePlot.setLabels(bottom=('Time', 'ms'),
+                                        left=('Count rate', 'kHz'))
                 
     def clear_data(self):
         
@@ -324,6 +327,8 @@ class Backend(QtCore.QObject):
     def measure(self):
         
         t0 = time.time()
+        
+        self.prepare_ph()
 
         self.currentfname = tools.getUniqueName(self.fname)
 

@@ -10,7 +10,7 @@
 ' Optimize_Level                 = 2
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
-' Foldings                       = 79,87
+' Foldings                       = 75,80,88
 '<Header End>
 'process 1: linescan_x by luciano a. masullo
 
@@ -20,7 +20,8 @@
 'x --> fast axis
 'y --> slow axis
 
-'par_2 = 0 'flag meaning process started
+'par_1: number of total elements in data arrays
+'par_2: 0 flag meaning process started (0) or finished (1)
 'par_3: digital input = 0 (APD), analog input = 1 (photodiode)
 
 'fpar_2: y_offset

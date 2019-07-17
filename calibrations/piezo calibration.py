@@ -83,4 +83,23 @@ x = vx * 2
 plt.plot(vx, x, 'b-')
 plt.plot(vx, xm, 'ro')
 
+plt.figure()
+
+
+vy = np.arange(0, 10.5, .5)
+ym = np.append(-0.03, y_measured)
+
+slope, intercept, r_value, p_value, std_err = stats.linregress(vy[0:13], 
+                                                               ym[0:13])
+
+print(slope, intercept)
+
+v_aux = np.linspace(0, 10, 1000)
+y_aux = intercept + slope * v_aux
+plt.plot(v_aux, y_aux, 'g-')
+
+y = vy* 2
+plt.plot(vy, y, 'b-')
+plt.plot(vy, ym, 'ro')
+
 

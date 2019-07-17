@@ -197,6 +197,12 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     signal_x[i0:i1] = (1/2) * a_aux[0] * t1**2
     
+#    ti1 = signal_time[i0]
+#    xi1 = signal_x[i0]
+#    xf1 = signal_x[i1-1]
+#    tf1 = signal_time[i1-1]
+#    
+#    print(datetime.now(), '[scan-tools] ti1, tf1, xi1, xf1', ti1, tf1, xi1, xf1)
     
     # part 2
     
@@ -208,6 +214,14 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     x02 = aux_range[0]
 
     signal_x[i1:i2] = x02 + v * t2
+    
+#    ti2 = signal_time[i1]
+#    xi2 = signal_x[i1]
+#    
+#    xf2 = signal_x[i2-1]
+#    tf2 = signal_time[i2-1]
+#    
+#    print(datetime.now(), '[scan-tools] ti2, tf2, xi2, xf2', ti2, xi2, tf2, xf2)
     
     # part 3
     
@@ -221,6 +235,14 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     x03 = aux_range[0] + scan_range
     
     signal_x[i2:i3] = - (1/2) * a_aux[1] * t3**2 + v * t3 + x03
+    
+#    ti3 = signal_time[i2]
+#    xi3 = signal_x[i2]
+#    
+#    xf3 = signal_x[i3-1]
+#    tf3 = signal_time[i3-1]
+#    
+#    print(datetime.now(), '[scan-tools] ti3, tf3, xi3, xf3', ti3, xi3, tf3, xf3)
     
     # part 4
     
@@ -236,6 +258,14 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     signal_x[i3:i4] = - (1/2) * a_aux[2] * t4**2 + x04
     
+#    ti4 = signal_time[i3]
+#    xi4 = signal_x[i3]
+#    
+#    xf4 = signal_x[i4-1]
+#    tf4 = signal_time[i4-1]
+#    
+#    print(datetime.now(), '[scan-tools] ti4, tf4, xi4, xf4', ti4, xi4, tf4, xf4)
+    
     # part 5
     
     i5 = 3 * n_aux_pixels + 2 * n_pixels
@@ -249,6 +279,14 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     x05 = aux_range[3] + scan_range
     
     signal_x[i4:i5] = x05 - v * t5    
+    
+#    ti5 = signal_time[i4]
+#    xi5 = signal_x[i4]
+#    
+#    xf5 = signal_x[i5-1]
+#    tf5 = signal_time[i5-1]
+#    
+#    print(datetime.now(), '[scan-tools] ti5, tf5, xi5, xf5', ti5, xi5, tf5, xf5)
 
     # part 6
 
@@ -263,6 +301,14 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     x06 = aux_range[3]
 
     signal_x[i5:i6] = (1/2) * a_aux[3] * t6**2 - v * t6 + x06
+    
+#    ti6 = signal_time[i5]
+#    xi6 = signal_x[i5]
+#    
+#    xf6 = signal_x[i6-1]
+#    tf6 = signal_time[i6-1]
+#    
+#    print(datetime.now(), '[scan-tools] ti6, tf6, xi6, xf6', ti6, xi6, tf6, xf6)
 
     if waitingtime != 0:
 
@@ -281,7 +327,6 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     else:
         
         pass
-    
     
     
     if scantype == 'xy':
