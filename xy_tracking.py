@@ -766,9 +766,38 @@ class Backend(QtCore.QObject):
         poptG = np.around(poptG, 2)
     
         A, x0, y0, σ_x, σ_y, bkg = poptG
-    
-        self.currentx = x0 + Mx_nm[xmin_id, ymin_id]
-        self.currenty = y0 + My_nm[xmin_id, ymin_id]
+        
+        x = x0 + Mx_nm[xmin_id, ymin_id]
+        y = y0 + My_nm[xmin_id, ymin_id]
+        
+#        self.currentx = x
+#        self.currenty = y
+        
+        # if to avoid (probably) false localizations
+        
+        maxdist = 200 # in nm
+        
+        if self.initial is False:
+        
+            if np.abs(x - self.currentx) < maxdist and np.abs(y - self.currenty) < maxdist:
+        
+                self.currentx = x
+                self.currenty = y
+                
+#                print(datetime.now(), '[xy_tracking] normal')
+                
+            else:
+                
+                pass
+                
+                print(datetime.now(), '[xy_tracking] max dist exceeded')
+        
+        else:
+            
+            self.currentx = x
+            self.currenty = y
+            
+#            print(datetime.now(), '[xy_tracking] else')
         
             
     def track(self):

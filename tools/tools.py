@@ -158,6 +158,12 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     aux_time = v/a_aux
     aux_range = (1/2) * a_aux * (aux_time)**2
     
+    dt = line_time/n_pixels
+    dt_aux = aux_time[0]/n_aux_pixels
+    
+#    print('aux_time, dt_aux', aux_time, dt_aux)
+#    print('line_time, dt', line_time, dt)
+    
     if np.all(a_aux == np.flipud(a_aux)) or np.all(a_aux[0:2] == a_aux[2:4]):
         
         pass
@@ -208,7 +214,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     i2 = n_aux_pixels + n_pixels
     
-    signal_time[i1:i2] = np.linspace(aux_time[0], aux_time[0] + line_time, n_pixels)
+    signal_time[i1:i2] = np.linspace(aux_time[0] + dt, aux_time[0] + line_time, n_pixels)
     
     t2 = signal_time[i1:i2] - aux_time[0]
     x02 = aux_range[0]
@@ -227,7 +233,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     i3 = 2 * n_aux_pixels + n_pixels
     
-    t3_i = aux_time[0] + line_time
+    t3_i = aux_time[0] + line_time + dt_aux
     t3_f = aux_time[0] + aux_time[1] + line_time   
     signal_time[i2:i3] = np.linspace(t3_i, t3_f, n_aux_pixels)
     
@@ -248,7 +254,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     i4 = 3 * n_aux_pixels + n_pixels
     
-    t4_i = aux_time[0] + aux_time[1] + line_time
+    t4_i = aux_time[0] + aux_time[1] + line_time + dt_aux
     t4_f = aux_time[0] + aux_time[1] + aux_time[2] + line_time   
     
     signal_time[i3:i4] = np.linspace(t4_i, t4_f, n_aux_pixels)
@@ -270,7 +276,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
     
     i5 = 3 * n_aux_pixels + 2 * n_pixels
     
-    t5_i = aux_time[0] + aux_time[1] + aux_time[2] + line_time  
+    t5_i = aux_time[0] + aux_time[1] + aux_time[2] + line_time + dt_aux
     t5_f = aux_time[0] + aux_time[1] + aux_time[2] + 2 * line_time  
     
     signal_time[i4:i5] = np.linspace(t5_i, t5_f, n_pixels)
@@ -292,7 +298,7 @@ def ScanSignal(scan_range, n_pixels, n_aux_pixels, px_time, a_aux, dy, x_i,
 
     i6 = size
 
-    t6_i = aux_time[0] + aux_time[1] + aux_time[2] + 2 * line_time
+    t6_i = aux_time[0] + aux_time[1] + aux_time[2] + 2 * line_time + dt_aux
     t6_f = np.sum(aux_time) + 2 * line_time
 
     signal_time[i5:i6] = np.linspace(t6_i, t6_f, n_aux_pixels)

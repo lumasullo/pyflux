@@ -74,7 +74,7 @@ class Frontend(QtGui.QFrame):
     closeSignal = pyqtSignal()
     liveviewSignal = pyqtSignal(bool, str)
     frameacqSignal = pyqtSignal(bool)
-    fitPSFSignal = pyqtSignal(np.ndarray)
+    fitPSFSignal = pyqtSignal(np.ndarray, str)
 
     def __init__(self, *args, **kwargs):
 
@@ -366,7 +366,7 @@ class Frontend(QtGui.QFrame):
         
         self.emit_param()
         
-    def emit_fit_ROI(self):
+    def emit_fit_ROI(self, actionType): # TO DO: change name from "fit" to a more general name including fit/move to center
       
       if self.roi is not None:
         
@@ -378,8 +378,13 @@ class Frontend(QtGui.QFrame):
             
             coordinates = np.array([xmin, xmax, ymin, ymax])  
           
+            if actionType == 'fit':
           
-            self.fitPSFSignal.emit(coordinates)
+                self.fitPSFSignal.emit(coordinates, 'fit')
+                
+            elif actionType == 'move':
+                
+                self.fitPSFSignal.emit(coordinates, 'move')
             
       else:
             
@@ -551,12 +556,16 @@ class Frontend(QtGui.QFrame):
         # move to center button
         
         self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
-#        self.moveToROIcenterButton.clicked.connect(self.select_ROI)
+        self.moveToROIcenterButton.clicked.connect(lambda: self.emit_fit_ROI('move'))
         
         # dougnhut fit
         
         self.psfFitButton = QtGui.QPushButton('PSF fit and move')
-        self.psfFitButton.clicked.connect(self.emit_fit_ROI)
+        self.psfFitButton.clicked.connect(lambda: self.emit_fit_ROI('fit'))
+        
+        # measure trace
+        
+        self.traceButton = QtGui.QPushButton('Measure trace')
         
         # main ROI button
         
@@ -768,6 +777,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.lineProfButton, 15, 2)
         subgrid.addWidget(self.FBavScanButton, 16, 2)
         subgrid.addWidget(self.psfFitButton, 17, 2)
+        subgrid.addWidget(self.traceButton, 18, 2)
         
         subgrid.addWidget(self.initialPosLabel, 2, 0, 1, 2)
         subgrid.addWidget(self.initialPosEdit, 3, 0, 1, 2)
@@ -888,6 +898,7 @@ class Backend(QtCore.QObject):
     ROIcenterSignal = pyqtSignal(np.ndarray)
     realPositionSignal = pyqtSignal(np.ndarray)
     auxFitSignal = pyqtSignal()
+    auxMoveSignal = pyqtSignal()
     
     """
     Signals
@@ -990,13 +1001,20 @@ class Backend(QtCore.QObject):
                 
         self.calculate_derived_param()
     
-    @pyqtSlot(np.ndarray)
-    def get_ROI_coords_and_fit(self, array):
+    @pyqtSlot(np.ndarray, str)
+    def get_ROI_coords_and_fit(self, array, actionType):
       
         self.selectedCoord = array
+        
         print('[scan] selected fit ROI coordinates are:', self.selectedCoord)
         
-        self.auxFitSignal.emit()
+        if actionType == 'fit':
+        
+            self.auxFitSignal.emit()
+            
+        elif actionType == 'move':
+        
+            self.auxMoveSignal.emit()
       
     def calculate_derived_param(self):
         
@@ -1180,9 +1198,7 @@ class Backend(QtCore.QObject):
         self.moveTo(*self.moveToPos)
         
     def moveTo_roi_center(self):
-        
-#        self.ROIcenter = self.initialPos + np.array([self.scanRange/2, self.scanRange/2, 0])
-        
+                
         xi, xf, yi, yf = self.selectedCoord
         self.ROIcenter = self.initialPos + np.array([(xf+xi)/2, (yf+yi)/2, 0]) * self.pxSize
         
@@ -1190,14 +1206,12 @@ class Backend(QtCore.QObject):
         print('[scan] moved to center of ROI:', self.ROIcenter, 'µm')
         
         self.moveTo(*self.ROIcenter)
-#        self.ROIcenterSignal.emit(self.ROIcenter)
+        time.sleep(.3)
+        self.ROIcenterSignal.emit(self.ROIcenter)
         
-#        # keep track of the new position to where you've moved
-#        
-#        self.initialPos = self.ROIcenter
-#        self.emit_param()
+        self.trace_measurement()
         
-    def psf_fit_FandB(self):
+    def psf_fit_FandB_and_move(self):
         
         target_F = self.psf_fit(self.imageF_copy, d='F')
         target_B = self.psf_fit(self.imageB_copy, d='B')
@@ -1205,12 +1219,13 @@ class Backend(QtCore.QObject):
         print('[scan] target_F', target_F)
         print('[scan] target_B', target_B)
         
-        target_position = 0.5*target_F + 0.5*target_B
+#        target_position = (0.5*target_F + 0.5*target_B) + np.array([4*self.pxSize, 0, 0])
+        target_position = (0.5*target_F + 0.5*target_B)
         
         print('[scan] target_position', target_position)
         
         self.moveTo(*target_position)
-#        self.ROIcenterSignal.emit(target_position)
+        self.ROIcenterSignal.emit(target_position)
         
         self.realPositionSignal.emit(target_position)
         
@@ -1218,7 +1233,7 @@ class Backend(QtCore.QObject):
         
         self.trace_measurement()
         
-    def psf_fit(self, image, d, function='gaussian'):
+    def psf_fit(self, image, d, function='doughnut'):
         
         # set main reference frame (relative to the confocal image)
         
@@ -1273,7 +1288,7 @@ class Backend(QtCore.QObject):
         extent = [xmin_nm + self.initialPos[0] * 1000, self.initialPos[0] * 1000 + xmax_nm,
                   self.initialPos[1] * 1000 + ymax_nm, self.initialPos[1] * 1000 + ymin_nm]
         
-        plt.figure()
+        plt.figure('raw data psf')
         plt.imshow(array, cmap=cmaps.parula, interpolation='None', extent=extent)
         plt.xlabel('x (nm)')
         plt.ylabel('y (nm)')
@@ -1314,7 +1329,7 @@ class Backend(QtCore.QObject):
           
           dougnutFit = PSF.doughnut2D((Mx_nm, My_nm), *popt).reshape(shape)
           
-          plt.figure()
+          plt.figure('doughnut fit')
           plt.imshow(dougnutFit, cmap=cmaps.parula, interpolation='None', extent=extent)
           plt.xlabel('x (nm)')
           plt.ylabel('y (nm)')
@@ -1339,7 +1354,7 @@ class Backend(QtCore.QObject):
           
           gaussianFit = PSF.gaussian2D((Mx_nm, My_nm), *popt).reshape(shape)
           
-          plt.figure()
+          plt.figure('gaussian fit')
           plt.imshow(gaussianFit, cmap=cmaps.parula, interpolation='None', extent=extent)
           plt.xlabel('x (nm)')
           plt.ylabel('y (nm)')
@@ -1406,7 +1421,7 @@ class Backend(QtCore.QObject):
             
     def save_current_frame(self):
       
-        self.save_FB = True
+        self.save_FB = False
         
         # experiment parameters
         
@@ -1484,7 +1499,7 @@ class Backend(QtCore.QObject):
 
     def liveview_start(self):
         
-        self.plot_scan()
+#        self.plot_scan()
 
         if self.scantype == 'xy':
 
@@ -1532,10 +1547,7 @@ class Backend(QtCore.QObject):
                 
                 # display average of forward and backward image
                 
-#                c0 = self.NofAuxPixels
-#                c1 = self.NofPixels
-                
-                c0 = self.NofAuxPixels+1  # this +1 is an empirical temporary fix
+                c0 = self.NofAuxPixels
                 c1 = self.NofPixels
                 
                 lineData_F = self.lineData[c0:c0+c1]
@@ -1553,14 +1565,8 @@ class Backend(QtCore.QObject):
     
                 # displays only forward image
                 
-#                c0 = self.NofAuxPixels
-#                c1 = self.NofPixels
-                
-                c0 = self.NofAuxPixels+1  # this +1 is an empirical temporary fix
+                c0 = self.NofAuxPixels
                 c1 = self.NofPixels
-                
-                print('[scan] c0', c0)
-                print('[scan] c1', c1)
     
                 lineData_F = self.lineData[c0:c0+c1]
                 lineData_B = self.lineData[3*c0+c1:3*c0+2*c1]
@@ -1579,11 +1585,7 @@ class Backend(QtCore.QObject):
             
             self.imageSignal.emit(self.image)
     #        print(datetime.now(), '[scan] Image emitted to frontend')
-    
-    #        if self.i < self.NofPixels-1:
-    #
-    #            self.i = self.i + 1
-    
+
             self.i = self.i + 1
 
         else:
@@ -1731,8 +1733,7 @@ class Backend(QtCore.QObject):
         plt.xlabel('t (ADwin time)')
         plt.ylabel('V (DAC units)')
         
-#        c0 = self.NofAuxPixels
-        c0 = self.NofAuxPixels+1
+        c0 = self.NofAuxPixels
         c1 = self.NofPixels
         
         plt.plot(self.data_t_adwin[c0], self.data_x_adwin[c0], 'r*')
@@ -1752,14 +1753,16 @@ class Backend(QtCore.QObject):
     def make_connection(self, frontend):
         
         frontend.liveviewSignal.connect(self.liveview)
-        frontend.moveToROIcenterButton.clicked.connect(self.moveTo_roi_center)
+#        frontend.moveToROIcenterButton.clicked.connect(self.moveTo_roi_center)
         frontend.currentFrameButton.clicked.connect(self.save_current_frame)
         frontend.moveToButton.clicked.connect(self.moveTo_action)
         frontend.paramSignal.connect(self.get_frontend_param)
         frontend.closeSignal.connect(self.stop)
+        frontend.traceButton.clicked.connect(self.trace_measurement)
         
         frontend.fitPSFSignal.connect(self.get_ROI_coords_and_fit)
-        self.auxFitSignal.connect(self.psf_fit_FandB)
+        self.auxFitSignal.connect(self.psf_fit_FandB_and_move)
+        self.auxMoveSignal.connect(self.moveTo_roi_center)
         
         frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))

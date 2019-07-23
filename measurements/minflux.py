@@ -215,7 +215,7 @@ class Backend(QtCore.QObject):
         self.n = 1
         self.adw = adwin
   
-        self.pattern = np.array([[0, 0]])
+        self.pattern = np.array([0, 0])
         
         self.measTimer = QtCore.QTimer()
         self.measTimer.timeout.connect(self.loop)
@@ -260,30 +260,44 @@ class Backend(QtCore.QObject):
         l = self.patternLength
         h = np.sqrt(3/2)*l
         
-        if self.patternType == 'Row':
-            
-            self.pattern = np.array([[0, 0], [0, l], [0, 2*l]])
-            
-        if self.patternType == 'Square':
-            
-            self.pattern = np.array([[0, 0], [l/2, l/2], [l/2, -l/2],
-                                    [-l/2, -l/2], [-l/2, l/2]])
-    
-        if self.patternType == 'Triangle':
-            
-            self.pattern = np.array([[0, 0], [0, (2/3)*h], [l/2, -(1/3)*h],
-                                    [-l/2, -(1/3)*h]])
-    
         currentXposition = tools.convert(self.adw.Get_FPar(70), 'UtoX')
         currentYposition = tools.convert(self.adw.Get_FPar(71), 'UtoX')
-        
+                
         self.r0 = np.array([currentXposition, currentYposition])
-        self.r = self.r0 + self.pattern
         
-        self.n = np.shape(self.r)[0]
+        if self.measType == 'Predefined positions':
         
-        print(datetime.now(), '[minflux] self.r', self.r)
-        print(datetime.now(), '[minflux] self.r.shape', self.r.shape)
+            if self.patternType == 'Row':
+                
+                self.pattern = np.array([[0, -l], [0, 0], [0, l]])
+                
+                print('ROW')
+                
+            if self.patternType == 'Square':
+                
+                self.pattern = np.array([[0, 0], [l/2, l/2], [l/2, -l/2],
+                                        [-l/2, -l/2], [-l/2, l/2]])
+        
+                print('SQUARE')
+        
+            if self.patternType == 'Triangle':
+                
+                self.pattern = np.array([[0, 0], [0, (2/3)*h], [l/2, -(1/3)*h],
+                                        [-l/2, -(1/3)*h]])
+        
+                print('TRIANGLE')
+                
+            self.r = self.r0 + self.pattern
+            self.n = np.shape(self.r)[0]
+                
+        else:
+            
+            self.r = self.r0
+            self.n = 1
+    
+#        print('[minflux] self.pattern', self.pattern)
+#        print(datetime.now(), '[minflux] self.r', self.r)
+#        print(datetime.now(), '[minflux] self.r.shape', self.r.shape)
                 
     def start(self):
         
@@ -291,6 +305,7 @@ class Backend(QtCore.QObject):
         
         if self.measType == 'Standard':
             
+            print('[minflux] self.n, self.acqtime', self.n, self.acqtime)
             self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
 #            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
 #            time.sleep(phtime)
