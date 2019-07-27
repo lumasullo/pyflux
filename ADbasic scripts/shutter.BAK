@@ -27,7 +27,7 @@
 #INCLUDE .\data-acquisition.inc
 
 dim flag as long at dm_local
-dim time0, time1, wait_time as float at dm_local
+dim time0, time1, px_time as float at dm_local
 
 INIT:
  

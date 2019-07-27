@@ -928,6 +928,7 @@ class Backend(QtCore.QObject):
         self.adw = adwin
         self.saveScanData = False
         self.feedback_active = False
+        self.flipper_state = False
 
         # full_scan: True --> full scan including aux parts
         # full_scan: False --> forward part of the scan
@@ -1632,7 +1633,7 @@ class Backend(QtCore.QObject):
             
         if val is False:
             
-            self.shutte_state = False
+            self.shutter_state = False
             
             self.adw.Set_Par(55, 0)
             self.adw.Set_Par(50, 0)
@@ -1648,7 +1649,7 @@ class Backend(QtCore.QObject):
             self.flipper_state = True
             
             self.adw.Set_Par(55, 1)
-            self.adw.Set_Par(51, 1)
+#            self.adw.Set_Par(51, 0)
             self.adw.Start_Process(5)
             
             print('[scan] Flipper up')
@@ -1658,7 +1659,7 @@ class Backend(QtCore.QObject):
             self.flipper_state = False
             
             self.adw.Set_Par(55, 1)
-            self.adw.Set_Par(51, 0)
+#            self.adw.Set_Par(51, 1)
             self.adw.Start_Process(5)
 
             print('[scan] Flipper down')
@@ -1776,8 +1777,10 @@ class Backend(QtCore.QObject):
         frontend.zDownButton.pressed.connect(lambda: self.relative_move('z', 'down'))
           
     def stop(self):
-
+        
         self.toggle_shutter(False)
+        if self.flipper_state is True:
+            self.toggle_flipper(False)
         self.liveview_stop()
         
         # Go back to 0 position
