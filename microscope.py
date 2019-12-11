@@ -8,6 +8,7 @@ Created on Fri Jun  1 14:18:19 2018
 import numpy as np
 import time
 import os
+import sys
 from datetime import date, datetime
 
 from threading import Thread
@@ -33,6 +34,7 @@ import tcspc
 import xy_tracking
 import measurements.minflux as minflux
 import measurements.psf as psf
+import measurements.chechu as chechu
 
 import tools.tools as tools
 
@@ -59,6 +61,7 @@ class Frontend(QtGui.QMainWindow):
         
         self.psfWidget = psf.Frontend()
         self.minfluxWidget = minflux.Frontend()
+        self.chechuWidget = chechu.Frontend()
 
         self.psfMeasAction = QtGui.QAction('PSF measurement', self)
         self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
@@ -71,6 +74,12 @@ class Frontend(QtGui.QMainWindow):
         fileMenu.addAction(self.minfluxMeasAction)
         
         self.minfluxMeasAction.triggered.connect(self.minflux_measurement)
+        
+        self.chechuMeasAction = QtGui.QAction('CHECHU measurement', self)
+        self.chechuMeasAction.setStatusTip('Routine to measure CHECHU')
+        fileMenu.addAction(self.chechuMeasAction)
+        
+        self.chechuMeasAction.triggered.connect(self.chechu_measurement)
 
         # GUI layout
 
@@ -84,7 +93,7 @@ class Frontend(QtGui.QMainWindow):
 
         ## scanner
 
-        scanDock = Dock('scan scan', size=(1, 1))
+        scanDock = Dock('scan', size=(1, 1))
 
         self.scanWidget = scan.Frontend()
 
@@ -134,10 +143,15 @@ class Frontend(QtGui.QMainWindow):
         
         backend.minfluxWorker.make_connection(self.minfluxWidget)
         backend.psfWorker.make_connection(self.psfWidget)
+        backend.chechuWorker.make_connection(self.chechuWidget)
 
     def psf_measurement(self):
 
         self.psfWidget.show()
+        
+    def chechu_measurement(self):
+        
+        self.chechuWidget.show()
         
     def minflux_measurement(self):
         
@@ -150,6 +164,7 @@ class Frontend(QtGui.QMainWindow):
 
         super().closeEvent(*args, **kwargs)
         
+        app.quit()        
         
 class Backend(QtCore.QObject):
     
@@ -171,6 +186,7 @@ class Backend(QtCore.QObject):
         
         self.minfluxWorker = minflux.Backend(adw)
         self.psfWorker = psf.Backend()
+        self.chechuWorker = chechu.Backend()
             
     def setup_minflux_connections(self):
         
@@ -206,7 +222,27 @@ class Backend(QtCore.QObject):
         self.scanWorker.frameIsDone.connect(self.psfWorker.get_scan_is_done)
         self.xyWorker.xyIsDone.connect(self.psfWorker.get_xy_is_done)
         self.zWorker.zIsDone.connect(self.psfWorker.get_z_is_done)
-    
+        
+    def setup_chechu_connections(self):
+        
+        self.chechuWorker.scanSignal.connect(self.scanWorker.get_scan_signal_chechu)
+#        self.chechuWorker.xySignal.connect(self.xyWorker.single_xy_correction)
+        self.chechuWorker.zSignal.connect(self.zWorker.single_z_correction)
+#        self.chechuWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
+        self.chechuWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
+        self.chechuWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
+        
+#        self.chechuWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
+        self.chechuWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
+        
+        self.scanWorker.frameIsDoneChechu.connect(self.chechuWorker.get_scan_is_done)
+#        self.xyWorker.xyIsDone.connect(self.chechuWorker.get_xy_is_done)
+        self.zWorker.zIsDone.connect(self.chechuWorker.get_z_is_done)
+        
+        
+        self.chechuWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_chechu)
+        self.chechuWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_chechu)
+        
     def make_connection(self, frontend):
         
         frontend.focusWidget.make_connection(self.zWorker)
@@ -216,11 +252,14 @@ class Backend(QtCore.QObject):
     
         frontend.minfluxWidget.make_connection(self.minfluxWorker)
         frontend.psfWidget.make_connection(self.psfWorker)
+        frontend.chechuWidget.make_connection(self.chechuWorker)
     
         self.setup_minflux_connections()
         self.setup_psf_connections()
+        self.setup_chechu_connections()
         
         frontend.scanWidget.paramSignal.connect(self.psfWorker.get_scan_parameters)
+        frontend.scanWidget.paramSignal.connect(self.chechuWorker.get_scan_parameters)
         # TO DO: write this in a cleaner way, i. e. not in this section, not using frontend
         
         frontend.closeSignal.connect(self.stop)
@@ -234,7 +273,13 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
 
-    app = QtGui.QApplication([])
+    app = QtGui.QApplication.instance()
+    if app is None:
+        app = QtGui.QApplication(sys.argv)
+    else:
+        print('QApplication instance already exists: %s' % str(app))
+        
+    #app = QtGui.QApplication([])
     app.setStyle(QtGui.QStyleFactory.create('fusion'))
 #    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
@@ -263,6 +308,8 @@ if __name__ == '__main__':
 #    worker.minfluxWorker.emit_param_to_frontend()
     
     gui.psfWidget.emit_param()
+    
+    gui.chechuWidget.emit_param()
     
 #    # GUI thread
 #    

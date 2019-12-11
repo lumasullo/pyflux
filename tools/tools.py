@@ -386,4 +386,15 @@ def cov_ellipse(cov, q=None, nsig=None, **kwargs):
     w, h = 2 * np.sqrt(val[:, None] * r2)
     theta = np.degrees(np.arctan2(*vec[::, 0]))
     return w, h, theta
-    
+
+def toggle_shutter(adwBoard, num, val):
+    num = num - 1
+    adwBoard.Set_Par(53, num)
+    if val is True:
+        adwBoard.Set_Par(52, 1)
+        adwBoard.Start_Process(7)
+        #print('Shutter', str(num+1), 'opened')
+    if val is False:
+        adwBoard.Set_Par(52, 0)
+        adwBoard.Start_Process(7)
+        #print('Shutter', str(num+1), 'closed')    

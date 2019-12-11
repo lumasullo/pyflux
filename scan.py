@@ -9,6 +9,7 @@ import numpy as np
 import time
 from datetime import date, datetime
 import os
+import sys
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import tools.tools as tools
@@ -46,6 +47,7 @@ def setupDevice(adw):
     PROCESS_4 = "actuator_xy.TB4"
     PROCESS_5 = "shutter.TB5"
     PROCESS_6 = "trace.TB6"
+    PROCESS_7 = "sixshutters.TB7"
     
     btl = adw.ADwindir + BTL
     adw.Boot(btl)
@@ -59,6 +61,7 @@ def setupDevice(adw):
     process_4 = os.path.join(process_folder, PROCESS_4)
     process_5 = os.path.join(process_folder, PROCESS_5)
     process_6 = os.path.join(process_folder, PROCESS_6)
+    process_7 = os.path.join(process_folder, PROCESS_7)
     
     adw.Load_Process(process_1)
     adw.Load_Process(process_2)
@@ -66,6 +69,7 @@ def setupDevice(adw):
     adw.Load_Process(process_4)
     adw.Load_Process(process_5)
     adw.Load_Process(process_6)
+    adw.Load_Process(process_7)
     
     
 class Frontend(QtGui.QFrame):
@@ -535,7 +539,7 @@ class Frontend(QtGui.QFrame):
       
         # Shutter button
         
-        self.shutterButton = QtGui.QPushButton('Shutter open/close')
+        self.shutterButton = QtGui.QPushButton('Shutters open/close')
         self.shutterButton.setCheckable(True)
         
         # Flipper button
@@ -885,8 +889,8 @@ class Frontend(QtGui.QFrame):
     def closeEvent(self, *args, **kwargs):
 
         # Emit close signal
-
         self.closeSignal.emit()
+        app.quit()
         
         
       
@@ -895,6 +899,7 @@ class Backend(QtCore.QObject):
     paramSignal = pyqtSignal(dict)
     imageSignal = pyqtSignal(np.ndarray)
     frameIsDone = pyqtSignal(bool, np.ndarray) 
+    frameIsDoneChechu = pyqtSignal(bool, np.ndarray, np.ndarray) 
     ROIcenterSignal = pyqtSignal(np.ndarray)
     realPositionSignal = pyqtSignal(np.ndarray)
     auxFitSignal = pyqtSignal()
@@ -1470,6 +1475,22 @@ class Backend(QtCore.QObject):
         
         self.liveview(lvbool, mode)
         
+    @pyqtSlot(bool, str, float)
+    def get_scan_signal_chechu(self, lvbool, mode, target_z):
+    
+        """
+        Connection: [psf] scanSignal
+        Description: get drift-corrected initial position, calculates the
+        derived parameters (and updates ADwin data)
+        """
+        
+#        print('[scan] target_z', target_z, type(target_z))
+        
+        self.initialPos[2] = target_z
+        self.calculate_derived_param()
+        
+        self.liveview(lvbool, mode)
+        
     def line_acquisition(self):
         
         self.adw.Start_Process(1)
@@ -1501,7 +1522,7 @@ class Backend(QtCore.QObject):
     def liveview_start(self):
         
 #        self.plot_scan()
-
+        
         if self.scantype == 'xy':
 
             self.moveTo(self.x_i, self.y_i, self.z_i)
@@ -1523,7 +1544,7 @@ class Backend(QtCore.QObject):
         self.viewtimer.stop()
 
     def update_view(self):
-      
+             
         if self.i < self.NofPixels:
 
             if self.scantype == 'xy':
@@ -1616,31 +1637,45 @@ class Backend(QtCore.QObject):
                 self.liveview_stop()
                 self.frameIsDone.emit(True, self.image)
                 
+            if self.acquisitionMode == 'chechu':
+                
+                self.liveview_stop()
+                self.frameIsDoneChechu.emit(True, self.imageF_copy, self.imageB_copy)
+                
             self.update_device_param()  
+   
+#    #can be deleted after testing for two weeks (date 11.12.19)         
+#    @pyqtSlot(bool)
+#    def toggle_shutter(self, val):
+#        
+#        if val is True:
+#                        
+#            self.adw.Set_Par(55, 0)
+#            self.adw.Set_Par(50, 1)
+#            self.adw.Start_Process(5)
+#            
+#            print('[scan] Scan shutter opened')
+#            
+#        if val is False:
+#                        
+#            self.adw.Set_Par(55, 0)
+#            self.adw.Set_Par(50, 0)
+#            self.adw.Start_Process(5)
+#
+#            print('[scan] Scan shutter closed')
             
     @pyqtSlot(bool)
-    def toggle_shutter(self, val):
-        
+    def toggle_minflux_shutters(self, val):
         if val is True:
-            
-            self.shutter_state = True
-            
-            self.adw.Set_Par(55, 0)
-            self.adw.Set_Par(50, 1)
-            self.adw.Start_Process(5)
-            
-            print('[scan] Shutter opened')
+            for i in np.arange(1, 5):
+                tools.toggle_shutter(self.adw, int(i), True)
+            print(datetime.now(), '[scan] Minflux shutters opened')
             
         if val is False:
-            
-            self.shutter_state = False
-            
-            self.adw.Set_Par(55, 0)
-            self.adw.Set_Par(50, 0)
-            self.adw.Start_Process(5)
-
-            print('[scan] Shutter closed')
-            
+            for i in np.arange(1, 5):
+                tools.toggle_shutter(self.adw, int(i), False)
+            print(datetime.now(), '[scan] Minflux shutters closed')
+ 
     @pyqtSlot(bool)
     def toggle_flipper(self, val):
         
@@ -1649,20 +1684,18 @@ class Backend(QtCore.QObject):
             self.flipper_state = True
             
             self.adw.Set_Par(55, 1)
-#            self.adw.Set_Par(51, 0)
             self.adw.Start_Process(5)
             
-            print('[scan] Flipper up')
+            print('[scan] Flipper down')
             
         if val is False:
             
             self.flipper_state = False
             
             self.adw.Set_Par(55, 1)
-#            self.adw.Set_Par(51, 1)
             self.adw.Start_Process(5)
 
-            print('[scan] Flipper down')
+            print('[scan] Flipper up')
     
     @pyqtSlot(bool)        
     def toggle_FBav_scan(self, val):
@@ -1765,7 +1798,7 @@ class Backend(QtCore.QObject):
         self.auxFitSignal.connect(self.psf_fit_FandB_and_move)
         self.auxMoveSignal.connect(self.moveTo_roi_center)
         
-        frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
+        frontend.shutterButton.clicked.connect(lambda: self.toggle_minflux_shutters(frontend.shutterButton.isChecked()))
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
         frontend.FBavScanButton.clicked.connect(lambda: self.toggle_FBav_scan(frontend.FBavScanButton.isChecked()))
         
@@ -1778,7 +1811,7 @@ class Backend(QtCore.QObject):
           
     def stop(self):
         
-        self.toggle_shutter(False)
+        self.toggle_minflux_shutters(False)
         if self.flipper_state is True:
             self.toggle_flipper(False)
         self.liveview_stop()
@@ -1794,7 +1827,13 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
 
-    app = QtGui.QApplication([])
+    app = QtGui.QApplication.instance()
+    if app is None:
+        app = QtGui.QApplication(sys.argv)
+    else:
+        print('QApplication instance already exists: %s' % str(app))
+        
+    #app = QtGui.QApplication([])
     app.setStyle(QtGui.QStyleFactory.create('fusion'))
 #    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     

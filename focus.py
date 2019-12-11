@@ -389,8 +389,8 @@ class Frontend(QtGui.QFrame):
     def closeEvent(self, *args, **kwargs):
         
         self.closeSignal.emit()
-        
         super().closeEvent(*args, **kwargs)
+        app.quit()
         
         
 class Backend(QtCore.QObject):
@@ -507,9 +507,13 @@ class Backend(QtCore.QObject):
         self.camera.start_live_video(framerate='20 Hz')
 
         self.focusTimer.start(self.focusTime)
+        
+        self.toggle_ir_shutter(True)
 
     def liveview_stop(self):
         
+        self.toggle_ir_shutter(False)
+
         self.focusTimer.stop()
         
         x0 = 0
@@ -519,6 +523,17 @@ class Backend(QtCore.QObject):
             
         val = np.array([x0, y0, x1, y1])
         self.camera._set_AOI(*val)
+                
+    @pyqtSlot(bool)
+    def toggle_ir_shutter(self, val):
+        if val is True:
+            tools.toggle_shutter(self.adw, 5, True)
+            print(datetime.now(), '[focus] IR shutter opened')
+            
+        if val is False:
+            tools.toggle_shutter(self.adw, 5, False)
+            print(datetime.now(), '[focus] IR shutter closed')
+    
         
     @pyqtSlot(bool)
     def toggle_feedback(self, val, mode='continous'):
@@ -938,6 +953,8 @@ class Backend(QtCore.QObject):
      
     @pyqtSlot()
     def stop(self):
+        
+        self.toggle_ir_shutter(False)
         
         self.focusTimer.stop()
         self.camera.close()

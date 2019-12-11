@@ -152,7 +152,7 @@ class Frontend(QtGui.QFrame):
         
         # Shutter button
         
-        self.shutterButton = QtGui.QPushButton('Shutter open/close')
+        self.shutterButton = QtGui.QPushButton('Shutters open/close')
         self.shutterButton.setCheckable(True)
         
         # Prepare button
@@ -290,7 +290,6 @@ class Backend(QtCore.QObject):
           
         self.ph = ph_device 
         self.adw = adwin
-        self.shutter_state = False
         
     def measure_count_rate(self):
         
@@ -366,6 +365,27 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[tcspc] preparing the PH measurement took {} s'.format(t1-t0))
         
+    @pyqtSlot(str, int, int)
+    def prepare_chechu(self, fname, acqtime, n):
+        
+        print(datetime.now(), ' [tcspc] preparing chechu measurement')
+        
+        t0 = time.time()
+        
+        self.currentfname = tools.getUniqueName(fname)
+                        
+        self.prepare_ph()
+        
+        self.ph.tacq = acqtime * n * 1000 # TO DO: correspond to GUI !!!
+        
+        print(' [tcspc] self.ph.tacq', self.ph.tacq)
+        
+        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
+                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+   
+        t1 = time.time()
+        
+        print(datetime.now(), '[tcspc] preparing the PH measurement took {} s'.format(t1-t0))
         
     @pyqtSlot()
     def measure_minflux(self):
@@ -380,11 +400,25 @@ class Backend(QtCore.QObject):
         self.tcspcDoneSignal.emit()
         self.export_data()
         
+    @pyqtSlot()
+    def measure_chechu(self):
+
+        self.ph.startTTTR(self.currentfname)
+        
+        print(datetime.now(), '[tcspc] chechu measurement started')
+                
+        while self.ph.measure_state != 'done':
+            pass
+        
+#        self.tcspcDoneSignal.emit()
+        self.export_data()
+        
     def stop_measure(self):
         
-        # TO DO: make this function
+        # TO DO: make this function, not so easy because the while loop in the driver
+        # HINT: maybe use a timer loop to be able to access variables within the loop
         
-        print(datetime.now(), '[tcspc] stop measure function')
+        print(datetime.now(), '[tcspc] stop measure function (empty)')
 
     def export_data(self):
         
@@ -432,29 +466,42 @@ class Backend(QtCore.QObject):
         self.resolution = paramlist[1]
         self.tacq = paramlist[2]
         self.folder = paramlist[3]      
-        
+
+# delete after test period        
+#    @pyqtSlot(bool)
+#    def toggle_shutter(self, val):
+#        
+#        if val is True:
+#            
+#            self.shutter_state = True
+#            
+#            self.adw.Set_Par(55, 0)
+#            self.adw.Set_Par(50, 1)
+#            self.adw.Start_Process(5)
+#            
+#            print(datetime.now(), '[tcspc] Shutter opened')
+#            
+#        if val is False:
+#            
+#            self.shutte_state = False
+#            
+#            self.adw.Set_Par(55, 0)
+#            self.adw.Set_Par(50, 0)
+#            self.adw.Start_Process(5)
+#
+#            print(datetime.now(), '[tcspc] Shutter closed')
+            
     @pyqtSlot(bool)
-    def toggle_shutter(self, val):
-        
+    def toggle_minflux_shutters(self, val):
         if val is True:
-            
-            self.shutter_state = True
-            
-            self.adw.Set_Par(55, 0)
-            self.adw.Set_Par(50, 1)
-            self.adw.Start_Process(5)
-            
-            print(datetime.now(), '[tcspc] Shutter opened')
+            for i in np.arange(1, 5):
+                tools.toggle_shutter(self.adw, int(i), True)
+            print(datetime.now(), '[tcspc] Minflux shutters opened')
             
         if val is False:
-            
-            self.shutte_state = False
-            
-            self.adw.Set_Par(55, 0)
-            self.adw.Set_Par(50, 0)
-            self.adw.Start_Process(5)
-
-            print(datetime.now(), '[tcspc] Shutter closed')
+            for i in np.arange(1, 5):
+                tools.toggle_shutter(self.adw, int(i), False)
+            print(datetime.now(), '[tcspc] Minflux shutters closed')
 
     def make_connection(self, frontend):
 
@@ -462,7 +509,7 @@ class Backend(QtCore.QObject):
         frontend.measureSignal.connect(self.measure)
         frontend.prepareButton.clicked.connect(self.prepare_ph)
         frontend.stopButton.clicked.connect(self.stop_measure)
-        frontend.shutterButton.clicked.connect(lambda: self.toggle_shutter(frontend.shutterButton.isChecked()))
+        frontend.shutterButton.clicked.connect(lambda: self.toggle_minflux_shutters(frontend.shutterButton.isChecked()))
 
         frontend.emit_param() # TO DO: change such that backend has parameters defined from the start
 

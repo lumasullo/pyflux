@@ -412,8 +412,8 @@ class Frontend(QtGui.QFrame):
     def closeEvent(self, *args, **kwargs):
         
         self.closeSignal.emit()
-        
         super().closeEvent(*args, **kwargs)
+        app.quit()
         
 class Backend(QtCore.QObject):
     
@@ -534,7 +534,17 @@ class Backend(QtCore.QObject):
         self.andor.current_camera = self.andor.camera_handle(cam)
         self.andor.lib.Initialize()
         print(datetime.now(), '[xy_tracking] idn:', self.andor.idn)
-    
+
+    @pyqtSlot(bool)
+    def toggle_tracking_shutter(self, val):
+        if val is True:
+            tools.toggle_shutter(self.adw, 6, True)
+            print(datetime.now(), '[xy_tracking] Tracking shutter opened')
+            
+        if val is False:
+            tools.toggle_shutter(self.adw, 6, False)
+            print(datetime.now(), '[xy_tracking] Tracking shutter closed')
+            
     @pyqtSlot(bool)
     def liveview(self, value):
         
@@ -560,6 +570,8 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[xy_tracking] Temperature = {} °C'.format(self.andor.temperature))
         print(datetime.now(), '[xy_tracking] Andor temperature status:', self.andor.temperature_status)
 
+        self.toggle_tracking_shutter(True)
+        
         # Initial image
         
         self.andor.acquisition_mode = 'Run till abort'
@@ -584,6 +596,7 @@ class Backend(QtCore.QObject):
             
 #        self.andor.shutter(0, 2, 0, 0, 0)  # TO DO: implement toggle shutter
 
+        self.toggle_tracking_shutter(False)
                     
     def update(self):
         """ General update method """
@@ -1204,6 +1217,8 @@ class Backend(QtCore.QObject):
         z_0 = 0
 
         self.moveTo(x_0, y_0, z_0)
+        
+        self.toggle_tracking_shutter(False)
         
 
 if __name__ == '__main__':
