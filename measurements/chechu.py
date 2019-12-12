@@ -48,10 +48,11 @@ class Frontend(QtGui.QFrame):
                                 self.filenameEdit.text())
         
         params = dict()
-        params['label'] = self.doughnutLabel.text()
+#        params['label'] = self.doughnutLabel.text()
         params['nframes'] = int(self.NframesEdit.text())
         params['filename'] = filename
         params['folder'] = self.folderEdit.text()
+        params['acqtime'] = int(self.tcspcTimeEdit.text())
         
         self.paramSignal.emit(params)
         
@@ -75,7 +76,7 @@ class Frontend(QtGui.QFrame):
         
     def setup_gui(self):
         
-        self.setWindowTitle('PSF measurement')
+        self.setWindowTitle('CHECHU measurement')
         
         self.resize(230, 250)
 
@@ -96,18 +97,20 @@ class Frontend(QtGui.QFrame):
         
         self.NframesLabel = QtGui.QLabel('Number of frames')
         self.NframesEdit = QtGui.QLineEdit('20')
-        self.doughnutLabel = QtGui.QLabel('Doughnut label')
-        self.doughnutEdit = QtGui.QLineEdit('Black, Blue, Yellow, Orange')
+        self.tcspcTimeLabel = QtGui.QLabel('tcspc acq time [s]')
+        self.tcspcTimeEdit = QtGui.QLineEdit('20')
+#        self.doughnutLabel = QtGui.QLabel('Doughnut label')
+#        self.doughnutEdit = QtGui.QLineEdit('Black, Blue, Yellow, Orange')
         self.filenameLabel = QtGui.QLabel('File name')
-        self.filenameEdit = QtGui.QLineEdit('psf')
+        self.filenameEdit = QtGui.QLineEdit('chechu')
         self.startButton = QtGui.QPushButton('Start')
         self.stopButton = QtGui.QPushButton('Stop')
         self.progressBar = QtGui.QProgressBar(self)
         
         subgrid.addWidget(self.NframesLabel, 0, 0)
         subgrid.addWidget(self.NframesEdit, 1, 0)
-        subgrid.addWidget(self.doughnutLabel, 2, 0)
-        subgrid.addWidget(self.doughnutEdit, 3, 0)
+        subgrid.addWidget(self.tcspcTimeLabel, 2, 0)
+        subgrid.addWidget(self.tcspcTimeEdit, 3, 0)
         subgrid.addWidget(self.filenameLabel, 4, 0)
         subgrid.addWidget(self.filenameEdit, 5, 0)
         subgrid.addWidget(self.progressBar, 6, 0)
@@ -157,7 +160,7 @@ class Frontend(QtGui.QFrame):
         # connections
         
         self.filenameEdit.textChanged.connect(self.emit_param)
-        self.doughnutEdit.textChanged.connect(self.emit_param)
+#        self.doughnutEdit.textChanged.connect(self.emit_param)
         self.NframesEdit.textChanged.connect(self.emit_param)
         self.browseFolderButton.clicked.connect(self.load_folder)
 
@@ -176,8 +179,11 @@ class Backend(QtCore.QObject):
     
     endSignal = pyqtSignal(str)
     
-    scanSignal = pyqtSignal(bool, str, np.ndarray)
+#    scanSignal = pyqtSignal(bool, str, np.ndarray)
+    scanSignal = pyqtSignal(bool, str, float)
     moveToInitialSignal = pyqtSignal()
+    tcspcPrepareSignal = pyqtSignal(str, int, int)
+    tcspcStartSignal = pyqtSignal()
 
     progressSignal = pyqtSignal(float)
     
@@ -191,8 +197,9 @@ class Backend(QtCore.QObject):
         super().__init__(*args, **kwargs)
         
         self.i = 0
+        self.n = 1
         
-        self.xyIsDone = False
+#        self.xyIsDone = False
         self.zIsDone = False
         self.scanIsDone = False
         
@@ -201,18 +208,25 @@ class Backend(QtCore.QObject):
 
     def start(self):
         
+        name = tools.getUniqueName(self.filename)
+        self.timefile = open(name + '_ref_time_scan', "w+")
+        
+        self.tcspcPrepareSignal.emit(self.filename, self.tcspcTime, self.n)
+        self.tcspcStartSignal.emit()
+
         self.i = 0
         
-        print(datetime.now(), '[psf] measurement started')
+        print(datetime.now(), '[chechu] measurement started')
     
-        self.xyStopSignal.emit()
+#        self.xyStopSignal.emit()
         self.zStopSignal.emit()
         
         self.moveToInitialSignal.emit()
         
-        self.data = np.zeros((self.nFrames, self.nPixels, self.nPixels))
-        print(datetime.now(), '[psf] data shape is', np.shape(self.data))
-        self.xy_flag = True
+        self.dataF = np.zeros((self.nFrames, self.nPixels, self.nPixels))
+        self.dataB = np.zeros((self.nFrames, self.nPixels, self.nPixels))
+        print(datetime.now(), '[chechu] data shape is', np.shape(self.dataF))
+#        self.xy_flag = True
         self.z_flag = True
         self.scan_flag = True
     
@@ -225,10 +239,11 @@ class Backend(QtCore.QObject):
         
         self.endSignal.emit(self.filename)
         
-        self.xyStopSignal.emit()
+#        self.xyStopSignal.emit()
         self.zStopSignal.emit()
         
-        print(datetime.now(), '[psf] measurement ended')
+        print(datetime.now(), '[chechu] measurement ended')
+        self.timefile.close()
         
         self.export_data()
         
@@ -239,63 +254,66 @@ class Backend(QtCore.QObject):
         else:
             initial = False
                 
-        if self.xy_flag:
+#        if self.xy_flag:
+#            
+#            self.xySignal.emit(True, initial)
+#            self.xy_flag = False
+#            
+#            if DEBUG:
+#                print(datetime.now(), '[chechu] xy signal emitted ({})'.format(self.i))
             
-            self.xySignal.emit(True, initial)
-            self.xy_flag = False
+#        if self.xyIsDone:
+            
+        if self.z_flag:
+        
+            self.zSignal.emit(True, initial)
+            self.z_flag = False
             
             if DEBUG:
-                print(datetime.now(), '[psf] xy signal emitted ({})'.format(self.i))
-            
-        if self.xyIsDone:
-            
-            if self.z_flag:
-            
-                self.zSignal.emit(True, initial)
-                self.z_flag = False
+                print(datetime.now(), '[chechu] z signal emitted ({})'.format(self.i))
+
+        if self.zIsDone:
+
+            if self.scan_flag:
+                    
+#                initialPos = np.array([self.target_x, self.target_y, 
+#                                       self.target_z], dtype=np.float64)
+                
+                self.timefile.write(str(datetime.now()) + ' ' + str(self.i) + '\n')
+                self.timefile.write(str(time.time()) + ' ' + str(self.i) +  '\n')
+                self.scanSignal.emit(True, 'chechu', self.target_z)
+                self.scan_flag = False
                 
                 if DEBUG:
-                    print(datetime.now(), '[psf] z signal emitted ({})'.format(self.i))
-
-            if self.zIsDone:
-    
-                if self.scan_flag:
-                        
-                    initialPos = np.array([self.target_x, self.target_y, 
-                                           self.target_z], dtype=np.float64)
-    
-                    self.scanSignal.emit(True, 'frame', initialPos)
-                    self.scan_flag = False
-                    
-                    if DEBUG:
-                        print(datetime.now(), 
-                              '[psf] scan signal emitted ({})'.format(self.i))
-                        
-                if self.scanIsDone:
-                    
-                    completed = ((self.i+1)/self.nFrames) * 100
-                    self.progressSignal.emit(completed)
-                                    
-                    self.xy_flag = True
-                    self.z_flag = True
-                    self.scan_flag = True
-                    self.xyIsDone = False
-                    self.zIsDone = False
-                    self.scanIsDone = False
-                    
-                    self.data[self.i, :, :] = self.currentFrame
-                    
                     print(datetime.now(), 
-                          '[psf] PSF {} of {}'.format(self.i+1, 
-                                                      self.nFrames))
-                                        
-                    if self.i < self.nFrames-1:
+                          '[chechu] scan signal emitted ({})'.format(self.i))
                     
-                        self.i += 1
+            if self.scanIsDone:
+                
+                completed = ((self.i+1)/self.nFrames) * 100
+                self.progressSignal.emit(completed)
+                                
+#                self.xy_flag = True
+                self.z_flag = True
+                self.scan_flag = True
+#                self.xyIsDone = False
+                self.zIsDone = False
+                self.scanIsDone = False
+                
+                self.dataF[self.i, :, :] = self.currentFrameF
+                self.dataB[self.i, :, :] = self.currentFrameB
+                
+                print(datetime.now(), 
+                      '[chechu] frame {} of {}'.format(self.i+1, 
+                                                       self.nFrames))
+                                    
+                if self.i < self.nFrames-1:
+                
+                    self.i += 1
+                
+                else:
                     
-                    else:
-                        
-                        self.stop()
+                    self.stop()
                     
     def export_data(self):
     
@@ -309,30 +327,34 @@ class Backend(QtCore.QObject):
 
         np.savetxt(filename + '.txt', [])
         
-        self.data = np.array(self.data, dtype=np.float32)
-        tifffile.imsave(filename + '.tiff', self.data)
+        self.dataF = np.array(self.dataF, dtype=np.float32)
+        tifffile.imsave(filename + 'F.tiff', self.dataF)
+        
+        self.dataB = np.array(self.dataB, dtype=np.float32)
+        tifffile.imsave(filename + 'B.tiff', self.dataB)
     
     @pyqtSlot(dict)
     def get_frontend_param(self, params):
         
-        self.label = params['label']
+#        self.label = params['label']
         self.nFrames = params['nframes']
+        self.tcspcTime = params['acqtime']
         
         today = str(date.today()).replace('-', '')
         self.filename = tools.getUniqueName(params['filename'] + '_' + today)
         
-        print(datetime.now(), '[psf] file name', self.filename)
+        print(datetime.now(), '[chechu] file name', self.filename)
                 
-    @pyqtSlot(bool, float, float) 
-    def get_xy_is_done(self, val, x, y):
-        
-        """
-        Connection: [xy_tracking] xyIsDone
-        
-        """
-        self.xyIsDone = True
-        self.target_x = x
-        self.target_y = y
+#    @pyqtSlot(bool, float, float) 
+#    def get_xy_is_done(self, val, x, y):
+#        
+#        """
+#        Connection: [xy_tracking] xyIsDone
+#        
+#        """
+#        self.xyIsDone = True
+#        self.target_x = x
+#        self.target_y = y
         
     @pyqtSlot(bool, float) 
     def get_z_is_done(self, val, z):
@@ -345,8 +367,8 @@ class Backend(QtCore.QObject):
         self.zIsDone = True     
         self.target_z = z
         
-    @pyqtSlot(bool, np.ndarray) 
-    def get_scan_is_done(self, val, image):
+    @pyqtSlot(bool, np.ndarray, np.ndarray) 
+    def get_scan_is_done(self, val, imageF, imageB):
         
         """
         Connection: [scan] scanIsDone
@@ -354,7 +376,8 @@ class Backend(QtCore.QObject):
         """
         
         self.scanIsDone = True
-        self.currentFrame = image
+        self.currentFrameF = imageF
+        self.currentFrameB = imageB
                
     @pyqtSlot(dict) 
     def get_scan_parameters(self, params):

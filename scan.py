@@ -119,7 +119,7 @@ class Frontend(QtGui.QFrame):
         self.zStepEdit.textChanged.connect(self.emit_param)
         self.moveToEdit.textChanged.connect(self.emit_param)
         self.powerEdit.textChanged.connect(self.emit_param)
-        
+                
     def emit_param(self):
         
         params = dict()
@@ -480,6 +480,26 @@ class Frontend(QtGui.QFrame):
     
         self.showEBPButton.setChecked(False)
         
+    def update_shutters(self):
+        if self.shutterButton.isChecked():
+            if self.shutter1Checkbox.isChecked() == False:
+                self.shutter1Checkbox.setChecked(True)
+            if self.shutter2Checkbox.isChecked() == False:
+                self.shutter2Checkbox.setChecked(True)
+            if self.shutter3Checkbox.isChecked() == False:
+                self.shutter3Checkbox.setChecked(True)
+            if self.shutter4Checkbox.isChecked() == False:
+                self.shutter4Checkbox.setChecked(True)    
+        else:
+            if self.shutter1Checkbox.isChecked():
+                self.shutter1Checkbox.setChecked(False)
+            if self.shutter2Checkbox.isChecked():
+                self.shutter2Checkbox.setChecked(False)
+            if self.shutter3Checkbox.isChecked():
+                self.shutter3Checkbox.setChecked(False)
+            if self.shutter4Checkbox.isChecked():
+                self.shutter4Checkbox.setChecked(False)
+                            
     def setup_gui(self):
                 
         # image widget set-up and layout
@@ -541,6 +561,7 @@ class Frontend(QtGui.QFrame):
         
         self.shutterButton = QtGui.QPushButton('Shutters open/close')
         self.shutterButton.setCheckable(True)
+        self.shutterButton.clicked.connect(self.update_shutters)
         
         # Flipper button
         
@@ -623,6 +644,13 @@ class Frontend(QtGui.QFrame):
         self.waitingTimeEdit = QtGui.QLineEdit('0')
         
         self.toggle_advanced()
+        
+        #Shutters
+        self.shutterLabel = QtGui.QLabel('Minflux shutter open?')
+        self.shutter1Checkbox = QtGui.QCheckBox('Shutter 1')
+        self.shutter2Checkbox = QtGui.QCheckBox('Shutter 2')
+        self.shutter3Checkbox = QtGui.QCheckBox('Shutter 3')
+        self.shutter4Checkbox = QtGui.QCheckBox('Shutter 4')
 
         # file/folder widget
         
@@ -809,6 +837,12 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.waitingTimeEdit, 15, 0)
         subgrid.addWidget(self.preview_scanButton, 16, 0)
         
+        subgrid.addWidget(self.shutterLabel, 14, 0)
+        subgrid.addWidget(self.shutter1Checkbox, 15, 0)
+        subgrid.addWidget(self.shutter2Checkbox, 16, 0)
+        subgrid.addWidget(self.shutter3Checkbox, 17, 0)
+        subgrid.addWidget(self.shutter4Checkbox, 18, 0)
+        
         self.paramWidget.setFixedHeight(370)
         self.paramWidget.setFixedWidth(300)
         
@@ -934,6 +968,7 @@ class Backend(QtCore.QObject):
         self.saveScanData = False
         self.feedback_active = False
         self.flipper_state = False
+        
 
         # full_scan: True --> full scan including aux parts
         # full_scan: False --> forward part of the scan
@@ -1644,25 +1679,18 @@ class Backend(QtCore.QObject):
                 
             self.update_device_param()  
    
-#    #can be deleted after testing for two weeks (date 11.12.19)         
-#    @pyqtSlot(bool)
-#    def toggle_shutter(self, val):
-#        
-#        if val is True:
-#                        
-#            self.adw.Set_Par(55, 0)
-#            self.adw.Set_Par(50, 1)
-#            self.adw.Start_Process(5)
-#            
-#            print('[scan] Scan shutter opened')
-#            
-#        if val is False:
-#                        
-#            self.adw.Set_Par(55, 0)
-#            self.adw.Set_Par(50, 0)
-#            self.adw.Start_Process(5)
-#
-#            print('[scan] Scan shutter closed')
+    @pyqtSlot(int, bool)
+    def control_shutters(self, num, val):
+        
+        if val is True:
+                        
+            tools.toggle_shutter(self.adw, num, True)
+            print(datetime.now(), '[scan] Shutter ' + str(num) + ' opened')
+            
+        if val is False:
+                        
+            tools.toggle_shutter(self.adw, num, False)
+            print(datetime.now(), '[scan] Shutter ' + str(num) + ' closed')
             
     @pyqtSlot(bool)
     def toggle_minflux_shutters(self, val):
@@ -1798,7 +1826,11 @@ class Backend(QtCore.QObject):
         self.auxFitSignal.connect(self.psf_fit_FandB_and_move)
         self.auxMoveSignal.connect(self.moveTo_roi_center)
         
-        frontend.shutterButton.clicked.connect(lambda: self.toggle_minflux_shutters(frontend.shutterButton.isChecked()))
+        frontend.shutter1Checkbox.stateChanged.connect(lambda: self.control_shutters(1, frontend.shutter1Checkbox.isChecked()))
+        frontend.shutter2Checkbox.stateChanged.connect(lambda: self.control_shutters(2, frontend.shutter2Checkbox.isChecked()))
+        frontend.shutter3Checkbox.stateChanged.connect(lambda: self.control_shutters(3, frontend.shutter3Checkbox.isChecked()))
+        frontend.shutter4Checkbox.stateChanged.connect(lambda: self.control_shutters(4, frontend.shutter4Checkbox.isChecked()))
+
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
         frontend.FBavScanButton.clicked.connect(lambda: self.toggle_FBav_scan(frontend.FBavScanButton.isChecked()))
         

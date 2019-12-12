@@ -284,6 +284,10 @@ class Frontend(QtGui.QFrame):
         
         self.feedbackLoopBox = QtGui.QCheckBox('Feedback loop')
         
+        #shutter button and label
+        self.shutterLabel = QtGui.QLabel('Shutter open?')
+        self.shutterCheckbox = QtGui.QCheckBox('IR laser')
+        
         # ROI button
 
         self.ROIbutton = QtGui.QPushButton('ROI')
@@ -380,6 +384,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.liveviewButton, 1, 0)
         subgrid.addWidget(self.ROIbutton, 2, 0)
         subgrid.addWidget(self.selectROIbutton, 3, 0)
+        
+        subgrid.addWidget(self.shutterLabel, 11, 0)
+        subgrid.addWidget(self.shutterCheckbox, 12, 0)
         
         grid.addWidget(self.paramWidget, 0, 0)
         grid.addWidget(self.focusGraph, 0, 1)
@@ -508,12 +515,8 @@ class Backend(QtCore.QObject):
 
         self.focusTimer.start(self.focusTime)
         
-        self.toggle_ir_shutter(True)
-
     def liveview_stop(self):
         
-        self.toggle_ir_shutter(False)
-
         self.focusTimer.stop()
         
         x0 = 0
@@ -926,6 +929,8 @@ class Backend(QtCore.QObject):
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.calibrationButton.clicked.connect(self.calibrate)
+        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_ir_shutter(frontend.shutterCheckbox.isChecked()))
+
         
         frontend.paramSignal.connect(self.get_frontend_param)
         

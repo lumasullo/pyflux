@@ -238,6 +238,10 @@ class Backend(QtCore.QObject):
             initial = True
         else:
             initial = False
+            
+        ####
+        # check for the four possible shutters
+        ####
                 
         if self.xy_flag:
             

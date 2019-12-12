@@ -186,14 +186,17 @@ class PicoHarp300(LibraryDriver):
                
     def startTTTR(self, outputfilename):
         
-        print(datetime.now(), ' [picoharp 300] TCSPC measurement started')
-        
-
-        
         outputfile = open(outputfilename, "wb+") 
         progress = 0
        
         self.lib.PH_StartMeas(ctypes.c_int(DEV_NUM), ctypes.c_int(self.tacq))
+        print(datetime.now(), ' [picoharp 300] TCSPC measurement started')
+        
+        # save real time for correlating with confocal images for FLIM
+        f = open(outputfilename + '_ref_time_tcspc', "w+")
+        f.write(str(datetime.now()) + '\n')
+        f.write(str(time.time()) + '\n')
+        
         meas = True
         self.measure_state = 'measuring'
         
@@ -228,6 +231,12 @@ class PicoHarp300(LibraryDriver):
                     print("\nDone")
                     self.numRecords = progress
                     self.stopTTTR()
+                    
+                    # save real time for correlating with confocal images for FLIM
+                    f.write(str(datetime.now()) + '\n')
+                    f.write(str(time.time()) + '\n')
+                    f.close()
+                    
                     print('{} events recorded'.format(self.numRecords))
                     meas = False
                     self.measure_state = 'done'

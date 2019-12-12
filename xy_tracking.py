@@ -390,6 +390,10 @@ class Frontend(QtGui.QFrame):
         
         self.clearDataButton = QtGui.QPushButton('Clear data')
         
+        #shutter button and label
+        self.shutterLabel = QtGui.QLabel('Shutter open?')
+        self.shutterCheckbox = QtGui.QCheckBox('473 nm laser')
+        
         # buttons and param layout
         
         subgrid = QtGui.QGridLayout()
@@ -404,6 +408,8 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.trackingBeadsBox, 1, 1)
         subgrid.addWidget(self.feedbackLoopBox, 2, 1)
         subgrid.addWidget(self.saveDataBox, 3, 1)
+        subgrid.addWidget(self.shutterLabel, 7, 0)
+        subgrid.addWidget(self.shutterCheckbox, 7, 1)
         
         grid.addWidget(self.xyGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1)
@@ -569,8 +575,6 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[xy_tracking] Temperature = {} °C'.format(self.andor.temperature))
         print(datetime.now(), '[xy_tracking] Andor temperature status:', self.andor.temperature_status)
-
-        self.toggle_tracking_shutter(True)
         
         # Initial image
         
@@ -595,8 +599,6 @@ class Backend(QtCore.QObject):
         self.andor.abort_acquisition()
             
 #        self.andor.shutter(0, 2, 0, 0, 0)  # TO DO: implement toggle shutter
-
-        self.toggle_tracking_shutter(False)
                     
     def update(self):
         """ General update method """
@@ -1185,6 +1187,8 @@ class Backend(QtCore.QObject):
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
         frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
+        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_tracking_shutter(frontend.shutterCheckbox.isChecked()))
+
 #        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         
         # TO DO: clean-up checkbox create continous and discrete feedback loop
