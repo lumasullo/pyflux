@@ -25,7 +25,6 @@ import drivers.picoharp as picoharp
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from tkinter import Tk, filedialog
 
-import drivers
 import drivers.ADwin as ADwin
 
 import focus
@@ -202,6 +201,9 @@ class Backend(QtCore.QObject):
         
         self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_move_signal)
         
+        self.minfluxWorker.shutterSignal.connect(self.scanWorker.shutter_handler)
+        self.minfluxWorker.shutterSignal.connect(self.xyWorker.toggle_tracking_shutter)
+        
         self.tcspcWorker.tcspcDoneSignal.connect(self.minfluxWorker.get_tcspc_done_signal)
         
         self.minfluxWorker.xyzEndSignal.connect(self.xyWorker.get_end_measurement_signal)
@@ -215,13 +217,16 @@ class Backend(QtCore.QObject):
         self.psfWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
         self.psfWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
         self.psfWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
-        
+        self.psfWorker.shutterSignal.connect(self.scanWorker.shutter_handler)
+                
         self.psfWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
         self.psfWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
         
         self.scanWorker.frameIsDone.connect(self.psfWorker.get_scan_is_done)
         self.xyWorker.xyIsDone.connect(self.psfWorker.get_xy_is_done)
         self.zWorker.zIsDone.connect(self.psfWorker.get_z_is_done)
+        
+        
         
     def setup_chechu_connections(self):
         

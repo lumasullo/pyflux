@@ -479,27 +479,58 @@ class Frontend(QtGui.QFrame):
             self.EBPshown = True
     
         self.showEBPButton.setChecked(False)
+    
+    @pyqtSlot(int, bool)    
+    def update_shutters(self, num, on):
         
-    def update_shutters(self):
-        if self.shutterButton.isChecked():
-            if self.shutter1Checkbox.isChecked() == False:
-                self.shutter1Checkbox.setChecked(True)
-            if self.shutter2Checkbox.isChecked() == False:
-                self.shutter2Checkbox.setChecked(True)
-            if self.shutter3Checkbox.isChecked() == False:
-                self.shutter3Checkbox.setChecked(True)
-            if self.shutter4Checkbox.isChecked() == False:
-                self.shutter4Checkbox.setChecked(True)    
-        else:
-            if self.shutter1Checkbox.isChecked():
-                self.shutter1Checkbox.setChecked(False)
-            if self.shutter2Checkbox.isChecked():
-                self.shutter2Checkbox.setChecked(False)
-            if self.shutter3Checkbox.isChecked():
-                self.shutter3Checkbox.setChecked(False)
-            if self.shutter4Checkbox.isChecked():
-                self.shutter4Checkbox.setChecked(False)
-                            
+        '''
+        setting of num-value:
+            0 - signal send by scan-gui-button --> change state of all minflux shutters
+            1...6 - shutter 1-6 will be set according to on-variable, i.e. either true or false; only 1-4 controlled from here
+            7 - set all minflux shutters according to on-variable
+            tbd: 8 - set all shutters according to on-variable
+        '''
+        
+        if num == 0:
+            if self.shutterButton.isChecked():
+                if self.shutter1Checkbox.isChecked() == False:
+                    self.shutter1Checkbox.setChecked(True)
+                if self.shutter2Checkbox.isChecked() == False:
+                    self.shutter2Checkbox.setChecked(True)
+                if self.shutter3Checkbox.isChecked() == False:
+                    self.shutter3Checkbox.setChecked(True)
+                if self.shutter4Checkbox.isChecked() == False:
+                    self.shutter4Checkbox.setChecked(True)    
+            else:
+                if self.shutter1Checkbox.isChecked():
+                    self.shutter1Checkbox.setChecked(False)
+                if self.shutter2Checkbox.isChecked():
+                    self.shutter2Checkbox.setChecked(False)
+                if self.shutter3Checkbox.isChecked():
+                    self.shutter3Checkbox.setChecked(False)
+                if self.shutter4Checkbox.isChecked():
+                    self.shutter4Checkbox.setChecked(False)
+        
+        if num == 1:
+            self.shutter1Checkbox.setChecked(on)
+        
+        if num == 2:
+            self.shutter2Checkbox.setChecked(on)
+                
+        if num == 3:
+            self.shutter3Checkbox.setChecked(on)
+                
+        if num == 4:
+            self.shutter4Checkbox.setChecked(on)
+                
+        if (num == 7) or (num == 8):
+            if self.shutterButton.isChecked():
+                self.shutterButton.setChecked(False)
+            self.shutter1Checkbox.setChecked(on)
+            self.shutter2Checkbox.setChecked(on)
+            self.shutter3Checkbox.setChecked(on)
+            self.shutter4Checkbox.setChecked(on)
+            
     def setup_gui(self):
                 
         # image widget set-up and layout
@@ -556,12 +587,19 @@ class Frontend(QtGui.QFrame):
 
         self.select_ROIButton = QtGui.QPushButton('select ROI')
         self.select_ROIButton.clicked.connect(self.select_ROI)
+        
+        #Shutters
+        self.shutterLabel = QtGui.QLabel('Minflux shutter open?')
+        self.shutter1Checkbox = QtGui.QCheckBox('Shutter 1')
+        self.shutter2Checkbox = QtGui.QCheckBox('Shutter 2')
+        self.shutter3Checkbox = QtGui.QCheckBox('Shutter 3')
+        self.shutter4Checkbox = QtGui.QCheckBox('Shutter 4')
       
         # Shutter button
         
         self.shutterButton = QtGui.QPushButton('Shutters open/close')
         self.shutterButton.setCheckable(True)
-        self.shutterButton.clicked.connect(self.update_shutters)
+        self.shutterButton.clicked.connect(lambda: self.update_shutters(0, True))
         
         # Flipper button
         
@@ -644,13 +682,7 @@ class Frontend(QtGui.QFrame):
         self.waitingTimeEdit = QtGui.QLineEdit('0')
         
         self.toggle_advanced()
-        
-        #Shutters
-        self.shutterLabel = QtGui.QLabel('Minflux shutter open?')
-        self.shutter1Checkbox = QtGui.QCheckBox('Shutter 1')
-        self.shutter2Checkbox = QtGui.QCheckBox('Shutter 2')
-        self.shutter3Checkbox = QtGui.QCheckBox('Shutter 3')
-        self.shutter4Checkbox = QtGui.QCheckBox('Shutter 4')
+    
 
         # file/folder widget
         
@@ -919,6 +951,7 @@ class Frontend(QtGui.QFrame):
         backend.paramSignal.connect(self.get_backend_param)
         backend.imageSignal.connect(self.get_image)
         backend.realPositionSignal.connect(self.get_real_position)
+        backend.shuttermodeSignal.connect(self.update_shutters)
         
     def closeEvent(self, *args, **kwargs):
 
@@ -938,6 +971,7 @@ class Backend(QtCore.QObject):
     realPositionSignal = pyqtSignal(np.ndarray)
     auxFitSignal = pyqtSignal()
     auxMoveSignal = pyqtSignal()
+    shuttermodeSignal = pyqtSignal(int, bool)
     
     """
     Signals
@@ -1703,7 +1737,11 @@ class Backend(QtCore.QObject):
             for i in np.arange(1, 5):
                 tools.toggle_shutter(self.adw, int(i), False)
             print(datetime.now(), '[scan] Minflux shutters closed')
- 
+            
+    @pyqtSlot(int, bool)
+    def shutter_handler(self, num, on):
+        self.shuttermodeSignal.emit(num, on)
+        
     @pyqtSlot(bool)
     def toggle_flipper(self, val):
         

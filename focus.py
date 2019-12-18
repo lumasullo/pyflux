@@ -527,16 +527,17 @@ class Backend(QtCore.QObject):
         val = np.array([x0, y0, x1, y1])
         self.camera._set_AOI(*val)
                 
-    @pyqtSlot(bool)
-    def toggle_ir_shutter(self, val):
-        if val is True:
-            tools.toggle_shutter(self.adw, 5, True)
-            print(datetime.now(), '[focus] IR shutter opened')
-            
-        if val is False:
-            tools.toggle_shutter(self.adw, 5, False)
-            print(datetime.now(), '[focus] IR shutter closed')
-    
+    @pyqtSlot(int, bool)
+    def toggle_ir_shutter(self, num, val):
+        
+        #TODO: change code to also update checkboxes in case of minflux measurement
+        if num == 8:
+            if val:
+                tools.toggle_shutter(self.adw, 5, True)
+                print(datetime.now(), '[focus] IR shutter opened')
+            else:
+                tools.toggle_shutter(self.adw, 5, False)
+                print(datetime.now(), '[focus] IR shutter closed')
         
     @pyqtSlot(bool)
     def toggle_feedback(self, val, mode='continous'):
@@ -929,7 +930,7 @@ class Backend(QtCore.QObject):
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.calibrationButton.clicked.connect(self.calibrate)
-        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_ir_shutter(frontend.shutterCheckbox.isChecked()))
+        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_ir_shutter(8, frontend.shutterCheckbox.isChecked()))
 
         
         frontend.paramSignal.connect(self.get_frontend_param)
@@ -959,7 +960,7 @@ class Backend(QtCore.QObject):
     @pyqtSlot()
     def stop(self):
         
-        self.toggle_ir_shutter(False)
+        self.toggle_ir_shutter(8, False)
         
         self.focusTimer.stop()
         self.camera.close()

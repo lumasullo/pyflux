@@ -541,15 +541,16 @@ class Backend(QtCore.QObject):
         self.andor.lib.Initialize()
         print(datetime.now(), '[xy_tracking] idn:', self.andor.idn)
 
-    @pyqtSlot(bool)
-    def toggle_tracking_shutter(self, val):
-        if val is True:
-            tools.toggle_shutter(self.adw, 6, True)
-            print(datetime.now(), '[xy_tracking] Tracking shutter opened')
-            
-        if val is False:
-            tools.toggle_shutter(self.adw, 6, False)
-            print(datetime.now(), '[xy_tracking] Tracking shutter closed')
+    @pyqtSlot(int, bool)
+    def toggle_tracking_shutter(self, num, val):
+        #TODO: change code to also update checkboxes in case of minflux measurement
+        if num == 8:
+            if val:
+                tools.toggle_shutter(self.adw, 6, True)
+                print(datetime.now(), '[xy_tracking] Tracking shutter opened')
+            else:
+                tools.toggle_shutter(self.adw, 6, False)
+                print(datetime.now(), '[xy_tracking] Tracking shutter closed')
             
     @pyqtSlot(bool)
     def liveview(self, value):
@@ -1187,7 +1188,7 @@ class Backend(QtCore.QObject):
         frontend.clearDataButton.clicked.connect(self.reset)
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
         frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
-        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_tracking_shutter(frontend.shutterCheckbox.isChecked()))
+        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_tracking_shutter(8, frontend.shutterCheckbox.isChecked()))
 
 #        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         
@@ -1222,7 +1223,7 @@ class Backend(QtCore.QObject):
 
         self.moveTo(x_0, y_0, z_0)
         
-        self.toggle_tracking_shutter(False)
+        self.toggle_tracking_shutter(8, False)
         
 
 if __name__ == '__main__':

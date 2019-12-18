@@ -206,6 +206,7 @@ class Backend(QtCore.QObject):
     moveToSignal = pyqtSignal(np.ndarray, np.ndarray)
     
     paramSignal = pyqtSignal(np.ndarray, np.ndarray, int)
+    shutterSignal = pyqtSignal(int, bool)
     
     def __init__(self, adwin, *args, **kwargs):
         
@@ -302,28 +303,29 @@ class Backend(QtCore.QObject):
     def start(self):
         
         self.i = 0
+        self.shutterSignal.emit(8, True)
         
-        if self.measType == 'Standard':
-            
-            print('[minflux] self.n, self.acqtime', self.n, self.acqtime)
-            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
-#            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
-#            time.sleep(phtime)
-            self.tcspcStartSignal.emit()
-            self.t0 = time.time()
-            
-        if self.measType == 'Predefined positions':
-            
-            print(datetime.now(), '[minflux] Predefined positions')
-            
-            self.update_param()
-            time.sleep(0.2)
-            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
-#            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
-#            time.sleep(phtime)
-            self.tcspcStartSignal.emit()
-            self.t0 = time.time()
-            self.measTimer.start(0)
+#        if self.measType == 'Standard':
+#            
+#            print('[minflux] self.n, self.acqtime', self.n, self.acqtime)
+#            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
+##            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
+##            time.sleep(phtime)
+#            self.tcspcStartSignal.emit()
+#            self.t0 = time.time()
+#            
+#        if self.measType == 'Predefined positions':
+#            
+#            print(datetime.now(), '[minflux] Predefined positions')
+#            
+#            self.update_param()
+#            time.sleep(0.2)
+#            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
+##            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
+##            time.sleep(phtime)
+#            self.tcspcStartSignal.emit()
+#            self.t0 = time.time()
+#            self.measTimer.start(0)
     
     def loop(self):
         
@@ -345,7 +347,8 @@ class Backend(QtCore.QObject):
                 
     def stop(self):
         
-        self.measTimer.stop()
+        self.shutterSignal.emit(8, False)
+        #self.measTimer.stop()
         
     @pyqtSlot()  
     def get_tcspc_done_signal(self):

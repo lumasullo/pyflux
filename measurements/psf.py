@@ -52,6 +52,7 @@ class Frontend(QtGui.QFrame):
         params['nframes'] = int(self.NframesEdit.text())
         params['filename'] = filename
         params['folder'] = self.folderEdit.text()
+        params['nDonuts'] = self.donutSpinBox.value()
         
         self.paramSignal.emit(params)
         
@@ -86,7 +87,7 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(180)
+        self.paramWidget.setFixedHeight(210)
         self.paramWidget.setFixedWidth(170)
 
         grid.addWidget(self.paramWidget, 0, 0)
@@ -96,6 +97,8 @@ class Frontend(QtGui.QFrame):
         
         self.NframesLabel = QtGui.QLabel('Number of frames')
         self.NframesEdit = QtGui.QLineEdit('20')
+        self.DonutNumLabel = QtGui.QLabel('Number of doughnuts')
+        self.donutSpinBox = QtGui.QSpinBox()
         self.doughnutLabel = QtGui.QLabel('Doughnut label')
         self.doughnutEdit = QtGui.QLineEdit('Black, Blue, Yellow, Orange')
         self.filenameLabel = QtGui.QLabel('File name')
@@ -104,15 +107,21 @@ class Frontend(QtGui.QFrame):
         self.stopButton = QtGui.QPushButton('Stop')
         self.progressBar = QtGui.QProgressBar(self)
         
+        self.donutSpinBox.setValue(4)
+        self.donutSpinBox.setMaximum(10)
+        
+        
         subgrid.addWidget(self.NframesLabel, 0, 0)
         subgrid.addWidget(self.NframesEdit, 1, 0)
-        subgrid.addWidget(self.doughnutLabel, 2, 0)
-        subgrid.addWidget(self.doughnutEdit, 3, 0)
-        subgrid.addWidget(self.filenameLabel, 4, 0)
-        subgrid.addWidget(self.filenameEdit, 5, 0)
-        subgrid.addWidget(self.progressBar, 6, 0)
-        subgrid.addWidget(self.startButton, 7, 0)
-        subgrid.addWidget(self.stopButton, 8, 0)
+        subgrid.addWidget(self.DonutNumLabel, 2, 0)
+        subgrid.addWidget(self.donutSpinBox, 3, 0)
+        subgrid.addWidget(self.doughnutLabel, 4, 0)
+        subgrid.addWidget(self.doughnutEdit, 5, 0)
+        subgrid.addWidget(self.filenameLabel, 6, 0)
+        subgrid.addWidget(self.filenameEdit, 7, 0)
+        subgrid.addWidget(self.progressBar, 8, 0)
+        subgrid.addWidget(self.startButton, 9, 0)
+        subgrid.addWidget(self.stopButton, 10, 0)
         
         # file/folder widget
         
@@ -158,6 +167,7 @@ class Frontend(QtGui.QFrame):
         
         self.filenameEdit.textChanged.connect(self.emit_param)
         self.doughnutEdit.textChanged.connect(self.emit_param)
+        self.donutSpinBox.valueChanged.connect(self.emit_param)
         self.NframesEdit.textChanged.connect(self.emit_param)
         self.browseFolderButton.clicked.connect(self.load_folder)
 
@@ -181,6 +191,8 @@ class Backend(QtCore.QObject):
 
     progressSignal = pyqtSignal(float)
     
+    shutterSignal = pyqtSignal(int, bool)
+    
     """
     Signals
     
@@ -203,8 +215,10 @@ class Backend(QtCore.QObject):
         
         self.i = 0
         
+        self.shutterSignal.emit(7, False)
+        
         print(datetime.now(), '[psf] measurement started')
-    
+          
         self.xyStopSignal.emit()
         self.zStopSignal.emit()
         
@@ -238,11 +252,7 @@ class Backend(QtCore.QObject):
             initial = True
         else:
             initial = False
-            
-        ####
-        # check for the four possible shutters
-        ####
-                
+      
         if self.xy_flag:
             
             self.xySignal.emit(True, initial)
@@ -254,7 +264,7 @@ class Backend(QtCore.QObject):
         if self.xyIsDone:
             
             if self.z_flag:
-            
+                      
                 self.zSignal.emit(True, initial)
                 self.z_flag = False
                 
@@ -262,8 +272,14 @@ class Backend(QtCore.QObject):
                     print(datetime.now(), '[psf] z signal emitted ({})'.format(self.i))
 
             if self.zIsDone:
+                
+                imgperdonut = self.nFrames // self.k
+                shutternum = self.i // imgperdonut + 1
     
                 if self.scan_flag:
+                    
+                    print(datetime.now(), '[psf] open shutter', shutternum)
+                    self.shutterSignal.emit(shutternum, True)
                         
                     initialPos = np.array([self.target_x, self.target_y, 
                                            self.target_z], dtype=np.float64)
@@ -276,6 +292,9 @@ class Backend(QtCore.QObject):
                               '[psf] scan signal emitted ({})'.format(self.i))
                         
                 if self.scanIsDone:
+                    
+                    print(datetime.now(), '[psf] close shutter', shutternum)
+                    self.shutterSignal.emit(shutternum, False)
                     
                     completed = ((self.i+1)/self.nFrames) * 100
                     self.progressSignal.emit(completed)
@@ -300,7 +319,7 @@ class Backend(QtCore.QObject):
                     else:
                         
                         self.stop()
-                    
+                                            
     def export_data(self):
     
         # TO DO: export config file
@@ -321,6 +340,7 @@ class Backend(QtCore.QObject):
         
         self.label = params['label']
         self.nFrames = params['nframes']
+        self.k = params['nDonuts']
         
         today = str(date.today()).replace('-', '')
         self.filename = tools.getUniqueName(params['filename'] + '_' + today)
