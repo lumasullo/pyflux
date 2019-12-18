@@ -6,6 +6,15 @@ Created on Tue Nov 21 14:05:18 2019
 
 GUI for MINFLUX analysis and simulations
 
+conda command for converting QtDesigner file to .py:
+pyuic5 -x AnalysisDesign.ui -o AnalysisDesign.py
+
+Next steps:
+    Write and load x0 and y0 correctly
+    Save plots and result summary file
+    Check whether code works for non-zero tcscpc time-window
+    Save and load tcspc-windows 
+    ... 
 
 """
 import os
@@ -22,13 +31,10 @@ import numpy as np
 import imageio as iio
 from scipy import optimize as opt
 from scipy import ndimage as ndi
-from PIL import Image
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
-from pyqtgraph.dockarea import Dock, DockArea
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
-from PyQt5 import QtTest
 
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
@@ -50,13 +56,11 @@ class Frontend(QtGui.QMainWindow):
     fitPSFSignal = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
     loadTCSPCSignal = pyqtSignal()
     estimatorSignal = pyqtSignal()
+    sendPSFfitSignal = pyqtSignal(np.ndarray)
 
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
-        
-    
-        # initial directory
         
         self.ui = gui.AnalysisDesign.Ui_MainWindow()
         self.ui.setupUi(self)
@@ -66,11 +70,6 @@ class Frontend(QtGui.QMainWindow):
         self.regionNum = 0
         self.region = []
         self.ontimes = []
-        
-        # self.x0 = np.array([100, 150, 120, 100])
-        # self.y0 = np.array([110, 50, 120, 100])
-        # self.plot_position(np.arange(2), np.array([[70,150],[120,100]]), np.arange(2))
-        # #TODO: delete mas tarde
         
     def emit_param(self):
         params = dict()
@@ -218,7 +217,9 @@ class Frontend(QtGui.QMainWindow):
                 
     def read_ontimes(self):
         for i in np.arange(self.regionNum):
-            self.ontimes.append(self.region[i].getRegion())  
+            self.ontimes.append(self.region[i].getRegion()) 
+            
+        #TODO: write logfile containing selected trace regions and binning information
             
     def select_tcspc(self):
         try:
@@ -244,6 +245,13 @@ class Frontend(QtGui.QMainWindow):
         #TODO: read in parameter
         self.ontimes = []
         self.read_ontimes()
+        
+        if self.ui.radioButton_psffit.isChecked():
+            #TODO load parameter file
+            #self.x0
+            #self.y0
+            self.sendPSFfitSignal.emit(self.current_images)
+            
         self.emit_param()
         self.estimatorSignal.emit()
         
@@ -280,17 +288,18 @@ class Frontend(QtGui.QMainWindow):
             pos_i = pg.ScatterPlotItem([pos[i, 0]], [pos[i, 1]], size=10, symbol='x', pen=pg.mkPen(None))
             plot.addItem(pos_i)
        
-        for i in np.arange(self.x0.shape[0]):
-            donut_i = pg.ScatterPlotItem([self.x0[i]], [self.y0[i]], size=20, pen=pg.mkPen(None))
-            donut_i.setBrush(QtGui.QBrush(QtGui.QColor(QtCore.qrand() % 256, QtCore.qrand() % 256, QtCore.qrand() % 256)))
-            plot.addItem(donut_i)
+        #TODO: undo comment
+        # for i in np.arange(self.x0.shape[0]):
+        #     donut_i = pg.ScatterPlotItem([self.x0[i]], [self.y0[i]], size=20, pen=pg.mkPen(None))
+        #     donut_i.setBrush(QtGui.QBrush(QtGui.QColor(QtCore.qrand() % 256, QtCore.qrand() % 256, QtCore.qrand() % 256)))
+        #     plot.addItem(donut_i)
             
         self.empty_layout(self.ui.estimateLayout)
         self.ui.estimateLayout.addWidget(estimatorWidget)
         
         text = '[analysis] Position estimation done \n' + str(meanx) + '\n' + str(meany) + '\n' + sx + '\n' + sy 
         self.ui.comLabel.setText(text)
-
+        #TODO: add options to save plots and result summary in txt file, also save trace length and binning in logfile, plus name of psffile plus name of tcspc file
 
     def empty_layout(self, layout):
         for i in reversed(range(layout.count())): 
@@ -478,7 +487,7 @@ class Backend(QtCore.QObject):
         self.index = np.zeros((self.k,2))
         self.aopt = np.zeros((self.k,27))
                             
-        for i in np.arange(self.k): #set back to self.k loops 
+        for i in np.arange(self.k): 
             # initial values for fit parameters x0,y0 and c00
             ind1 = np.unravel_index(np.argmin(psfTc[i, :, :], 
                 axis=None), psfTc[i, :, :].shape)
@@ -496,7 +505,7 @@ class Backend(QtCore.QObject):
             x0[i] = x[ind]
             y0[i] = y[ind]
             self.index[i,:] = ind
-            print(datetime.now(), str(i+1), '/', str(self.k), ' Donuts fitted.')
+            print(datetime.now(), '[analysis]', str(i+1), '/', str(self.k), ' donuts fitted.')
             
         psfTc[0,:,:] = self.PSF[0, :, :]
         self.PSF[0, :, :] = self.PSF[1, :, :]
@@ -553,6 +562,14 @@ class Backend(QtCore.QObject):
         self.τ = x[ind]
 
         self.plotTCSPCSignal.emit(self.abs_time, self.rel_time)
+    
+    @pyqtSlot(np.ndarray)    
+    def catch_psf(self, psffit_array):    
+        print(datetime.now(), '[analysis] PSF fit received in backend.')
+        self.PSF = np.zeros((self.k, psffit_array.shape[1], psffit_array.shape[2]))
+        self.PSF = psffit_array
+
+        print(self.PSF.shape)
         
     @pyqtSlot()
     def find_position(self):
@@ -639,6 +656,7 @@ class Backend(QtCore.QObject):
         """
         # FOV size
         norm_psf = np.sum(self.PSF, axis = 0)
+        self.size = np.size(self.PSF, axis = 1)
         
         # probabilitiy vector 
         p = np.zeros((self.k, self.size, self.size))
@@ -666,11 +684,34 @@ class Backend(QtCore.QObject):
          
         #TODO: save fit parameter in seperate file
         root = os.path.splitext(self.psffilename)[0]
-        fit_filename = root + '_fit.tiff'
-        data = np.array(self.PSF, dtype=np.float32)
         
-        iio.mimwrite(fit_filename, data)
-        print(datetime.now(), '[analysis] Fitted PSFs successfully saved')
+        #TODO: undo comment
+        # fit_filename = root + '_fit.tiff'
+        # data = np.array(self.PSF, dtype=np.float32)
+        # iio.mimwrite(fit_filename, data)
+        
+        parameter_filename = root + '_fit-parameter.txt'
+        #file size and enconding, numbers of donuts fitted, x0, y0
+                
+        description = np.array(['Name of fitted PSF file:',
+                                self.psffilename,
+                                'Experimental px size in nm:',
+                                'x-/ y-size of saved PSF fit in px:',
+                                'Final px size of PSF fit in nm:',
+                                'Number of fitted excitation donuts:',
+                                'x0, y0', '', '', '', ''])
+        
+        self.x0 = np.zeros(self.k)
+        values = np.array([None, None, self.pxexp, self.size, self.PX, self.k, None])
+        values = np.append(values, self.x0)
+        
+        parameter = np.zeros(description.size, dtype=[('col1', 'U100'), ('col2', float)])
+        parameter['col1'] = description
+        parameter['col2'] = values
+        
+        np.savetxt(parameter_filename, parameter.T, fmt='%s %f')
+
+        print(datetime.now(), '[analysis] Fitted PSF and parameter file saved')
         
     
     def poly_func(self, grid, x0, y0, c00, c01, c02, c03, c04, c10, c11, c12, c13, c14, 
@@ -722,6 +763,8 @@ class Backend(QtCore.QObject):
         frontend.fitPSFSignal.connect(self.fit_psf)
         frontend.loadTCSPCSignal.connect(self.open_tcspc)
         frontend.estimatorSignal.connect(self.find_position)
+        frontend.sendPSFfitSignal.connect(self.catch_psf)
+
         frontend.ui.pushButton_saveFit.clicked.connect(self.save_psffit)
 
 if __name__ == '__main__':
@@ -743,7 +786,7 @@ if __name__ == '__main__':
     worker.emit_param()
     
     gui.setWindowIcon(QtGui.QIcon(icon_path))
-    gui.showMaximized()
+    gui.show() #Maximized()
     #gui.showFullScreen()
         
     sys.exit(app.exec_())
