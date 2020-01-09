@@ -21,8 +21,10 @@ import qdarkstyle
 from instrumental.drivers.cameras import uc480
 import lantz.drivers.andor.ccd as ccd
 import drivers.picoharp as picoharp
+from drivers.minilasevo import MiniLasEvo
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QDockWidget
 from tkinter import Tk, filedialog
 
 import drivers.ADwin as ADwin
@@ -81,56 +83,61 @@ class Frontend(QtGui.QMainWindow):
         self.chechuMeasAction.triggered.connect(self.chechu_measurement)
 
         # GUI layout
-
         grid = QtGui.QGridLayout()
         self.cwidget.setLayout(grid)
 
-        # Dock Area
-
-        dockArea = DockArea()
-        grid.addWidget(dockArea, 0, 0)
-
-        ## scanner
-
-        scanDock = Dock('scan', size=(1, 1))
-
+        ## scan dock
         self.scanWidget = scan.Frontend()
 
-        scanDock.addWidget(self.scanWidget)
-        dockArea.addDock(scanDock, 'left')
+        scanDock = QDockWidget('Confocal scan', self)
+        scanDock.setWidget(self.scanWidget)
+        scanDock.setFeatures(QDockWidget.DockWidgetVerticalTitleBar | 
+                                 QDockWidget.DockWidgetFloatable |
+                                 QDockWidget.DockWidgetClosable)
+        scanDock.setAllowedAreas(Qt.LeftDockWidgetArea)
 
-        ## tcspc
+        self.addDockWidget(Qt.LeftDockWidgetArea, scanDock)
 
-        tcspcDock = Dock("Time-correlated single-photon counting")
-
+        ## tcspc dock
         self.tcspcWidget = tcspc.Frontend()
-
-        tcspcDock.addWidget(self.tcspcWidget)
-        dockArea.addDock(tcspcDock, 'bottom', scanDock)
-
-        ## focus lock
-
-        focusDock = Dock("Focus Lock")
-
+        
+        tcspcDock = QDockWidget('Time-correlated single-photon counting', self)
+        tcspcDock.setWidget(self.tcspcWidget)
+        tcspcDock.setFeatures(QDockWidget.DockWidgetVerticalTitleBar | 
+                                 QDockWidget.DockWidgetFloatable |
+                                 QDockWidget.DockWidgetClosable)
+        tcspcDock.setAllowedAreas(Qt.BottomDockWidgetArea)
+        self.addDockWidget(Qt.BottomDockWidgetArea, tcspcDock)
+        
+        ## xy tracking dock
+        self.xyWidget = xy_tracking.Frontend()
+        
+        xyDock = QDockWidget('xy drift control', self)
+        xyDock.setWidget(self.xyWidget)
+        xyDock.setFeatures(QDockWidget.DockWidgetVerticalTitleBar | 
+                                 QDockWidget.DockWidgetFloatable |
+                                 QDockWidget.DockWidgetClosable)
+        xyDock.setAllowedAreas(Qt.RightDockWidgetArea)
+        
+        self.addDockWidget(Qt.RightDockWidgetArea, xyDock)
+        
+        ## focus lock dock
         self.focusWidget = focus.Frontend()
 
-        focusDock.addWidget(self.focusWidget)
-        dockArea.addDock(focusDock, 'right')
-
-        ## xy tracking
-
-        xyDock = Dock("xy drift control")
-
-        self.xyWidget = xy_tracking.Frontend()
-
-        xyDock.addWidget(self.xyWidget)
-        dockArea.addDock(xyDock, 'top', focusDock)
-#        dockArea.addDock(xyDock, 'top')
+        focusDock = QDockWidget('Focus Lock', self)
+        focusDock.setWidget(self.focusWidget)
+        focusDock.setFeatures(QDockWidget.DockWidgetVerticalTitleBar | 
+                                 QDockWidget.DockWidgetFloatable |
+                                 QDockWidget.DockWidgetClosable)
+        focusDock.setAllowedAreas(Qt.BottomDockWidgetArea)
+        
+        self.addDockWidget(Qt.BottomDockWidgetArea, focusDock)
 
         # sizes to fit my screen properly
-
-        self.scanWidget.setMinimumSize(1000, 550)
-        self.xyWidget.setMinimumSize(800, 300)
+        self.scanWidget.setMinimumSize(1000, 598)
+        self.xyWidget.setMinimumSize(800, 598)
+        self.tcspcWidget.setMinimumSize(1050, 370)
+        self.focusWidget.setMinimumSize(750, 370)
         self.move(1, 1)
         
     def make_connection(self, backend):
@@ -160,7 +167,13 @@ class Frontend(QtGui.QMainWindow):
     def closeEvent(self, *args, **kwargs):
         
         self.closeSignal.emit()
-
+        time.sleep(1)
+        
+        focusThread.exit()
+        xyThread.exit()
+        tcspcWorkerThread.exit()
+        scanThread.exit()
+        minfluxThread.exit()
         super().closeEvent(*args, **kwargs)
         
         app.quit()        
@@ -174,11 +187,11 @@ class Backend(QtCore.QObject):
     xyzEndSignal = pyqtSignal(str)
     xyMoveAndLockSignal = pyqtSignal(np.ndarray)
     
-    def __init__(self, adw, ph, ccd, scmos, *args, **kwargs):
+    def __init__(self, adw, ph, ccd, scmos, diodelaser, *args, **kwargs):
         
         super().__init__(*args, **kwargs)
         
-        self.scanWorker = scan.Backend(adw)
+        self.scanWorker = scan.Backend(adw, diodelaser)
         self.zWorker = focus.Backend(scmos, adw)
         self.tcspcWorker = tcspc.Backend(ph, adw)
         self.xyWorker = xy_tracking.Backend(ccd, adw)
@@ -278,19 +291,26 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
 
-    app = QtGui.QApplication.instance()
-    if app is None:
-        app = QtGui.QApplication(sys.argv)
+    if not QtGui.QApplication.instance():
+        app = QtGui.QApplication([])
     else:
-        print('QApplication instance already exists: %s' % str(app))
+        app = QtGui.QApplication.instance()
         
-    #app = QtGui.QApplication([])
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     gui = Frontend()
     
-    cam = uc480.UC480_Camera()
+    #initialize devices
+    port = 'COM3' #watch out so that port does not change
+    diodelaser = MiniLasEvo(port)
+    
+    #if camera wasnt closed properly just keep using it without opening new one
+    try:
+        cam = uc480.UC480_Camera()
+    except:
+        pass
+    
     andor = ccd.CCD()
     ph = picoharp.PicoHarp300()
     
@@ -298,7 +318,7 @@ if __name__ == '__main__':
     adw = ADwin.ADwin(DEVICENUMBER, 1)
     scan.setupDevice(adw)
     
-    worker = Backend(adw, ph, andor, cam)
+    worker = Backend(adw, ph, andor, cam, diodelaser)
     
     gui.make_connection(worker)
     worker.make_connection(gui)

@@ -21,6 +21,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from tkinter import Tk, filedialog
 
 import tools.tools as tools
+import imageio as iio
 import tifffile
 
 π = np.pi
@@ -333,7 +334,9 @@ class Backend(QtCore.QObject):
         np.savetxt(filename + '.txt', [])
         
         self.data = np.array(self.data, dtype=np.float32)
-        tifffile.imsave(filename + '.tiff', self.data)
+        #tifffile.imsave(filename + '.tiff', self.data)
+        
+        iio.mimwrite(filename + '.tiff', self.data)
     
     @pyqtSlot(dict)
     def get_frontend_param(self, params):
