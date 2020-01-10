@@ -10,7 +10,7 @@ conda command for converting QtDesigner file to .py:
 pyuic5 -x AnalysisDesign.ui -o AnalysisDesign.py
 
 Next steps:
-    Write and load x0 and y0 correctly
+    Write and load x0 and y0 correctly --> use configparser in tools
     Save plots and result summary file
     Check whether code works for non-zero tcscpc time-window
     Save and load tcspc-windows 
@@ -19,7 +19,7 @@ Next steps:
 """
 import os
 
-os.chdir(r'C:\Users\lars9\Documents\Studium\Argentina\research\minflux\code\pyflux')
+os.chdir(r'C:\Users\Lars\Documents\Studium\Argentina\research\minflux\code\pyflux')
 
 import sys
 import time
