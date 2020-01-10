@@ -365,7 +365,7 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(230)
+        self.paramWidget.setFixedHeight(320)
         self.paramWidget.setFixedWidth(140)
         
         subgrid = QtGui.QGridLayout()
@@ -396,6 +396,9 @@ class Frontend(QtGui.QFrame):
     def closeEvent(self, *args, **kwargs):
         
         self.closeSignal.emit()
+        time.sleep(1)
+        
+        focusThread.exit()
         super().closeEvent(*args, **kwargs)
         app.quit()
         
@@ -793,7 +796,11 @@ class Backend(QtCore.QObject):
     def export_data(self):
         
         fname = self.filename
-        filename = tools.getUniqueName(fname)
+        #case distinction to prevent wrong filenaming when starting minflux or psf measurement
+        if fname[0] == '!':
+            filename = fname[1:]
+        else:
+            filename = tools.getUniqueName(fname)
         filename = filename + '_zdata.txt'
 
         size = np.size(self.z_array)
@@ -961,9 +968,16 @@ class Backend(QtCore.QObject):
     def stop(self):
         
         self.toggle_ir_shutter(8, False)
+        time.sleep(1)
         
         self.focusTimer.stop()
+        
+        #prevent system to throw weird errors when not being able to close the camera, see uc480.py --> close()
+#        try:
+        self.reset()
         self.camera.close()
+#        except:
+#            pass
         
         if self.standAlone is True:
             
@@ -986,16 +1000,23 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
     
-    app = QtGui.QApplication([])
+    if not QtGui.QApplication.instance():
+        app = QtGui.QApplication([])
+    else:
+        app = QtGui.QApplication.instance()
+        
     app.setStyle(QtGui.QStyleFactory.create('fusion'))
 #    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     print(datetime.now(), '[focus] Focus lock module running in stand-alone mode')
     
     # initialize devices
-    
-    cam = uc480.UC480_Camera()
-    
+    #if camera wasnt closed properly just keep using it without opening new one
+    try:
+        cam = uc480.UC480_Camera()
+    except:
+        pass
+        
     DEVICENUMBER = 0x1
     adw = ADwin.ADwin(DEVICENUMBER, 1)
     scan.setupDevice(adw)

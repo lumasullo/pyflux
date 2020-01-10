@@ -32,6 +32,8 @@ import drivers.ADwin as ADwin
 
 DEBUG = True
 
+PX_SIZE = 80.0 #px size of camera in nm
+
 class Frontend(QtGui.QFrame):
     
     liveviewSignal = pyqtSignal(bool)
@@ -159,6 +161,9 @@ class Frontend(QtGui.QFrame):
 
         self.img.setImage(img, autoLevels=False)
         
+        self.xaxis.setScale(scale=PX_SIZE/1000) #scale to µm
+        self.yaxis.setScale(scale=PX_SIZE/1000) #scale to µm
+        
         
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
     def get_data(self, time, xData, yData):
@@ -273,9 +278,19 @@ class Frontend(QtGui.QFrame):
         imageWidget.setMinimumHeight(350)
         imageWidget.setMinimumWidth(350)
         
-        self.vb = imageWidget.addViewBox(row=0, col=0)
+        # setup axis, for scaling see get_image()
+        self.xaxis = pg.AxisItem(orientation='bottom', maxTickLength=5)
+        self.xaxis.showLabel(show=True)
+        self.xaxis.setLabel('x', units='µm')
+        
+        self.yaxis = pg.AxisItem(orientation='left', maxTickLength=5)
+        self.yaxis.showLabel(show=True)
+        self.yaxis.setLabel('y', units='µm')
+        
+        self.vb = imageWidget.addPlot(axisItems={'bottom': self.xaxis, 
+                                                 'left': self.yaxis})
+    
         self.vb.setAspectLocked(True)
-        self.vb.setMouseMode(pg.ViewBox.RectMode)
         self.img = pg.ImageItem()
         self.img.translate(-0.5, -0.5)
         self.vb.addItem(self.img)
@@ -483,7 +498,7 @@ class Backend(QtCore.QObject):
         
     def setup_camera(self):
         
-        self.pxSize = 80  # in nm
+        #self.pxSize = 80  # in nm #moved infront of Frontend to allow access
         self.shape = (512, 512) # TO DO: change to 256 x 256
         self.expTime = 0.300   # in sec
         
@@ -718,7 +733,7 @@ class Backend(QtCore.QObject):
         # set main reference frame
         
         xmin, xmax, ymin, ymax = self.ROIcoordinates
-        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates * self.pxSize
+        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates * PX_SIZE
         
         # select the data of the image corresponding to the ROI
 
@@ -729,8 +744,8 @@ class Backend(QtCore.QObject):
         xrange_nm = xmax_nm - xmin_nm
         yrange_nm = ymax_nm - ymin_nm
              
-        x_nm = np.arange(0, xrange_nm, self.pxSize)
-        y_nm = np.arange(0, yrange_nm, self.pxSize)
+        x_nm = np.arange(0, xrange_nm, PX_SIZE)
+        y_nm = np.arange(0, yrange_nm, PX_SIZE)
         
         (Mx_nm, My_nm) = np.meshgrid(x_nm, y_nm)
         
@@ -759,8 +774,8 @@ class Backend(QtCore.QObject):
         
 #        plt.imshow(array_sub, cmap=cmaps.parula, interpolation='None')
         
-        x_sub_nm = np.arange(0, xsubsize) * self.pxSize
-        y_sub_nm = np.arange(0, ysubsize) * self.pxSize
+        x_sub_nm = np.arange(0, xsubsize) * PX_SIZE
+        y_sub_nm = np.arange(0, ysubsize) * PX_SIZE
 
         [Mx_sub, My_sub] = np.meshgrid(x_sub_nm, y_sub_nm)
         
@@ -1045,7 +1060,11 @@ class Backend(QtCore.QObject):
 #        filename = fname + '_xydata.txt'
         
         fname = self.filename
-        filename = tools.getUniqueName(fname)
+        #case distinction to prevent wrong filenaming when starting minflux or psf measurement
+        if fname[0] == '!':
+            filename = fname[1:]
+        else:
+            filename = tools.getUniqueName(fname)
         filename = filename + '_xydata.txt'
         
         size = self.j
@@ -1059,8 +1078,8 @@ class Backend(QtCore.QObject):
         
         print(datetime.now(), '[xy_tracking] xy data exported to', filename)
 
-    @pyqtSlot()    
-    def get_stop_signal(self):
+    @pyqtSlot(bool)    
+    def get_stop_signal(self, stoplive):
         
         """
         Connection: [psf] xyStopSignal
@@ -1076,7 +1095,10 @@ class Backend(QtCore.QObject):
         
         self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
         
-        self.liveview_stop()
+        if stoplive:
+            self.liveview_stop()
+        else:
+            self.viewtimer.stop()
     
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
@@ -1228,9 +1250,13 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
 
-    app = QtGui.QApplication([])
-#    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    if not QtGui.QApplication.instance():
+        app = QtGui.QApplication([])
+    else:
+        app = QtGui.QApplication.instance()
+        
+    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    #app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     andor = ccd.CCD()
     

@@ -134,11 +134,14 @@ def saveConfig(main, dateandtime, name, filename=None):
         config.write(configfile)
         
 def getUniqueName(name):
-    
+
     n = 1
     while os.path.exists(name + '.txt'):
         if n > 1:
-            name = name.replace('_{}'.format(n - 1), '_{}'.format(n))
+            #NEW: preventing first digit of date being replaced too
+            pos = name.rfind('_{}'.format(n - 1))
+            name = name[:pos] + '_{}'.format(n) + name[pos+len(str(n))+1:]
+            #name = name.replace('_{}'.format(n - 1), '_{}'.format(n)) #old 
         else:
             name = insertSuffix(name, '_{}'.format(n))
         n += 1

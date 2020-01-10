@@ -6,23 +6,17 @@ Created on Tue Apr 16 15:38:16 2019
 """
 
 import numpy as np
-import time
 import os
 from datetime import date, datetime
 
-from threading import Thread
-
-import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
-from pyqtgraph.dockarea import Dock, DockArea
-import qdarkstyle
 
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QGroupBox
 from tkinter import Tk, filedialog
 
 import tools.tools as tools
-import imageio as iio
-import tifffile
+import imageio as iio 
 
 π = np.pi
 
@@ -50,7 +44,8 @@ class Frontend(QtGui.QFrame):
         
         params = dict()
         params['label'] = self.doughnutLabel.text()
-        params['nframes'] = int(self.NframesEdit.text())
+        params['nframes'] = self.NframesEdit.value() #!!! now making up number of frames per doughnut position,
+                                                     #no longer total number of images!!!
         params['filename'] = filename
         params['folder'] = self.folderEdit.text()
         params['nDonuts'] = self.donutSpinBox.value()
@@ -69,35 +64,38 @@ class Frontend(QtGui.QFrame):
                 self.folderEdit.setText(folder)
         except OSError:
             pass
+        
+        self.checkboxGroup.hide(True)
     
     @pyqtSlot(float)
     def get_progress_signal(self, completed):
         
         self.progressBar.setValue(completed)
         
+        if completed == 100:
+            self.stopButton.setEnabled(False)
+            self.startButton.setEnabled(True)
+    
     def setup_gui(self):
         
         self.setWindowTitle('PSF measurement')
         
-        self.resize(230, 250)
+        self.resize(230, 300)
 
         grid = QtGui.QGridLayout()
 
         self.setLayout(grid)
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-        
-        self.paramWidget.setFixedHeight(210)
-        self.paramWidget.setFixedWidth(170)
+        self.paramWidget = QGroupBox('Parameter')
+        self.paramWidget.setMinimumHeight(250)
+        self.paramWidget.setFixedWidth(175)
 
-        grid.addWidget(self.paramWidget, 0, 0)
+        grid.addWidget(self.paramWidget, 0, 0, 2, 1)
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
         
-        self.NframesLabel = QtGui.QLabel('Number of frames')
-        self.NframesEdit = QtGui.QLineEdit('20')
+        self.NframesLabel = QtGui.QLabel('Frames per doughnut')
+        self.NframesEdit = QtGui.QSpinBox()
         self.DonutNumLabel = QtGui.QLabel('Number of doughnuts')
         self.donutSpinBox = QtGui.QSpinBox()
         self.doughnutLabel = QtGui.QLabel('Doughnut label')
@@ -106,16 +104,18 @@ class Frontend(QtGui.QFrame):
         self.filenameEdit = QtGui.QLineEdit('psf')
         self.startButton = QtGui.QPushButton('Start')
         self.stopButton = QtGui.QPushButton('Stop')
+        self.stopButton.setEnabled(False)
         self.progressBar = QtGui.QProgressBar(self)
         
+        self.NframesEdit.setValue(5)
+        self.NframesEdit.setRange(1,99)
         self.donutSpinBox.setValue(4)
         self.donutSpinBox.setMaximum(10)
         
-        
-        subgrid.addWidget(self.NframesLabel, 0, 0)
-        subgrid.addWidget(self.NframesEdit, 1, 0)
-        subgrid.addWidget(self.DonutNumLabel, 2, 0)
-        subgrid.addWidget(self.donutSpinBox, 3, 0)
+        subgrid.addWidget(self.DonutNumLabel, 0, 0)
+        subgrid.addWidget(self.donutSpinBox, 1, 0)       
+        subgrid.addWidget(self.NframesLabel, 2, 0)
+        subgrid.addWidget(self.NframesEdit, 3, 0)
         subgrid.addWidget(self.doughnutLabel, 4, 0)
         subgrid.addWidget(self.doughnutEdit, 5, 0)
         subgrid.addWidget(self.filenameLabel, 6, 0)
@@ -126,11 +126,8 @@ class Frontend(QtGui.QFrame):
         
         # file/folder widget
         
-        self.fileWidget = QtGui.QFrame()
-        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                      QtGui.QFrame.Raised)
-        
-        self.fileWidget.setFixedHeight(120)
+        self.fileWidget = QGroupBox('Save options')  
+        self.fileWidget.setFixedHeight(155)
         self.fileWidget.setFixedWidth(150)
         
         # folder
@@ -140,6 +137,7 @@ class Frontend(QtGui.QFrame):
         today = str(date.today()).replace('-', '')
         root = r'C:\\Data\\'
         folder = root + today
+        self.initialDir = folder
         
         try:  
             os.mkdir(folder)
@@ -153,7 +151,7 @@ class Frontend(QtGui.QFrame):
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
         
-        grid.addWidget(self.fileWidget, 0, 1)
+        grid.addWidget(self.fileWidget, 0, 1, 1, 1)
         
         file_subgrid = QtGui.QGridLayout()
         self.fileWidget.setLayout(file_subgrid)
@@ -164,23 +162,54 @@ class Frontend(QtGui.QFrame):
         file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
         file_subgrid.addWidget(self.browseFolderButton, 4, 0)
         
+        #setup alignment mode widget
+        self.alignWidget = QGroupBox('Alignment mode')  
+        self.alignWidget.setFixedHeight(110)
+        self.alignWidget.setFixedWidth(150)
+        
+        grid.addWidget(self.alignWidget, 1, 1, 1, 1)
+        
+        align_subgrid = QtGui.QGridLayout()
+        self.alignWidget.setLayout(align_subgrid)
+        
+        self.activateModeCheckbox = QtGui.QCheckBox('Mode Activated')
+        self.shutter1Checkbox = QtGui.QCheckBox('1')
+        self.shutter2Checkbox = QtGui.QCheckBox('2')
+        self.shutter3Checkbox = QtGui.QCheckBox('3')
+        self.shutter4Checkbox = QtGui.QCheckBox('4')
+        
+        self.checkboxGroup = QtGui.QButtonGroup(self)
+        self.checkboxGroup.addButton(self.shutter1Checkbox)
+        self.checkboxGroup.addButton(self.shutter2Checkbox)
+        self.checkboxGroup.addButton(self.shutter3Checkbox)
+        self.checkboxGroup.addButton(self.shutter4Checkbox)
+        
+        align_subgrid.addWidget(self.activateModeCheckbox, 0, 0, 1, 2)
+        align_subgrid.addWidget(self.shutter1Checkbox, 1, 0)
+        align_subgrid.addWidget(self.shutter2Checkbox, 2, 0)
+        align_subgrid.addWidget(self.shutter3Checkbox, 1, 1)
+        align_subgrid.addWidget(self.shutter4Checkbox, 2, 1)
+        
         # connections
         
-        self.filenameEdit.textChanged.connect(self.emit_param)
-        self.doughnutEdit.textChanged.connect(self.emit_param)
-        self.donutSpinBox.valueChanged.connect(self.emit_param)
-        self.NframesEdit.textChanged.connect(self.emit_param)
+        self.startButton.clicked.connect(self.emit_param)
+        self.startButton.clicked.connect(lambda: self.stopButton.setEnabled(True))
+        self.startButton.clicked.connect(lambda: self.startButton.setEnabled(False))
+        self.stopButton.clicked.connect(lambda: self.startButton.setEnabled(True))
         self.browseFolderButton.clicked.connect(self.load_folder)
 
     def make_connection(self, backend):
     
         backend.progressSignal.connect(self.get_progress_signal)
-        
+      
+    def closeEvent(self, *args, **kwargs):
+        self.progressBar.setValue(0)
+        super().closeEvent(*args, **kwargs)
             
 class Backend(QtCore.QObject):
     
     xySignal = pyqtSignal(bool, bool) # bool 1: whether you feedback ON or OFF, bool 2: initial position
-    xyStopSignal = pyqtSignal()
+    xyStopSignal = pyqtSignal(bool)
     
     zSignal = pyqtSignal(bool, bool)
     zStopSignal = pyqtSignal()
@@ -211,21 +240,29 @@ class Backend(QtCore.QObject):
         
         self.measTimer = QtCore.QTimer()
         self.measTimer.timeout.connect(self.loop)
+        
+        self.checkboxID_old = 7
 
     def start(self):
         
         self.i = 0
         
+        self.xyIsDone = False
+        self.zIsDone = False
+        self.scanIsDone = False
+        
+        self.progressSignal.emit(0)
+        
         self.shutterSignal.emit(7, False)
         
         print(datetime.now(), '[psf] measurement started')
           
-        self.xyStopSignal.emit()
+        self.xyStopSignal.emit(True)
         self.zStopSignal.emit()
         
         self.moveToInitialSignal.emit()
         
-        self.data = np.zeros((self.nFrames, self.nPixels, self.nPixels))
+        self.data = np.zeros((self.totalFrameNum, self.nPixels, self.nPixels))
         print(datetime.now(), '[psf] data shape is', np.shape(self.data))
         self.xy_flag = True
         self.z_flag = True
@@ -236,16 +273,21 @@ class Backend(QtCore.QObject):
     def stop(self):
         
         self.measTimer.stop()
-        self.progressSignal.emit(0)
+        self.progressSignal.emit(100) #changed from 0
+        self.shutterSignal.emit(7, False)
         
-        self.endSignal.emit(self.filename)
+        #new filename indicating that getUniqueName() has already found filename
+        #rerunning would only cause errors in files being saved focus and xy_tracking
+        attention_filename = '!' + self.filename
+        print(attention_filename)
+        self.endSignal.emit(attention_filename)
         
-        self.xyStopSignal.emit()
+        self.xyStopSignal.emit(False)
         self.zStopSignal.emit()
         
-        print(datetime.now(), '[psf] measurement ended')
-        
         self.export_data()
+        
+        print(datetime.now(), '[psf] measurement ended')
         
     def loop(self):
         
@@ -274,8 +316,7 @@ class Backend(QtCore.QObject):
 
             if self.zIsDone:
                 
-                imgperdonut = self.nFrames // self.k
-                shutternum = self.i // imgperdonut + 1
+                shutternum = self.i // self.nFrames + 1
     
                 if self.scan_flag:
                     
@@ -297,7 +338,7 @@ class Backend(QtCore.QObject):
                     print(datetime.now(), '[psf] close shutter', shutternum)
                     self.shutterSignal.emit(shutternum, False)
                     
-                    completed = ((self.i+1)/self.nFrames) * 100
+                    completed = ((self.i+1)/self.totalFrameNum) * 100
                     self.progressSignal.emit(completed)
                                     
                     self.xy_flag = True
@@ -311,9 +352,9 @@ class Backend(QtCore.QObject):
                     
                     print(datetime.now(), 
                           '[psf] PSF {} of {}'.format(self.i+1, 
-                                                      self.nFrames))
+                                                      self.totalFrameNum))
                                         
-                    if self.i < self.nFrames-1:
+                    if self.i < self.totalFrameNum-1:
                     
                         self.i += 1
                     
@@ -322,19 +363,16 @@ class Backend(QtCore.QObject):
                         self.stop()
                                             
     def export_data(self):
-    
-        # TO DO: export config file
-        
-#        fname = self.filename
-#        np.savetxt(fname + '.txt', [])
-        
+  
         fname = self.filename
         filename = tools.getUniqueName(fname)
 
+        #TODO: create proper log file
         np.savetxt(filename + '.txt', [])
         
+        #tifffile has strange bug which prevented me from saving stack only
+        #containing 4 instead of 20 images...
         self.data = np.array(self.data, dtype=np.float32)
-        #tifffile.imsave(filename + '.tiff', self.data)
         
         iio.mimwrite(filename + '.tiff', self.data)
     
@@ -347,8 +385,8 @@ class Backend(QtCore.QObject):
         
         today = str(date.today()).replace('-', '')
         self.filename = tools.getUniqueName(params['filename'] + '_' + today)
-        
-        print(datetime.now(), '[psf] file name', self.filename)
+         
+        self.totalFrameNum = self.nFrames * self.k
                 
     @pyqtSlot(bool, float, float) 
     def get_xy_is_done(self, val, x, y):
@@ -393,13 +431,30 @@ class Backend(QtCore.QObject):
                     
         # TO DO: build config file
         
+    # button_clicked slot
+    @pyqtSlot(QtGui.QAbstractButton)
+    #@pyqtSlot(int)
+    def checkboxGroup_selection(self, button_or_id):
+        
+        self.shutterSignal.emit(self.checkboxID_old, False)
+        
+        #if isinstance(button_or_id, QtGui.QAbstractButton):
+        checkboxID = int(button_or_id.text())
+        #print('Checkbox {} was selected'.format(checkboxID))
+        self.shutterSignal.emit(checkboxID, True)
+        
+        self.checkboxID_old = checkboxID
+        #elif isinstance(button_or_id, int):
+        #    print('"Id {}" was clicked'.format(button_or_id))
+        
     def make_connection(self, frontend):
         
         frontend.startButton.clicked.connect(self.start)
         frontend.stopButton.clicked.connect(self.stop)
         frontend.paramSignal.connect(self.get_frontend_param)
-            
-            
+        frontend.checkboxGroup.buttonClicked['QAbstractButton *'].connect(self.checkboxGroup_selection)            
+        #frontend.activateModeCheckbox.clicked.connect(frontend.checkboxGroup.disconnect(self))
+    
             
             
             

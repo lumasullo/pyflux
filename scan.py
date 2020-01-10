@@ -23,10 +23,12 @@ from threading import Thread
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
-from pyqtgraph.dockarea import Dock, DockArea
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
-from PyQt5 import QtTest
 import qdarkstyle
+
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QTabWidget, QGroupBox
+from PyQt5 import QtTest
+
 
 import tools.PSF as PSF
 
@@ -35,8 +37,9 @@ import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
 from tools.lineprofile import linePlotWidget
 
-π = np.pi
+from drivers.minilasevo import MiniLasEvo
 
+π = np.pi
 
 def setupDevice(adw):
 
@@ -98,6 +101,10 @@ class Frontend(QtGui.QFrame):
         self.image = np.zeros((128, 128))
         
         self.initialDir = r'C:\Data'
+        
+        # Define status icons dir
+        self.ICON_RED_LED = 'icons\led-red-on.png'
+        self.ICON_GREEN_LED = 'icons\green-led-on.png'
         
         # set up GUI
 
@@ -170,6 +177,9 @@ class Frontend(QtGui.QFrame):
 #        self.img.setImage(image, autoLevels=False)
         self.image = image.T[:,::-1]
         self.img.setImage(self.image, autoLevels=False)
+        
+        self.xaxis.setScale(scale=self.pxSize) #scale to µm
+        self.yaxis.setScale(scale=self.pxSize) #scale to µm
         
     @pyqtSlot(np.ndarray)
     def get_real_position(self, val): 
@@ -531,12 +541,36 @@ class Frontend(QtGui.QFrame):
             self.shutter3Checkbox.setChecked(on)
             self.shutter4Checkbox.setChecked(on)
             
+    @pyqtSlot(bool)    
+    def update_led(self, emission):
+        if emission:
+            led = self.ICON_GREEN_LED
+        else:
+            led = self.ICON_RED_LED
+            
+        self.diodeemissionStatus.setPixmap(QtGui.QPixmap(led))
+        self.diodeemissionStatus.setScaledContents(True)
+        self.diodeemissionStatus.setFixedSize(20, 20)
+        
+        #whenever diodelaser status is changed,
+        #the output power will be set to 0 mW for security reasons
+        self.diodepowerSpinBox.setValue(0)
+            
     def setup_gui(self):
                 
-        # image widget set-up and layout
+        # set up axis items, scaling is performed in get_image()
+        self.xaxis = pg.AxisItem(orientation='bottom', maxTickLength=5)
+        self.xaxis.showLabel(show=True)
+        self.xaxis.setLabel('x', units='µm')
+        
+        self.yaxis = pg.AxisItem(orientation='left', maxTickLength=5)
+        self.yaxis.showLabel(show=True)
+        self.yaxis.setLabel('y', units='µm')
 
+        # image widget set-up and layout
         imageWidget = pg.GraphicsLayoutWidget()
-        self.vb = imageWidget.addViewBox(row=0, col=0)
+        self.vb = imageWidget.addPlot(axisItems={'bottom': self.xaxis, 
+                                                 'left': self.yaxis})
         self.lplotWidget = linePlotWidget()
         
         imageWidget.setFixedHeight(500)
@@ -544,12 +578,10 @@ class Frontend(QtGui.QFrame):
         
         # Viewbox and image item where the liveview will be displayed
 
-        self.vb.setMouseMode(pg.ViewBox.RectMode)
         self.img = pg.ImageItem()
         self.img.translate(-0.5, -0.5)
         self.vb.addItem(self.img)
         self.vb.setAspectLocked(True)
-        imageWidget.setAspectLocked(True)
 
         # set up histogram for the liveview image
 
@@ -563,14 +595,8 @@ class Frontend(QtGui.QFrame):
         imageWidget.addItem(self.hist, row=0, col=1)
         
         # widget with scanning parameters
-
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-        
-        scanParamTitle = QtGui.QLabel('<h2><strong>Scan settings</strong></h2>')
-        scanParamTitle.setTextFormat(QtCore.Qt.RichText)
-
+        self.paramWidget = QGroupBox('Scan settings')
+    
         # LiveView Button
 
         self.liveviewButton = QtGui.QPushButton('confocal liveview')
@@ -590,14 +616,14 @@ class Frontend(QtGui.QFrame):
         
         #Shutters
         self.shutterLabel = QtGui.QLabel('Minflux shutter open?')
-        self.shutter1Checkbox = QtGui.QCheckBox('Shutter 1')
-        self.shutter2Checkbox = QtGui.QCheckBox('Shutter 2')
-        self.shutter3Checkbox = QtGui.QCheckBox('Shutter 3')
-        self.shutter4Checkbox = QtGui.QCheckBox('Shutter 4')
+        self.shutter1Checkbox = QtGui.QCheckBox('1')
+        self.shutter2Checkbox = QtGui.QCheckBox('2')
+        self.shutter3Checkbox = QtGui.QCheckBox('3')
+        self.shutter4Checkbox = QtGui.QCheckBox('4')
       
         # Shutter button
         
-        self.shutterButton = QtGui.QPushButton('Shutters open/close')
+        self.shutterButton = QtGui.QPushButton('Open/ close all')
         self.shutterButton.setCheckable(True)
         self.shutterButton.clicked.connect(lambda: self.update_shutters(0, True))
         
@@ -685,16 +711,11 @@ class Frontend(QtGui.QFrame):
     
 
         # file/folder widget
-        
-        self.fileWidget = QtGui.QFrame()
-        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                      QtGui.QFrame.Raised)
-        
-        self.fileWidget.setFixedHeight(120)
-        self.fileWidget.setFixedWidth(230)
+        self.fileWidget = QGroupBox('Save options')        
+        self.fileWidget.setMinimumWidth(180)
+        self.fileWidget.setFixedHeight(110)
 
         # folder and buttons
-        
         today = str(date.today()).replace('-', '')
         root = r'C:\\Data\\'
         folder = root + today
@@ -706,16 +727,14 @@ class Frontend(QtGui.QFrame):
         else:  
             print(datetime.now(), '[scan] Successfully created the directory {}'.format(folder))
         
-        self.filenameLabel = QtGui.QLabel('File name')
         self.filenameEdit = QtGui.QLineEdit('filename')
         self.folderLabel = QtGui.QLabel('Folder')
         self.folderEdit = QtGui.QLineEdit(folder)
-        self.browseFolderButton = QtGui.QPushButton('Browse')
+        self.browseFolderButton = QtGui.QPushButton('Browse folder')
         self.browseFolderButton.setCheckable(True)
         self.browseFolderButton.clicked.connect(self.load_folder)
 
         # scan selection
-
         self.scanModeLabel = QtGui.QLabel('Scan type')
 
         self.scanMode = QtGui.QComboBox()
@@ -726,11 +745,39 @@ class Frontend(QtGui.QFrame):
         self.dettypes = ['APD','photodiode']
         self.detectorType.addItems(self.dettypes)
         
-        # widget with EBP parameters and buttons
+        # diodelaser widget
+        diodelaserWidget = QGroupBox('Diodelaser control')
+        diodelaserWidget.setFixedHeight(108)   
         
+        self.diodelaserButton = QtGui.QPushButton('Laser On')
+        self.diodelaserButton.setCheckable(True)
+        self.diodeemissionLabel = QtGui.QLabel('Emission')
+        
+        self.diodeemissionStatus = QtGui.QLabel()
+        self.diodeemissionStatus.setPixmap(QtGui.QPixmap(self.ICON_RED_LED))
+        self.diodeemissionStatus.setScaledContents(True)
+        self.diodeemissionStatus.setFixedSize(20, 20)
+        
+        self.diodepowerLabel = QtGui.QLabel('Power [mW]')
+        self.diodepowerSpinBox = QtGui.QSpinBox()
+        self.diodepowerSpinBox.setRange(0, 78) #max value given by manual  
+        #self.diodetempLabel = QtGui.QLabel('Temp. [°C]')
+        #self.diodetempBox = QtGui.QLineEdit('')
+        #self.diodetempBox.setReadOnly(True)
+        
+        diode_subgrid = QtGui.QGridLayout()
+        diodelaserWidget.setLayout(diode_subgrid)
+        
+        diode_subgrid.addWidget(self.diodelaserButton, 0, 0, 1, 2)
+        diode_subgrid.addWidget(self.diodeemissionLabel, 1, 0)
+        diode_subgrid.addWidget(self.diodeemissionStatus, 1, 1)
+        diode_subgrid.addWidget(self.diodepowerLabel, 2, 0)
+        diode_subgrid.addWidget(self.diodepowerSpinBox, 2, 1)
+        #diode_subgrid.addWidget(self.diodetempLabel, 3, 0)
+        #diode_subgrid.addWidget(self.diodetempBox, 3, 1)        
+        
+        # widget with EBP parameters and buttons
         self.EBPWidget = QtGui.QFrame()
-        self.EBPWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
         
         EBPparamTitle = QtGui.QLabel('<h2><strong>Excitation Beam Pattern</strong></h2>')
         EBPparamTitle.setTextFormat(QtCore.Qt.RichText)
@@ -747,7 +794,6 @@ class Frontend(QtGui.QFrame):
         self.set_EBPButton.clicked.connect(self.set_EBP)
         
         # EBP selection
-
         self.EBPtypeLabel = QtGui.QLabel('EBP type')
 
         self.EBPtype = QtGui.QComboBox()
@@ -787,61 +833,55 @@ class Frontend(QtGui.QFrame):
         self.moveToLabel = QtGui.QLabel('Move to [x0, y0, z0] (µm)')
         self.moveToEdit = QtGui.QLineEdit('0 0 10')
         
+        # lower widget displaying file and diodelaser widgets
+        lowerWidget = QtGui.QFrame()
+        lower_subgrid = QtGui.QGridLayout()
+        lowerWidget.setLayout(lower_subgrid)
+        lowerWidget.setMinimumWidth(450)
+        lower_subgrid.addWidget(self.fileWidget, 0, 0)
+        lower_subgrid.addWidget(diodelaserWidget, 0, 1)
+        
         # scan GUI layout
-
         grid = QtGui.QGridLayout()
         self.setLayout(grid)
+        
+        tabArea = QTabWidget()
+        grid.addWidget(tabArea, 0, 0)
+        
+        paramTab = QtGui.QFrame()
+        paramTabGrid = QtGui.QGridLayout()
+        paramTabGrid.addWidget(self.paramWidget, 0, 0)
+        paramTabGrid.addWidget(lowerWidget, 1, 0)
+        paramTab.setLayout(paramTabGrid)
 
-        dockArea = DockArea() 
-        grid.addWidget(dockArea, 0, 0)
+        tabArea.addTab(paramTab, "Scan parameters")
+        tabArea.addTab(self.positioner, "Positioner")
+        tabArea.addTab(self.EBPWidget, "EBP")
         
-        EBPDock = Dock('EBP')
-        EBPDock.setOrientation(o="vertical", force=True)
-        EBPDock.updateStyle()
-        EBPDock.addWidget(self.EBPWidget)
-        dockArea.addDock(EBPDock)
-        
-        positionerDock = Dock('Positioner')
-        positionerDock.setOrientation(o="vertical", force=True)
-        positionerDock.updateStyle()
-        positionerDock.addWidget(self.positioner)
-        dockArea.addDock(positionerDock, 'above', EBPDock)
-        
-        paramDock = Dock('Scan parameters')
-        paramDock.setOrientation(o="vertical", force=True)
-        paramDock.updateStyle()
-        paramDock.addWidget(self.paramWidget)
-        paramDock.addWidget(self.fileWidget)
-        dockArea.addDock(paramDock, 'above', positionerDock)
-        
-        imageDock = Dock('Confocal view')
-        imageDock.addWidget(imageWidget)
-        dockArea.addDock(imageDock, 'right', paramDock)
+        grid.addWidget(imageWidget, 0, 1)
         
         # parameters widget layout
 
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
-        
-        subgrid.addWidget(scanParamTitle, 0, 0, 1, 3)
-        
+                
         subgrid.addWidget(self.scanModeLabel, 2, 2)
         subgrid.addWidget(self.scanMode, 3, 2)
         subgrid.addWidget(self.detectorType, 4, 2)
         subgrid.addWidget(self.liveviewButton, 5, 2)
+        subgrid.addWidget(self.currentFrameButton, 5, 3)
         
-        subgrid.addWidget(self.shutterButton, 7, 2)
-        subgrid.addWidget(self.flipperButton, 8, 2)
-        subgrid.addWidget(self.currentFrameButton, 9, 2)
-        subgrid.addWidget(self.ROIButton, 10, 2)
-        subgrid.addWidget(self.select_ROIButton, 11, 2)
-
-        subgrid.addWidget(self.moveToROIcenterButton, 13, 2)
-        subgrid.addWidget(self.mainROIButton, 14, 2)
-        subgrid.addWidget(self.lineProfButton, 15, 2)
-        subgrid.addWidget(self.FBavScanButton, 16, 2)
-        subgrid.addWidget(self.psfFitButton, 17, 2)
-        subgrid.addWidget(self.traceButton, 18, 2)
+        subgrid.addWidget(self.flipperButton, 7, 2)
+        
+        subgrid.addWidget(self.ROIButton, 8, 2)
+        subgrid.addWidget(self.select_ROIButton, 9, 2)
+        subgrid.addWidget(self.moveToROIcenterButton, 10, 2)
+        subgrid.addWidget(self.mainROIButton, 11, 2)
+        
+        subgrid.addWidget(self.lineProfButton, 8, 3)
+        subgrid.addWidget(self.FBavScanButton, 9, 3)
+        subgrid.addWidget(self.psfFitButton, 10, 3)
+        subgrid.addWidget(self.traceButton, 11, 3)
         
         subgrid.addWidget(self.initialPosLabel, 2, 0, 1, 2)
         subgrid.addWidget(self.initialPosEdit, 3, 0, 1, 2)
@@ -862,21 +902,21 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.powerEdit, 10, 1)
         
         subgrid.addWidget(self.advancedButton, 11, 0)
-        
         subgrid.addWidget(self.auxAccelerationLabel, 12, 0)
-        subgrid.addWidget(self.auxAccEdit, 13, 0)
-        subgrid.addWidget(self.waitingTimeLabel, 14, 0)
-        subgrid.addWidget(self.waitingTimeEdit, 15, 0)
-        subgrid.addWidget(self.preview_scanButton, 16, 0)
+        subgrid.addWidget(self.auxAccEdit, 12, 1)
+        subgrid.addWidget(self.waitingTimeLabel, 13, 0)
+        subgrid.addWidget(self.waitingTimeEdit, 13, 1)
+        subgrid.addWidget(self.preview_scanButton, 13, 2)
         
         subgrid.addWidget(self.shutterLabel, 14, 0)
         subgrid.addWidget(self.shutter1Checkbox, 15, 0)
-        subgrid.addWidget(self.shutter2Checkbox, 16, 0)
-        subgrid.addWidget(self.shutter3Checkbox, 17, 0)
-        subgrid.addWidget(self.shutter4Checkbox, 18, 0)
+        subgrid.addWidget(self.shutter2Checkbox, 15, 1)
+        subgrid.addWidget(self.shutter3Checkbox, 15, 2)
+        subgrid.addWidget(self.shutter4Checkbox, 15, 3)
+        subgrid.addWidget(self.shutterButton, 16, 0)
         
-        self.paramWidget.setFixedHeight(370)
-        self.paramWidget.setFixedWidth(300)
+        self.paramWidget.setFixedHeight(398)
+        self.paramWidget.setMinimumWidth(450)
         
 #        subgrid.setColumnMinimumWidth(1, 130)
 #        subgrid.setColumnMinimumWidth(1, 50)
@@ -886,11 +926,10 @@ class Frontend(QtGui.QFrame):
         file_subgrid = QtGui.QGridLayout()
         self.fileWidget.setLayout(file_subgrid)
         
-        file_subgrid.addWidget(self.filenameLabel, 0, 0, 1, 2)
-        file_subgrid.addWidget(self.filenameEdit, 1, 0, 1, 2)
-        file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
-        file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
-        file_subgrid.addWidget(self.browseFolderButton, 4, 0)
+        file_subgrid.addWidget(self.filenameEdit, 0, 0)
+        #file_subgrid.addWidget(self.folderLabel, 1, 0)
+        file_subgrid.addWidget(self.folderEdit, 2, 0)
+        file_subgrid.addWidget(self.browseFolderButton, 1, 0)
         
         # EBP widget layout
         
@@ -907,8 +946,8 @@ class Frontend(QtGui.QFrame):
         subgridEBP.addWidget(self.Llabel, 4, 1)
         subgridEBP.addWidget(self.LEdit, 5, 1)
         
-        self.EBPWidget.setFixedHeight(150)
-        self.EBPWidget.setFixedWidth(250)
+        self.EBPWidget.setFixedHeight(140)
+        self.EBPWidget.setMinimumWidth(250)
         
         # Piezo navigation widget layout
 
@@ -942,7 +981,7 @@ class Frontend(QtGui.QFrame):
         layout.addWidget(self.moveToButton, 8, 1, 1, 2)
         
         self.positioner.setFixedHeight(250)
-        self.positioner.setFixedWidth(400)
+        self.positioner.setMinimumWidth(400)
         
     # make connections between GUI and worker functions
             
@@ -952,11 +991,15 @@ class Frontend(QtGui.QFrame):
         backend.imageSignal.connect(self.get_image)
         backend.realPositionSignal.connect(self.get_real_position)
         backend.shuttermodeSignal.connect(self.update_shutters)
+        backend.diodelaserEmissionSignal.connect(self.update_led)
         
     def closeEvent(self, *args, **kwargs):
 
         # Emit close signal
+        
         self.closeSignal.emit()
+        scanThread.exit()
+        super().closeEvent(*args, **kwargs)
         app.quit()
         
         
@@ -972,6 +1015,7 @@ class Backend(QtCore.QObject):
     auxFitSignal = pyqtSignal()
     auxMoveSignal = pyqtSignal()
     shuttermodeSignal = pyqtSignal(int, bool)
+    diodelaserEmissionSignal = pyqtSignal(bool)
     
     """
     Signals
@@ -994,11 +1038,12 @@ class Backend(QtCore.QObject):
         
     """
     
-    def __init__(self, adwin, *args, **kwargs):
+    def __init__(self, adwin, diodelaser, *args, **kwargs):
         
         super().__init__(*args, **kwargs)
         
         self.adw = adwin
+        self.diodelas = diodelaser
         self.saveScanData = False
         self.feedback_active = False
         self.flipper_state = False
@@ -1823,6 +1868,43 @@ class Backend(QtCore.QObject):
         trace_data = trace_data[1:]# TO DO: fix the high count error on first element
 
         return trace_data
+
+    
+    def enableDiodelaser(self, enable):
+        
+        diodelasID = self.diodelas.idn()
+        
+        if enable:
+            self.diodelas.enabled = True
+            print(datetime.now(), '[scan] Diodelaser started')
+            print(datetime.now(), '[scan] Diodelaser-ID:', diodelasID)
+            
+            time.sleep(4) #according to manual, lasing will start 5s after turning-on
+            ans1, ans2 = self.diodelas.status()
+            i = 0
+            while (ans2 != 'Laser system is active, radiation can be emitted'):
+                time.sleep(0.5) #check every 0.5s whether emission started
+                ans1, ans2 = self.diodelas.status()
+                if i>=12:
+                    break #interrupt loop after 10s of waiting for emission, preventing to find no end
+                i += 1
+                
+            if i<12:
+                self.diodelaserEmissionSignal.emit(True)
+                print(datetime.now(), '[scan] Diodelaser emitting!')
+            else:
+                print(datetime.now(), '[scan] Diodelaser not able to emit radiation. Check status!')
+            
+        else:
+            self.setpowerDiodelaser(0)
+            self.diodelas.enabled = False
+            self.diodelaserEmissionSignal.emit(False)
+            print(datetime.now(), '[scan] Diodelaser disabled')
+    
+    def setpowerDiodelaser(self, value):
+        if self.diodelas.enabled:
+            self.diodelas.power = value
+            print(datetime.now(), '[scan] Power of diodelaser set to', str(value), 'mW')
         
     def plot_scan(self):
         
@@ -1871,6 +1953,9 @@ class Backend(QtCore.QObject):
 
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
         frontend.FBavScanButton.clicked.connect(lambda: self.toggle_FBav_scan(frontend.FBavScanButton.isChecked()))
+        frontend.diodelaserButton.clicked.connect(lambda: self.enableDiodelaser(frontend.diodelaserButton.isChecked()))
+        frontend.diodepowerSpinBox.valueChanged.connect(lambda: self.setpowerDiodelaser(frontend.diodepowerSpinBox.value()))
+
         
         frontend.xUpButton.pressed.connect(lambda: self.relative_move('x', 'up'))
         frontend.xDownButton.pressed.connect(lambda: self.relative_move('x', 'down'))
@@ -1886,6 +1971,9 @@ class Backend(QtCore.QObject):
             self.toggle_flipper(False)
         self.liveview_stop()
         
+        self.diodelas.closeLaserPort()
+        print(datetime.now(), '[scan] Serial port of diode laser closed')
+        
         # Go back to 0 position
 
         x_0 = 0
@@ -1897,21 +1985,25 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
 
-    app = QtGui.QApplication.instance()
-    if app is None:
-        app = QtGui.QApplication(sys.argv)
+    if not QtGui.QApplication.instance():
+        app = QtGui.QApplication([])
     else:
-        print('QApplication instance already exists: %s' % str(app))
+        app = QtGui.QApplication.instance()
         
-    #app = QtGui.QApplication([])
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    
+    
+    #initialize devices (diode laser and AdWin board)
+    
+    port = 'COM3' #watch out so that port does not change
+    diodelaser = MiniLasEvo(port)
     
     DEVICENUMBER = 0x1
     adw = ADwin.ADwin(DEVICENUMBER, 1)
     setupDevice(adw)
     
-    worker = Backend(adw)    
+    worker = Backend(adw, diodelaser)    
     gui = Frontend()
     
     worker.make_connection(gui)
@@ -1920,7 +2012,6 @@ if __name__ == '__main__':
     gui.emit_param()
     worker.emit_param()
     
-#
     scanThread = QtCore.QThread()
     worker.moveToThread(scanThread)
     worker.viewtimer.moveToThread(scanThread)

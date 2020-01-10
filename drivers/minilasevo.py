@@ -34,6 +34,9 @@ class MiniLasEvo:
                               stopbits=STOPBITS, timeout=self.TIMEOUT,
                               xonxoff=XONXOFF, rtscts=RTSCTS, dsrdtr=DSRDTR)
         
+    def closeLaserPort(self):
+        self.serial.close()
+        
     def query(self, command):
         """Send query to the laser and return the answer, after handling
         possible errors.
@@ -83,29 +86,36 @@ class MiniLasEvo:
         """Current device status
         """
         ans = self.query('S?')
-        if ans == '0x10':
-            ans = 'Temperature of laser head is ok'
-        elif ans == '0x01':
-            ans = 'Laser system is active, radiation can be emitted'
-        elif ans == '0x02':
-            ans = '(reserved)'
-        elif ans == '0x04':
-            ans = 'The interlock is open'
-        elif ans == '0x08':
+        
+        ans1 = ''
+        ans2 = ''
+        
+        if ans[-2] == '1':
+            ans1 = 'Temperature of laser head is ok'
+            
+        if ans[-1] == '1':
+            ans2 = 'Laser system is active, radiation can be emitted'
+        elif ans[-1] == '2':
+            ans2 = '(reserved)'
+        elif ans[-1] == '4':
+            ans2 = 'The interlock is open'
+        elif ans[-1] == '8':
             ans = self.query('E?')
-            if ans == '0x01':
-                ans = 'Temperature of laser head is too high'
-            elif ans == '0x02':
-                ans = 'Temperature of laser head is too low'
-            elif ans == '0x04':
-                ans = 'Temperature-sensor connection is broken'
-            elif ans == '0x08':
-                ans = 'Temperature sensor cable is shortened'
-            elif ans == '0x40':
-                ans = 'Current for laser head is too high'
-            elif ans == '0x80':
-                ans = 'Internal error (laser system cannot be activated)'
-        return ans
+            if ans[-1] == '1':
+                ans2 = 'Temperature of laser head is too high'
+            elif ans[-1] == '2':
+                ans2 = 'Temperature of laser head is too low'
+            elif ans[-1] == '4':
+                ans2 = 'Temperature-sensor connection is broken'
+            elif ans[-1] == '8':
+                ans2 = 'Temperature sensor cable is shortened'
+                
+            if ans[-2] == '4':
+                ans1 = 'Current for laser head is too high'
+            elif ans[-2] == '8':
+                ans1 = 'Internal error (laser system cannot be activated)'
+                
+        return ans1, ans2
 
     def operating_hours(self):
         """Total operating hours [hhhh:mm]
@@ -154,8 +164,6 @@ class MiniLasEvo:
         """
         return self.query('LTP?')
 
-    # ENABLED REQUEST
-
     @property
     def enabled(self):
         """Method for turning on the laser
@@ -194,7 +202,7 @@ class MiniLasEvo:
 
 if __name__ == '__main__':
 
-    port = 'COM3'
+    port = 'COM7'
     minilaser = MiniLasEvo(port)
     
     #add initialize call

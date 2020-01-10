@@ -249,7 +249,7 @@ class Frontend(QtGui.QFrame):
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
-        subgrid.addWidget(phParamTitle, 0, 0, 2, 3)
+        #subgrid.addWidget(phParamTitle, 0, 0, 2, 3)
 
         subgrid.addWidget(self.acqtimeLabel, 2, 0)
         subgrid.addWidget(self.acqtimeEdit, 2, 1)
@@ -276,6 +276,13 @@ class Frontend(QtGui.QFrame):
         file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
         file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
         file_subgrid.addWidget(self.browseFolderButton, 4, 0)
+
+    def closeEvent(self, *args, **kwargs):
+        
+        workerThread.exit()
+        super().closeEvent(*args, **kwargs)
+        app.quit()
+        
         
 class Backend(QtCore.QObject):
 
@@ -520,7 +527,11 @@ class Backend(QtCore.QObject):
 
 if __name__ == '__main__':
 
-    app = QtGui.QApplication([])
+    if not QtGui.QApplication.instance():
+        app = QtGui.QApplication([])
+    else:
+        app = QtGui.QApplication.instance()
+        
     app.setStyle(QtGui.QStyleFactory.create('fusion'))
 #    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 

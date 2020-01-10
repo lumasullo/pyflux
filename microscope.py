@@ -285,9 +285,9 @@ class Backend(QtCore.QObject):
     def stop(self):
         
         self.scanWorker.stop()
-        self.zWorker.stop()
         self.tcspcWorker.stop()
         self.xyWorker.stop()
+        self.zWorker.stop()
 
 if __name__ == '__main__':
 
