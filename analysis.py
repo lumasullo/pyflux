@@ -10,10 +10,12 @@ conda command for converting QtDesigner file to .py:
 pyuic5 -x AnalysisDesign.ui -o AnalysisDesign.py
 
 Next steps:
-    Write and load x0 and y0 correctly --> use configparser in tools
     Save plots and result summary file
-    Check whether code works for non-zero tcscpc time-window
+    check if i == timeON.shape[0] - 1: for non-ordered ontimes, also check whole estimation
     Save and load tcspc-windows 
+    check regionItem setMovable command for proper working (for all regions, not only 0)
+    Delete tiabs = self.trace_window_i, tfabs = self.trace_window_f params from backend
+    Delete regions
     ... 
 
 """
@@ -25,6 +27,7 @@ import sys
 import time
 import ctypes
 import configparser
+import json
 from tkinter import Tk, filedialog
 from datetime import date, datetime
 import numpy as np
@@ -35,6 +38,9 @@ from scipy import ndimage as ndi
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from pyqtgraph.exporters import Matplotlib
+
+import matplotlib.pyplot as plt
 
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
@@ -52,10 +58,9 @@ ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 class Frontend(QtGui.QMainWindow):
     
     paramSignal = pyqtSignal(dict)
-    closeSignal = pyqtSignal()
     fitPSFSignal = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
     loadTCSPCSignal = pyqtSignal()
-    estimatorSignal = pyqtSignal()
+    estimatorSignal = pyqtSignal(np.ndarray)
     sendPSFfitSignal = pyqtSignal(np.ndarray)
 
     def __init__(self, *args, **kwargs):
@@ -70,6 +75,10 @@ class Frontend(QtGui.QMainWindow):
         self.regionNum = 0
         self.region = []
         self.ontimes = []
+        self.tracePlot = None
+        self.tcspcMode = self.ui.radioButton_NP.text()
+        
+        self.ui.buttonGroup_tcspcmode.buttonClicked['QAbstractButton *'].connect(self.check_tcspcmode)
         
     def emit_param(self):
         params = dict()
@@ -81,7 +90,8 @@ class Frontend(QtGui.QMainWindow):
         params['NP_binning_window'] = float(self.ui.lineEdit_winlen.text())
         params['lifetime_win_i'] = float(self.ui.lineEdit_lifetimewin_i.text())
         params['lifetime_win_f'] = float(self.ui.lineEdit_lifetimewin_f.text())
-        
+        params['tcspcMode'] = self.tcspcMode
+
         if (len(self.ontimes) != 0):
             params['trace_window_i'] = self.ontimes[0][0]
             params['trace_window_f'] = self.ontimes[0][1]
@@ -123,21 +133,32 @@ class Frontend(QtGui.QMainWindow):
         self.current_images = image_array
             
         imageWidget = pg.GraphicsLayoutWidget()
-        self.psfViewBox = imageWidget.addViewBox(row=0, col=0)
-        self.psfViewBox.setAspectLocked(True)
-        self.psfViewBox.setMouseMode(pg.ViewBox.RectMode)
+        
+        # set up axis items, scaling is performed in get_image()
+        self.xaxis = pg.AxisItem(orientation='bottom', maxTickLength=5)
+        self.xaxis.showLabel(show=True)
+        self.xaxis.setLabel('x', units='px')
+        
+        self.yaxis = pg.AxisItem(orientation='left', maxTickLength=5)
+        self.yaxis.showLabel(show=True)
+        self.yaxis.setLabel('y', units='px')
+
+        # image widget set-up and layout
+        self.vb = imageWidget.addPlot(row=0, col=0, axisItems={'bottom': self.xaxis, 
+                                                 'left': self.yaxis})
 
         img = pg.ImageItem(self.current_images[image_number,:,:]) #TODO:edit later on 
-        self.psfViewBox.clear()
-        self.psfViewBox.addItem(img)
-        
-        hist = pg.HistogramLUTItem(image=img)   # set up histogram for the liveview image
+        self.vb.clear()
+        self.vb.addItem(img)
+        self.vb.setAspectLocked(True)
+
+        hist = pg.HistogramLUTItem(image=img)   #set up histogram for the liveview image
         lut = viewbox_tools.generatePgColormap(cmaps.inferno)
         hist.gradient.setColorMap(lut)
         hist.vb.setLimits(yMin=0, yMax=10000) #TODO: check maximum value
         for tick in hist.gradient.ticks:
             tick.hide()
-        imageWidget.addItem(hist, row=0, col=1)
+        #imageWidget.addItem(hist, row=0, col=1)
 
         self.empty_layout(self.ui.psfLayout)        
         self.ui.psfLayout.addWidget(imageWidget)
@@ -151,7 +172,6 @@ class Frontend(QtGui.QMainWindow):
         self.y0 = self.x0
         self.fitPSFSignal.emit(self.img_array, self.x0, self.y0)
 
-    #TODO: create one function for adding psf images independent of being fit or raw
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
     def plot_psffit(self, fittedpsf, x0, y0):
         self.x0 = x0
@@ -169,6 +189,10 @@ class Frontend(QtGui.QMainWindow):
     @pyqtSlot(np.ndarray, np.ndarray)
     def plot_tcspc(self, abs_time, rel_time):
         #TODO: set loaded times as global variables
+        
+        if not self.tracePlot == None:
+            for reg in self.region:
+                self.tracePlot.removeItem(reg)
         
         dataWidget = pg.GraphicsLayoutWidget()
         dataWidget.clear()
@@ -188,25 +212,36 @@ class Frontend(QtGui.QMainWindow):
         counts, bin_edges = np.histogram(abs_time, bins=100) # timetrace with 50 bins
         x = np.ediff1d(bin_edges) + bin_edges[:-1]
         self.tracePlot.plot(x, counts)
-        
+            
         self.empty_layout(self.ui.tcspcLayout)
         self.ui.tcspcLayout.addWidget(dataWidget)
         
+        self.regionNum = 0 
         self.region_selection()
+        self.region[0].setMovable(False)
         
-        print(datetime.now(), '[analysis] TCSPC received and plotted')
+        print(datetime.now(), '[analysis] TCSPC data received and plotted')
+    
+    @pyqtSlot(bool)
+    @pyqtSlot(QtGui.QAbstractButton)    
+    def check_tcspcmode(self, id_or_state):
         
-    def check_tcspcmode(self, state):
-        if state:
-            if self.ui.radioButton_NP.isChecked():
-                self.ui.comLabel.setText('Select macrotime window in plot and set window length for binning.')
-            if self.ui.radioButton_origami_manual.isChecked():
-                self.ui.comLabel.setText('Feel free to add more windows for on-times.')
-                self.ui.pushButton_addWindow.setEnabled(True)
+        if isinstance(id_or_state, QtGui.QAbstractButton):
+            self.tcspcMode = id_or_state.text()
+            if not self.tcspcMode == 'Origami (manual)':
+                self.ui.pushButton_addWindow.setEnabled(False)
         else:
-            self.ui.pushButton_addWindow.setEnabled(False)    
+            select_ontimes = id_or_state
+            self.region[0].setMovable(select_ontimes)
+            if select_ontimes:
+                if self.ui.radioButton_NP.isChecked():
+                    self.ui.comLabel.setText('Modify macrotime window in plot \n and set window length for binning.')
+                if self.ui.radioButton_origami_manual.isChecked():
+                    self.ui.comLabel.setText('Feel free to add more windows for on-times.')
+                    self.ui.pushButton_addWindow.setEnabled(True)
+            else:
+                self.ui.pushButton_addWindow.setEnabled(False)
                 
-            
     def region_selection(self):
         self.region.append(pg.LinearRegionItem())
         self.region[self.regionNum].setZValue(10)
@@ -238,43 +273,37 @@ class Frontend(QtGui.QMainWindow):
     def load_tcspc(self):
 
         self.emit_param()
+        print(datetime.now(), '[analysis] Loading TCSPC data')
+        
         self.loadTCSPCSignal.emit()
 
     @pyqtSlot()
     def position_estimation(self):
-        #TODO: read in parameter
+        
+        print(datetime.now(), '[analysis] Position estimation started')
         self.ontimes = []
         self.read_ontimes()
         
         if self.ui.radioButton_psffit.isChecked():
-            #TODO load parameter file
-            #self.x0
-            #self.y0
             self.sendPSFfitSignal.emit(self.current_images)
             
         self.emit_param()
-        self.estimatorSignal.emit()
+        self.estimatorSignal.emit(np.array(self.ontimes))
         
-    @pyqtSlot(np.ndarray, np.ndarray, np.ndarray)
-    def plot_position(self, indrec, pos, Ltot):
+    @pyqtSlot(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
+    def plot_position(self, indrec, pos, Ltot, N):
 #https://stackoverflow.com/questions/41060163/pyqtgraph-scatterplotitem-setbrush
 
-        #do some statistics
-        window = float(self.ui.lineEdit_winlen.text())
-        tiabs = self.ontimes[0][0]
-        ti = int(tiabs/window) # in window units
-        tfabs = self.ontimes[0][1]
-        tf = int(tfabs/window)
-        
-        sigmax = np.round(np.std(pos[ti:tf, 0]), decimals = 1)
-        sigmay = np.round(np.std(pos[ti:tf, 1]), decimals = 1)
-        #Nmean[j] = np.int(N[(np.nonzero(N))].mean())
-        meanx = np.mean(pos[ti:tf, 0])
-        meany = np.mean(pos[ti:tf, 1])
-        sx = 'σx = '+ str(sigmax) + ' nm'
-        sy = 'σy = '+ str(sigmay) + ' nm'  
+        #do some statistics        
+        sigmax = np.round(np.std(pos[:, 0]), decimals = 1)
+        sigmay = np.round(np.std(pos[:, 1]), decimals = 1)
 
-        #Nm = '<N> =' + str(Nmean[j])
+        Nmean = np.mean(N)
+        meanx = '<x> = ' + str(np.round(np.mean(pos[:, 0]), decimals = 1)) + ' nm'
+        meany = '<y> = ' + str(np.round(np.mean(pos[:, 1]), decimals = 1)) + ' nm'
+        sx = 'σx = ' + str(sigmax) + ' nm'
+        sy = 'σy = ' + str(sigmay) + ' nm'  
+        Nm = '<N> = ' + str(int(np.round(Nmean, decimals = 0)))
         
         #start actual plotting
         estimatorWidget = pg.GraphicsLayoutWidget()
@@ -288,19 +317,21 @@ class Frontend(QtGui.QMainWindow):
             pos_i = pg.ScatterPlotItem([pos[i, 0]], [pos[i, 1]], size=10, symbol='x', pen=pg.mkPen(None))
             plot.addItem(pos_i)
        
-        #TODO: undo comment
-        # for i in np.arange(self.x0.shape[0]):
-        #     donut_i = pg.ScatterPlotItem([self.x0[i]], [self.y0[i]], size=20, pen=pg.mkPen(None))
-        #     donut_i.setBrush(QtGui.QBrush(QtGui.QColor(QtCore.qrand() % 256, QtCore.qrand() % 256, QtCore.qrand() % 256)))
-        #     plot.addItem(donut_i)
+        for i in np.arange(self.x0.shape[0]):
+            donut_i = pg.ScatterPlotItem([self.x0[i]], [self.y0[i]], size=20, pen=pg.mkPen(None))
+            donut_i.setBrush(QtGui.QBrush(QtGui.QColor(QtCore.qrand() % 256, QtCore.qrand() % 256, QtCore.qrand() % 256)))
+            plot.addItem(donut_i)
             
         self.empty_layout(self.ui.estimateLayout)
         self.ui.estimateLayout.addWidget(estimatorWidget)
         
-        text = '[analysis] Position estimation done \n' + str(meanx) + '\n' + str(meany) + '\n' + sx + '\n' + sy 
+        text = '[analysis] Position estimation done \n' + str(meanx) + '\n' + str(meany) + '\n' + sx + '\n' + sy + '\n' + Nm 
         self.ui.comLabel.setText(text)
+        
+        print(datetime.now(), '[analysis] Estimation done and results plotted')
+        print(datetime.now(), '[analysis] Results: ', text)
         #TODO: add options to save plots and result summary in txt file, also save trace length and binning in logfile, plus name of psffile plus name of tcspc file
-
+        
     def empty_layout(self, layout):
         for i in reversed(range(layout.count())): 
             layout.itemAt(i).widget().setParent(None)
@@ -313,10 +344,9 @@ class Frontend(QtGui.QMainWindow):
         backend.positionSignal.connect(self.plot_position)
         
     def closeEvent(self, *args, **kwargs):
-        
+
+        print(datetime.now(), '[analysis] Analysis module closed')        
         super().closeEvent(*args, **kwargs)
-        self.closeSignal.emit()
-        print(datetime.now(), '[analysis] Analysis module closed')
         app.quit()
         
 
@@ -325,8 +355,7 @@ class Backend(QtCore.QObject):
     paramSignal = pyqtSignal(dict)
     plotTCSPCSignal = pyqtSignal(np.ndarray, np.ndarray)
     fitPSFSignal = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
-    estimatorSignal = pyqtSignal()
-    positionSignal = pyqtSignal(np.ndarray, np.ndarray, np.ndarray)
+    positionSignal = pyqtSignal(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
 
     
     """
@@ -374,6 +403,8 @@ class Backend(QtCore.QObject):
         self.NP_binning = params['NP_binning_window']
         self.lifetime_win_i = params['lifetime_win_i']
         self.lifetime_win_f = params['lifetime_win_f']
+        self.tcspcMode = params['tcspcMode']
+        
         try:
             self.trace_window_i = params['trace_window_i']
             self.trace_window_f = params['trace_window_f']
@@ -482,8 +513,8 @@ class Backend(QtCore.QObject):
         
         # fit PSFs  with poly_func and find central coordinates (x0, y0)
         self.PSF = np.zeros((self.k, self.size, self.size))
-        x0 = np.zeros(self.k)
-        y0 = np.zeros(self.k)
+        self.x0 = np.zeros(self.k)
+        self.y0 = np.zeros(self.k)
         self.index = np.zeros((self.k,2))
         self.aopt = np.zeros((self.k,27))
                             
@@ -502,10 +533,10 @@ class Backend(QtCore.QObject):
             # find min value for each fitted function (EBP centers)
             ind = np.unravel_index(np.argmin(self.PSF[i, :, :], 
                 axis=None), self.PSF[i, :, :].shape)
-            x0[i] = x[ind]
-            y0[i] = y[ind]
+            self.x0[i] = x[ind]
+            self.y0[i] = y[ind]
             self.index[i,:] = ind
-            print(datetime.now(), '[analysis]', str(i+1), '/', str(self.k), ' donuts fitted.')
+            print(datetime.now(), '[analysis]', str(i+1), '/', str(self.k), ' donuts fitted')
             
         psfTc[0,:,:] = self.PSF[0, :, :]
         self.PSF[0, :, :] = self.PSF[1, :, :]
@@ -514,7 +545,7 @@ class Backend(QtCore.QObject):
         self.PSF[2, :, :] = self.PSF[3, :, :]
         self.PSF[3, :, :] = psfTc[0,:,:]
         
-        self.fitPSFSignal.emit(self.PSF, x0, y0)
+        self.fitPSFSignal.emit(self.PSF, self.x0, self.y0)
 
 
     @pyqtSlot()
@@ -568,40 +599,101 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[analysis] PSF fit received in backend.')
         self.PSF = np.zeros((self.k, psffit_array.shape[1], psffit_array.shape[2]))
         self.PSF = psffit_array
+        self.read_parameterfile()
+        
+        self.fitPSFSignal.emit(self.PSF, self.x0, self.y0)
+     
+    def read_parameterfile(self):        
+        fitparameter = os.path.splitext(self.psffilename)[0] + '-parameter.txt'
+        
+        config = configparser.ConfigParser()
+        config.sections()
+        config.read(fitparameter, encoding='ISO-8859-1')
+        
+        self.pxexp = float(config['PSF-fit parameter']['Experimental px size [nm]'])
+        self.size = int(config['PSF-fit parameter']['x-/ y-size of saved PSF fit [px]'])
+        self.PX = float(config['PSF-fit parameter']['Final px size of PSF fit [nm]'])
+        self.k = int(config['PSF-fit parameter']['Number of fitted excitation donuts'])
+        #update donut number in gui
+        x0 = config['PSF-fit parameter']['x-coordinates of donut centers [px]']
+        y0 = config['PSF-fit parameter']['y-coordinates of donut centers [px]']
+        
+        x0 = x0[1:-2].split('.')
+        y0 = y0[1:-2].split('.')
+        self.x0 = np.zeros(len(x0))
+        self.y0 = np.zeros(len(y0))
 
-        print(self.PSF.shape)
+        for i in range(len(x0)):
+            self.x0[i] = int(x0[i])
+            self.y0[i] = int(y0[i])
         
-    @pyqtSlot()
-    def find_position(self):
+    @pyqtSlot(np.ndarray)
+    def find_position(self, ontimes):
         
-        windows = [self.NP_binning]
-        nwin = len(windows)
-        
-        for j in np.arange(nwin):
-            window = windows[j] # 1s 
-            nwindows = int(np.max(self.abs_time)//window)
-            Len = int(len(self.rel_time)//np.max(self.abs_time//window))*np.arange(nwindows+1)
-            reltimes = np.reshape(self.rel_time[0:Len[nwindows]], (nwindows, Len[1]))
-        
-            Tot=len(Len) - 1
-            n = np.zeros((Tot, 4))
-            pos = np.zeros((Tot, 2))
-            indrec = np.zeros((Tot, 2))
-        
-            N = np.zeros(Tot)
-            
+        mode = self.tcspcMode
+        print(datetime.now(), '[analysis] Position estimation performed in', mode,  'mode')
+
+        #TODO: change to fixed number of windows and then show window length
+        if mode == 'Nanoparticle':
             tiabs = self.trace_window_i
-            ti = int(tiabs/window) # in window units
             tfabs = self.trace_window_f
-            tf = int(tfabs/window)
+            num_windows = int((tfabs - tiabs) / self.NP_binning)
+            timeON = np.zeros(2*num_windows)
+            for i in np.arange(0, 2*num_windows, 2):
+                timeON[i] = tiabs
+                tiabs = tiabs + 0.1
+                timeON[i+1] = tiabs
+            timeON[-1] = tfabs
             
+        elif mode == 'Origami (manual)':
+            timeON = ontimes.flatten()
+            print(timeON)
         
-            for i in np.arange(ti, tf):
-                n[i, :] = self.n_minflux(reltimes[i])
-                [indrec[i,:], pos[i, :], Ltot] = self.pos_minflux(n[i, :])
-                N[i] = np.sum(n[i, :])
+        number = len(timeON)
+        
+        t = {}
+        absTimeON = {}
+        relTimeON = {}
+        
+        for i in np.arange(0, number, 2):
+            print(i)
+            j = i//2
+#            if i == timeON.shape[0] - 1:
+#                t[i] = timeON[i] < self.abs_time
+#            else:
+            t[i] = (timeON[i] < self.abs_time) & (self.abs_time < timeON[i+1])
+            absTimeONp = self.abs_time * t[i]
+            absTimeON[j] = self.abs_time[np.nonzero(absTimeONp)]
+            relTimeON[j] = self.rel_time[np.nonzero(absTimeONp)] #changed fron relTime... to not exclude rel. times exactly equal to 0.000...
+    
+        Nsegments = len(absTimeON)
+                
+        Tot = Nsegments #check whether it can be correct
+        n = np.zeros((Tot, 4))
+        pos = np.zeros((Tot, 2))
+        indrec = np.zeros((Tot, 2))    
+        N = np.zeros(Tot)
+        deltaT = np.zeros(Tot)
+                
+        for i in np.arange(Tot):
+            n[i, :] = self.n_minflux(relTimeON[i])
+            N[i] = np.sum(n[i, :])
+            
+            #calculate time length of selected trace segment
+            deltaT[i] = absTimeON[i][-1] - absTimeON[i][0]
+
+            #check if above min. time length and photon threshold
+            #TODO: soft-code both mentioned quantities
+            if deltaT[i] > 0.01:
+                if N[i] > 1000:
+                    [indrec[i,:], pos[i, :], Ltot] = self.pos_minflux(n[i, :])
+                else:
+                    pass
+            else:
+                pass
  
-            self.positionSignal.emit(indrec, pos, Ltot)
+        print(pos)
+        self.positionSignal.emit(indrec, pos, Ltot, N)
     
     def n_minflux(self, reltimes_i):
         
@@ -682,34 +774,28 @@ class Backend(QtCore.QObject):
     
     def save_psffit(self):
          
-        #TODO: save fit parameter in seperate file
         root = os.path.splitext(self.psffilename)[0]
         
-        #TODO: undo comment
-        # fit_filename = root + '_fit.tiff'
-        # data = np.array(self.PSF, dtype=np.float32)
-        # iio.mimwrite(fit_filename, data)
+        fit_filename = root + '_fit.tiff'
+        data = np.array(self.PSF, dtype=np.float32)
+        iio.mimwrite(fit_filename, data)
         
         parameter_filename = root + '_fit-parameter.txt'
-        #file size and enconding, numbers of donuts fitted, x0, y0
-                
-        description = np.array(['Name of fitted PSF file:',
-                                self.psffilename,
-                                'Experimental px size in nm:',
-                                'x-/ y-size of saved PSF fit in px:',
-                                'Final px size of PSF fit in nm:',
-                                'Number of fitted excitation donuts:',
-                                'x0, y0', '', '', '', ''])
-        
-        self.x0 = np.zeros(self.k)
-        values = np.array([None, None, self.pxexp, self.size, self.PX, self.k, None])
-        values = np.append(values, self.x0)
-        
-        parameter = np.zeros(description.size, dtype=[('col1', 'U100'), ('col2', float)])
-        parameter['col1'] = description
-        parameter['col2'] = values
-        
-        np.savetxt(parameter_filename, parameter.T, fmt='%s %f')
+        config = configparser.ConfigParser()
+    
+        config['PSF-fit parameter'] = {
+    
+            'Date and time': datetime.now(),
+            'Name of PSF source file': self.psffilename,
+            'Experimental px size [nm]': str(self.pxexp),
+            'x-/ y-size of saved PSF fit [px]': str(self.size),
+            'Final px size of PSF fit [nm]': str(self.PX),
+            'Number of fitted excitation donuts': str(self.k),
+            'x-coordinates of donut centers [px]': str(self.x0),
+            'y-coordinates of donut centers [px]': str(self.y0)}
+    
+        with open(parameter_filename, 'w') as configfile:
+            config.write(configfile)
 
         print(datetime.now(), '[analysis] Fitted PSF and parameter file saved')
         
@@ -768,9 +854,15 @@ class Backend(QtCore.QObject):
         frontend.ui.pushButton_saveFit.clicked.connect(self.save_psffit)
 
 if __name__ == '__main__':
-    app = QtGui.QApplication(sys.argv)
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    
+    if not QtGui.QApplication.instance():
+        app = QtGui.QApplication(sys.argv)
+    else:
+        app = QtGui.QApplication.instance()
+
+    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    
     icon_path = r'pics/icon.jpg'
     app.setWindowIcon(QtGui.QIcon(icon_path))
     
@@ -789,4 +881,4 @@ if __name__ == '__main__':
     gui.show() #Maximized()
     #gui.showFullScreen()
         
-    sys.exit(app.exec_())
+    app.exec_()
