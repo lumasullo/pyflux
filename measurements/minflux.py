@@ -17,6 +17,7 @@ from pyqtgraph.Qt import QtCore, QtGui
 from pyqtgraph.dockarea import Dock, DockArea
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QGroupBox
 from tkinter import Tk, filedialog
 
 import tools.tools as tools
@@ -94,9 +95,7 @@ class Frontend(QtGui.QFrame):
         grid = QtGui.QGridLayout()
 
         self.setLayout(grid)
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
+        self.paramWidget = QGroupBox('Parameter')
 
         grid.addWidget(self.paramWidget, 0, 0)
         
@@ -142,11 +141,8 @@ class Frontend(QtGui.QFrame):
         
         # file/folder widget
         
-        self.fileWidget = QtGui.QFrame()
-        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                      QtGui.QFrame.Raised)
-        
-        self.fileWidget.setFixedHeight(120)
+        self.fileWidget = QGroupBox('Save options') 
+        self.fileWidget.setFixedHeight(155)
         self.fileWidget.setFixedWidth(150)
         
         # folder
@@ -305,27 +301,28 @@ class Backend(QtCore.QObject):
         self.i = 0
         self.shutterSignal.emit(8, True)
         
-#        if self.measType == 'Standard':
-#            
-#            print('[minflux] self.n, self.acqtime', self.n, self.acqtime)
-#            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
-##            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
-##            time.sleep(phtime)
-#            self.tcspcStartSignal.emit()
-#            self.t0 = time.time()
-#            
-#        if self.measType == 'Predefined positions':
-#            
-#            print(datetime.now(), '[minflux] Predefined positions')
-#            
-#            self.update_param()
-#            time.sleep(0.2)
-#            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
-##            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
-##            time.sleep(phtime)
-#            self.tcspcStartSignal.emit()
-#            self.t0 = time.time()
-#            self.measTimer.start(0)
+        #TODO: delete test line
+        self.get_ROI_center(self.pattern)
+
+        
+        if self.measType == 'Standard':
+            print('[minflux] self.n, self.acqtime', self.n, self.acqtime)
+            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
+#            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
+#            time.sleep(phtime)
+            self.tcspcStartSignal.emit()
+            self.t0 = time.time()
+            
+        if self.measType == 'Predefined positions':
+            print(datetime.now(), '[minflux] Predefined positions')
+            self.update_param()
+            time.sleep(0.2)
+            self.tcspcPrepareSignal.emit(self.filename, self.acqtime, self.n) # signal emitted to tcspc module to start the measurement
+#            phtime = 4.0  # in s, it takes 4 s for the PH to start the measurement, TO DO: check if this can be reduced (send email to Picoquant, etc)
+#            time.sleep(phtime)
+            self.tcspcStartSignal.emit()
+            self.t0 = time.time()
+            self.measTimer.start(0)
     
     def loop(self):
         
@@ -348,7 +345,7 @@ class Backend(QtCore.QObject):
     def stop(self):
         
         self.shutterSignal.emit(8, False)
-        #self.measTimer.stop()
+        self.measTimer.stop()
         
     @pyqtSlot()  
     def get_tcspc_done_signal(self):
@@ -356,7 +353,6 @@ class Backend(QtCore.QObject):
         """
         Connection: [tcspc] tcspcDoneSignal
         """
-        
         self.xyzEndSignal.emit(self.filename)
         
     def make_connection(self, frontend):

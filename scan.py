@@ -498,7 +498,7 @@ class Frontend(QtGui.QFrame):
             0 - signal send by scan-gui-button --> change state of all minflux shutters
             1...6 - shutter 1-6 will be set according to on-variable, i.e. either true or false; only 1-4 controlled from here
             7 - set all minflux shutters according to on-variable
-            tbd: 8 - set all shutters according to on-variable
+            8 - set all shutters according to on-variable
         '''
         
         if num == 0:
@@ -1770,19 +1770,7 @@ class Backend(QtCore.QObject):
                         
             tools.toggle_shutter(self.adw, num, False)
             print(datetime.now(), '[scan] Shutter ' + str(num) + ' closed')
-            
-    @pyqtSlot(bool)
-    def toggle_minflux_shutters(self, val):
-        if val is True:
-            for i in np.arange(1, 5):
-                tools.toggle_shutter(self.adw, int(i), True)
-            print(datetime.now(), '[scan] Minflux shutters opened')
-            
-        if val is False:
-            for i in np.arange(1, 5):
-                tools.toggle_shutter(self.adw, int(i), False)
-            print(datetime.now(), '[scan] Minflux shutters closed')
-            
+                       
     @pyqtSlot(int, bool)
     def shutter_handler(self, num, on):
         self.shuttermodeSignal.emit(num, on)
@@ -1966,7 +1954,7 @@ class Backend(QtCore.QObject):
           
     def stop(self):
         
-        self.toggle_minflux_shutters(False)
+        self.shuttermodeSignal.emit(8, False)
         if self.flipper_state is True:
             self.toggle_flipper(False)
         self.liveview_stop()

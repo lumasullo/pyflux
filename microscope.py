@@ -215,7 +215,8 @@ class Backend(QtCore.QObject):
         self.minfluxWorker.moveToSignal.connect(self.xyWorker.get_move_signal)
         
         self.minfluxWorker.shutterSignal.connect(self.scanWorker.shutter_handler)
-        self.minfluxWorker.shutterSignal.connect(self.xyWorker.toggle_tracking_shutter)
+        self.minfluxWorker.shutterSignal.connect(self.xyWorker.shutter_handler)
+        self.minfluxWorker.shutterSignal.connect(self.zWorker.shutter_handler)
         
         self.tcspcWorker.tcspcDoneSignal.connect(self.minfluxWorker.get_tcspc_done_signal)
         
@@ -230,7 +231,11 @@ class Backend(QtCore.QObject):
         self.psfWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
         self.psfWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
         self.psfWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
+       
         self.psfWorker.shutterSignal.connect(self.scanWorker.shutter_handler)
+        self.psfWorker.shutterSignal.connect(self.xyWorker.shutter_handler)
+        self.psfWorker.shutterSignal.connect(self.zWorker.shutter_handler)
+    
                 
         self.psfWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
         self.psfWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)

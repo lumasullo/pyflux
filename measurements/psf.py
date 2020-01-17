@@ -49,6 +49,7 @@ class Frontend(QtGui.QFrame):
         params['filename'] = filename
         params['folder'] = self.folderEdit.text()
         params['nDonuts'] = self.donutSpinBox.value()
+        params['alignMode'] = self.activateModeCheckbox.isChecked()
         
         self.paramSignal.emit(params)
         
@@ -64,9 +65,7 @@ class Frontend(QtGui.QFrame):
                 self.folderEdit.setText(folder)
         except OSError:
             pass
-        
-        self.checkboxGroup.hide(True)
-    
+            
     @pyqtSlot(float)
     def get_progress_signal(self, completed):
         
@@ -75,6 +74,22 @@ class Frontend(QtGui.QFrame):
         if completed == 100:
             self.stopButton.setEnabled(False)
             self.startButton.setEnabled(True)
+            
+    def activate_alignmentmode(self, on):
+        if on:
+            self.shutter1Checkbox.setEnabled(True)
+            self.shutter2Checkbox.setEnabled(True)
+            self.shutter3Checkbox.setEnabled(True)
+            self.shutter4Checkbox.setEnabled(True)
+            print(datetime.now(), '[psf] Alignment mode activated')
+        else:
+            self.shutter1Checkbox.setEnabled(False)
+            self.shutter2Checkbox.setEnabled(False)
+            self.shutter3Checkbox.setEnabled(False)
+            self.shutter4Checkbox.setEnabled(False)
+            print(datetime.now(), '[psf] Alignment mode deactivated')
+            
+        
     
     def setup_gui(self):
         
@@ -184,6 +199,11 @@ class Frontend(QtGui.QFrame):
         self.checkboxGroup.addButton(self.shutter3Checkbox)
         self.checkboxGroup.addButton(self.shutter4Checkbox)
         
+        self.shutter1Checkbox.setEnabled(False)
+        self.shutter2Checkbox.setEnabled(False)
+        self.shutter3Checkbox.setEnabled(False)
+        self.shutter4Checkbox.setEnabled(False)
+        
         align_subgrid.addWidget(self.activateModeCheckbox, 0, 0, 1, 2)
         align_subgrid.addWidget(self.shutter1Checkbox, 1, 0)
         align_subgrid.addWidget(self.shutter2Checkbox, 2, 0)
@@ -197,6 +217,7 @@ class Frontend(QtGui.QFrame):
         self.startButton.clicked.connect(lambda: self.startButton.setEnabled(False))
         self.stopButton.clicked.connect(lambda: self.startButton.setEnabled(True))
         self.browseFolderButton.clicked.connect(self.load_folder)
+        self.activateModeCheckbox.clicked.connect(lambda: self.activate_alignmentmode(self.activateModeCheckbox.isChecked()))
 
     def make_connection(self, backend):
     
@@ -253,17 +274,22 @@ class Backend(QtCore.QObject):
         
         self.progressSignal.emit(0)
         
-        self.shutterSignal.emit(7, False)
+        self.shutterSignal.emit(8, False)
         
-        print(datetime.now(), '[psf] measurement started')
+        print(datetime.now(), '[psf] PSF measurement started')
           
         self.xyStopSignal.emit(True)
         self.zStopSignal.emit()
         
+        #open IR and tracking shutter
+        self.shutterSignal.emit(5, True)
+        self.shutterSignal.emit(6, True)
+        
         self.moveToInitialSignal.emit()
+
         
         self.data = np.zeros((self.totalFrameNum, self.nPixels, self.nPixels))
-        print(datetime.now(), '[psf] data shape is', np.shape(self.data))
+        print(datetime.now(), '[psf] Data shape is', np.shape(self.data))
         self.xy_flag = True
         self.z_flag = True
         self.scan_flag = True
@@ -274,12 +300,11 @@ class Backend(QtCore.QObject):
         
         self.measTimer.stop()
         self.progressSignal.emit(100) #changed from 0
-        self.shutterSignal.emit(7, False)
+        self.shutterSignal.emit(8, False)
         
         #new filename indicating that getUniqueName() has already found filename
         #rerunning would only cause errors in files being saved focus and xy_tracking
         attention_filename = '!' + self.filename
-        print(attention_filename)
         self.endSignal.emit(attention_filename)
         
         self.xyStopSignal.emit(False)
@@ -287,7 +312,7 @@ class Backend(QtCore.QObject):
         
         self.export_data()
         
-        print(datetime.now(), '[psf] measurement ended')
+        print(datetime.now(), '[psf] PSF measurement ended')
         
     def loop(self):
         
@@ -320,8 +345,8 @@ class Backend(QtCore.QObject):
     
                 if self.scan_flag:
                     
-                    print(datetime.now(), '[psf] open shutter', shutternum)
-                    self.shutterSignal.emit(shutternum, True)
+                    if not self.alignMode:
+                        self.shutterSignal.emit(shutternum, True)
                         
                     initialPos = np.array([self.target_x, self.target_y, 
                                            self.target_z], dtype=np.float64)
@@ -334,9 +359,9 @@ class Backend(QtCore.QObject):
                               '[psf] scan signal emitted ({})'.format(self.i))
                         
                 if self.scanIsDone:
-                    
-                    print(datetime.now(), '[psf] close shutter', shutternum)
-                    self.shutterSignal.emit(shutternum, False)
+                   
+                    if not self.alignMode:
+                        self.shutterSignal.emit(shutternum, False)
                     
                     completed = ((self.i+1)/self.totalFrameNum) * 100
                     self.progressSignal.emit(completed)
@@ -387,6 +412,8 @@ class Backend(QtCore.QObject):
         self.filename = tools.getUniqueName(params['filename'] + '_' + today)
          
         self.totalFrameNum = self.nFrames * self.k
+        
+        self.alignMode = params['alignMode']
                 
     @pyqtSlot(bool, float, float) 
     def get_xy_is_done(self, val, x, y):
@@ -452,9 +479,7 @@ class Backend(QtCore.QObject):
         frontend.startButton.clicked.connect(self.start)
         frontend.stopButton.clicked.connect(self.stop)
         frontend.paramSignal.connect(self.get_frontend_param)
-        frontend.checkboxGroup.buttonClicked['QAbstractButton *'].connect(self.checkboxGroup_selection)            
-        #frontend.activateModeCheckbox.clicked.connect(frontend.checkboxGroup.disconnect(self))
-    
+        frontend.checkboxGroup.buttonClicked['QAbstractButton *'].connect(self.checkboxGroup_selection)    
             
             
             

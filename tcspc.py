@@ -130,7 +130,7 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(250)
+        self.paramWidget.setFixedHeight(245)
         self.paramWidget.setFixedWidth(230)
         
 #        phParamTitle = QtGui.QLabel('<h2><strong>TCSPC settings</strong></h2>')
@@ -147,7 +147,7 @@ class Frontend(QtGui.QFrame):
         self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
                                       QtGui.QFrame.Raised)
         
-        self.fileWidget.setFixedHeight(120)
+        self.fileWidget.setFixedHeight(125)
         self.fileWidget.setFixedWidth(230)
         
         # Shutter button
@@ -264,7 +264,7 @@ class Frontend(QtGui.QFrame):
         
         subgrid.addWidget(self.measureButton, 17, 0)
         subgrid.addWidget(self.prepareButton, 18, 0)
-        subgrid.addWidget(self.shutterButton, 19, 0)
+        #subgrid.addWidget(self.shutterButton, 19, 0)
         subgrid.addWidget(self.stopButton, 17, 1)
         subgrid.addWidget(self.clearButton, 18, 1)
         
@@ -473,30 +473,6 @@ class Backend(QtCore.QObject):
         self.resolution = paramlist[1]
         self.tacq = paramlist[2]
         self.folder = paramlist[3]      
-
-# delete after test period        
-#    @pyqtSlot(bool)
-#    def toggle_shutter(self, val):
-#        
-#        if val is True:
-#            
-#            self.shutter_state = True
-#            
-#            self.adw.Set_Par(55, 0)
-#            self.adw.Set_Par(50, 1)
-#            self.adw.Start_Process(5)
-#            
-#            print(datetime.now(), '[tcspc] Shutter opened')
-#            
-#        if val is False:
-#            
-#            self.shutte_state = False
-#            
-#            self.adw.Set_Par(55, 0)
-#            self.adw.Set_Par(50, 0)
-#            self.adw.Start_Process(5)
-#
-#            print(datetime.now(), '[tcspc] Shutter closed')
             
     @pyqtSlot(bool)
     def toggle_minflux_shutters(self, val):
@@ -532,8 +508,8 @@ if __name__ == '__main__':
     else:
         app = QtGui.QApplication.instance()
         
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 
     DEVICENUMBER = 0x1
     adw = ADwin.ADwin(DEVICENUMBER, 1)

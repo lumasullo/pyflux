@@ -49,7 +49,6 @@ def zMoveTo(adwin, z_f):
 
 class Frontend(QtGui.QFrame):
     
-    liveviewSignal = pyqtSignal(bool)
     changedROI = pyqtSignal(np.ndarray)  # sends new roi size
     closeSignal = pyqtSignal()
     saveDataSignal = pyqtSignal(bool)
@@ -58,9 +57,6 @@ class Frontend(QtGui.QFrame):
     
     """
     Signals
-    
-    - liveviewSignal:
-        To: [backend] liveview
         
     - changedROI:
         To: [backend] get_new_roi
@@ -72,7 +68,6 @@ class Frontend(QtGui.QFrame):
         To: [backend] get_save_data_state
         
     - paramSignal:
-        
         To: [backend] get_frontend_param
 
     """
@@ -130,7 +125,9 @@ class Frontend(QtGui.QFrame):
                                          scaleSnap=True,
                                          translateSnap=True,
                                          pen=ROIpen)
-            
+        
+        self.selectROIbutton.setEnabled(True)
+        
     def select_roi(self):
         
         self.cropped = True
@@ -146,11 +143,23 @@ class Frontend(QtGui.QFrame):
         
         value = np.array([x0, y0, x1, y1])
         
+        if (value[0] < 0) or (value[1] < 0) or (value[2] > 1280) or (value[3] > 1024):
+            print(datetime.now(), '[focus] ROI cannot be set as outside of camera FOV')
+            x0 = 0
+            y0 = 0
+            x1 = 1280 
+            y1 = 1024 
+            value = np.array([x0, y0, x1, y1])
+            
         self.changedROI.emit(value)
     
         self.vb.removeItem(self.roi)
         self.roi.hide()
         self.roi = None
+        
+        self.selectROIbutton.setEnabled(False)
+        self.deleteROIbutton.setEnabled(True)
+        self.vb.enableAutoRange()
         
 #    def toggleFocus(self):
 #        
@@ -163,18 +172,36 @@ class Frontend(QtGui.QFrame):
 #        else:
 #            
 #            self.lockFocusSignal.emit(False)
-            
-    def toggle_liveview(self):
         
-        if self.liveviewButton.isChecked():
+    def delete_roi(self):
+        
+        self.vb.removeItem(self.roi)
+        x0 = 0
+        y0 = 0
+        x1 = 1280 
+        y1 = 1024 
             
-            self.liveviewSignal.emit(True)
+        value = np.array([x0, y0, x1, y1])
+        self.changedROI.emit(value)
+        self.cropped = False
+        
+        self.roi = None
+        
+        print(datetime.now(), '[focus] ROI deleted')
+        
+        self.deleteROIbutton.setEnabled(False)
+            
+    @pyqtSlot(bool)        
+    def toggle_liveview(self, on):
+        if on:
+            self.liveviewButton.setChecked(True)
             print(datetime.now(), '[focus] focus live view started')
-        
         else:
-            
-            self.liveviewSignal.emit(False)
             self.liveviewButton.setChecked(False)
+            try:
+                self.roi.hide()
+            except:
+                pass
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
             print(datetime.now(), '[focus] focus live view stopped')
             
@@ -261,13 +288,31 @@ class Frontend(QtGui.QFrame):
 #        self.focusGraph.zPlot.removeItem(self.focusStDev1)
         
         pass
+    
+    @pyqtSlot(int, bool)    
+    def update_shutter(self, num, on):
+        
+        '''
+        setting of num-value:
+            0 - signal send by scan-gui-button --> change state of all minflux shutters
+            1...6 - shutter 1-6 will be set according to on-variable, i.e. either true or false; only 1-4 controlled from here
+            7 - set all minflux shutters according to on-variable
+            8 - set all shutters according to on-variable
+        for handling of shutters 1-5 see [scan] and [focus]
+        '''
+        
+        if (num == 5)  or (num == 8):
+            self.shutterCheckbox.setChecked(on)
             
     def make_connection(self, backend):
             
         backend.changedImage.connect(self.get_image)
         backend.changedData.connect(self.get_data)
         backend.changedSetPoint.connect(self.get_setpoint)
-        
+        backend.shuttermodeSignal.connect(self.update_shutter)
+        backend.liveviewSignal.connect(self.toggle_liveview)
+
+
     def setup_gui(self):
         
          # Focus lock widget
@@ -292,27 +337,29 @@ class Frontend(QtGui.QFrame):
 
         self.ROIbutton = QtGui.QPushButton('ROI')
         self.selectROIbutton = QtGui.QPushButton('Select ROI')
+        self.deleteROIbutton = QtGui.QPushButton('Delete ROI')
         self.calibrationButton = QtGui.QPushButton('Calibrate')
         
         self.exportDataButton = QtGui.QPushButton('Export data')
         self.saveDataBox = QtGui.QCheckBox("Save data")
-                
         self.clearDataButton = QtGui.QPushButton('Clear data')
-        self.ROIbutton.clicked.connect(self.roi_method)
         
         self.pxSizeLabel = QtGui.QLabel('Pixel size (nm)')
         self.pxSizeEdit = QtGui.QLineEdit('10')
-                
         self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
+        
+        self.deleteROIbutton.setEnabled(False)
+        self.selectROIbutton.setEnabled(False)
+
         
         # gui connections
         
-        self.liveviewButton.clicked.connect(self.toggle_liveview)
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
         self.selectROIbutton.clicked.connect(self.select_roi)
         self.clearDataButton.clicked.connect(self.clear_graph)
         self.pxSizeEdit.textChanged.connect(self.emit_param)
-
+        self.deleteROIbutton.clicked.connect(self.delete_roi)
+        self.ROIbutton.clicked.connect(self.roi_method)
 
         # focus camera display
         
@@ -365,25 +412,26 @@ class Frontend(QtGui.QFrame):
         self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
                                        QtGui.QFrame.Raised)
         
-        self.paramWidget.setFixedHeight(320)
+        self.paramWidget.setFixedHeight(330)
         self.paramWidget.setFixedWidth(140)
         
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
         
-        subgrid.addWidget(self.calibrationButton, 6, 0)
-        subgrid.addWidget(self.exportDataButton, 4, 0)
-        subgrid.addWidget(self.clearDataButton, 5, 0)
+        subgrid.addWidget(self.calibrationButton, 7, 0, 1, 2)
+        subgrid.addWidget(self.exportDataButton, 5, 0, 1, 2)
+        subgrid.addWidget(self.clearDataButton, 6, 0, 1, 2)
         
-        subgrid.addWidget(self.pxSizeLabel, 7, 0)
-        subgrid.addWidget(self.pxSizeEdit, 7, 1)
+        subgrid.addWidget(self.pxSizeLabel, 8, 0)
+        subgrid.addWidget(self.pxSizeEdit, 8, 1)
         
-        subgrid.addWidget(self.feedbackLoopBox, 8, 0)
-        subgrid.addWidget(self.saveDataBox, 9, 0)
+        subgrid.addWidget(self.feedbackLoopBox, 9, 0)
+        subgrid.addWidget(self.saveDataBox, 10, 0)
         
-        subgrid.addWidget(self.liveviewButton, 1, 0)
-        subgrid.addWidget(self.ROIbutton, 2, 0)
-        subgrid.addWidget(self.selectROIbutton, 3, 0)
+        subgrid.addWidget(self.liveviewButton, 1, 0, 1, 2)
+        subgrid.addWidget(self.ROIbutton, 2, 0, 1, 2)
+        subgrid.addWidget(self.selectROIbutton, 3, 0, 1, 2)
+        subgrid.addWidget(self.deleteROIbutton, 4, 0, 1, 2)
         
         subgrid.addWidget(self.shutterLabel, 11, 0)
         subgrid.addWidget(self.shutterCheckbox, 12, 0)
@@ -391,8 +439,10 @@ class Frontend(QtGui.QFrame):
         grid.addWidget(self.paramWidget, 0, 0)
         grid.addWidget(self.focusGraph, 0, 1)
         grid.addWidget(self.camDisplay, 0, 2)
-
         
+        #didnt want to work when being put at earlier point in this function
+        self.liveviewButton.clicked.connect(lambda: self.toggle_liveview(self.liveviewButton.isChecked()))
+
     def closeEvent(self, *args, **kwargs):
         
         self.closeSignal.emit()
@@ -410,6 +460,9 @@ class Backend(QtCore.QObject):
     changedSetPoint = pyqtSignal(float)
     
     zIsDone = pyqtSignal(bool, float)
+    shuttermodeSignal = pyqtSignal(int, bool)
+    liveviewSignal = pyqtSignal(bool)
+
     
     """
     Signals
@@ -426,6 +479,9 @@ class Backend(QtCore.QObject):
     - zIsDone:
         To: [psf] get_z_is_done
         
+    - shuttermodeSignal:
+        To: [frontend] update_shutter
+        
     """
 
     def __init__(self, camera, adw, *args, **kwargs):
@@ -436,6 +492,7 @@ class Backend(QtCore.QObject):
         self.feedback_active = False
         self.cropped = False
         self.standAlone = False
+        self.camON = False
         
         today = str(date.today()).replace('-', '') # TO DO: change to get folder from microscope
         root = r'C:\\Data\\'
@@ -494,26 +551,26 @@ class Backend(QtCore.QObject):
         self.adw.Set_FPar(32, z_f)
         
         self.adw.Set_Par(30, 1)
-        
+    
     @pyqtSlot(bool)
     def liveview(self, value):
 
         if value:
+            self.camON = True
             self.liveview_start()
 
         else:
             self.liveview_stop()
+            self.camON = False
 
         
     def liveview_start(self):
         
-        try:
+        if self.camON:
             self.camera.stop_live_video()
-            
-        except: # TO DO: change for specific Error
-            
-            pass
-           
+            self.camON = False
+        
+        self.camON = True
         self.camera.start_live_video(framerate='20 Hz')
 
         self.focusTimer.start(self.focusTime)
@@ -521,6 +578,7 @@ class Backend(QtCore.QObject):
     def liveview_stop(self):
         
         self.focusTimer.stop()
+        self.camON = False
         
         x0 = 0
         y0 = 0
@@ -528,19 +586,23 @@ class Backend(QtCore.QObject):
         y1 = 1024 
             
         val = np.array([x0, y0, x1, y1])
-        self.camera._set_AOI(*val)
+        self.get_new_roi(val)
                 
     @pyqtSlot(int, bool)
     def toggle_ir_shutter(self, num, val):
         
         #TODO: change code to also update checkboxes in case of minflux measurement
-        if num == 8:
+        if (num == 5) or (num == 8):
             if val:
                 tools.toggle_shutter(self.adw, 5, True)
                 print(datetime.now(), '[focus] IR shutter opened')
             else:
                 tools.toggle_shutter(self.adw, 5, False)
                 print(datetime.now(), '[focus] IR shutter closed')
+                
+    @pyqtSlot(int, bool)
+    def shutter_handler(self, num, on):
+        self.shuttermodeSignal.emit(num, on)
         
     @pyqtSlot(bool)
     def toggle_feedback(self, val, mode='continous'):
@@ -711,18 +773,20 @@ class Backend(QtCore.QObject):
         
         if initial:
         
-            try:
-                self.camera.stop_live_video()
-                
-            except: # TO DO: change for specific Error
-                
-                pass
+            if self.camON:
+                self.focusTimer.stop()
+                self.camera.stop_live_video()            
             
+            #self.liveviewSignal.emit(True)
+            self.reset()
+            self.reset_data_arrays()
+            self.camON = True
             self.camera.start_live_video(framerate='20 Hz')
+            
             
             time.sleep(0.100)
             
-            self.camera._set_AOI(*self.roi_area)
+            self.get_new_roi(self.roi_area)
         
             time.sleep(0.200)
         
@@ -822,15 +886,18 @@ class Backend(QtCore.QObject):
         start the psf measurement with discrete xy - z corrections
         """
         
+        if self.camON:
+            self.liveviewSignal.emit(False)
+            
         self.toggle_feedback(False)
 #        self.toggle_tracking(False) # TO DO: add toggle_tracking
         
-        self.reset()
-        self.reset_data_arrays()
+
         
         self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
-
-        self.liveview_stop()
+            
+        self.reset()
+        self.reset_data_arrays()
         
     @pyqtSlot()    
     def get_lock_signal(self):
@@ -852,12 +919,22 @@ class Backend(QtCore.QObject):
     @pyqtSlot(np.ndarray)
     def get_new_roi(self, val):
         
+        
         self.roi_area = val
+        
+        if (val[0] < 0) or (val[1] < 0) or (val[2] > 1280) or (val[3] > 1024):
+            print(datetime.now(), '[focus] ROI cannot be set as outside camera FOV')
+            x0 = 0
+            y0 = 0
+            x1 = 1280 
+            y1 = 1024 
+            self.roi_area = np.array([x0, y0, x1, y1])
+            
         self.camera._set_AOI(*self.roi_area)
-
+        
         if DEBUG:
             print(datetime.now(), '[focus] ROI changed to', self.camera._get_AOI())
-        
+    
     @pyqtSlot(bool, str)   
     def get_tcspc_signal(self, val, fname):
         
@@ -922,25 +999,12 @@ class Backend(QtCore.QObject):
         
         self.toggle_feedback(False)
         
-        self.liveview_start()
-        time.sleep(0.4)
-        self.camera._set_AOI(*self.roi_area)
-                
-    def make_connection(self, frontend):
-          
-        frontend.liveviewSignal.connect(self.liveview)
-        frontend.changedROI.connect(self.get_new_roi)
-        frontend.closeSignal.connect(self.stop)
-#        frontend.lockFocusSignal.connect(self.lock_focus)
-#        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
-        frontend.saveDataSignal.connect(self.get_save_data_state)
-        frontend.exportDataButton.clicked.connect(self.export_data)
-        frontend.clearDataButton.clicked.connect(self.reset)
-        frontend.calibrationButton.clicked.connect(self.calibrate)
-        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_ir_shutter(8, frontend.shutterCheckbox.isChecked()))
-
-        
-        frontend.paramSignal.connect(self.get_frontend_param)
+        if self.camON:
+            self.liveviewSignal.emit(False)
+        #TODO: Why is it necessary to start liveview directly after finishing measurement?
+#        self.liveviewSignal.emit(True)
+#        time.sleep(0.4)
+#        self.get_new_roi(self.roi_area)
         
     def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
@@ -963,7 +1027,7 @@ class Backend(QtCore.QObject):
 
         self.set_moveTo_param(x_f, y_f, z_f, pixeltime)
         self.adw.Start_Process(2)
-     
+        
     @pyqtSlot()
     def stop(self):
         
@@ -975,7 +1039,6 @@ class Backend(QtCore.QObject):
         #prevent system to throw weird errors when not being able to close the camera, see uc480.py --> close()
 #        try:
         self.reset()
-        self.camera.close()
 #        except:
 #            pass
         
@@ -991,12 +1054,29 @@ class Backend(QtCore.QObject):
             
         print(datetime.now(), '[focus] Focus stopped')
         
+        self.camera.close()
+        
         # clean up aux files from NiceLib
         
         os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\lextab.py')
         os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\yacctab.py')
             
-    
+    def make_connection(self, frontend):
+          
+        frontend.changedROI.connect(self.get_new_roi)
+        frontend.closeSignal.connect(self.stop)
+#        frontend.lockFocusSignal.connect(self.lock_focus)
+#        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+        frontend.saveDataSignal.connect(self.get_save_data_state)
+        frontend.exportDataButton.clicked.connect(self.export_data)
+        frontend.clearDataButton.clicked.connect(self.reset)
+        frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
+        frontend.calibrationButton.clicked.connect(self.calibrate)
+        frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_ir_shutter(8, frontend.shutterCheckbox.isChecked()))
+
+        frontend.paramSignal.connect(self.get_frontend_param)
+        frontend.liveviewButton.clicked.connect(self.liveview)
+
 
 if __name__ == '__main__':
     
@@ -1005,21 +1085,22 @@ if __name__ == '__main__':
     else:
         app = QtGui.QApplication.instance()
         
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-#    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     print(datetime.now(), '[focus] Focus lock module running in stand-alone mode')
     
     # initialize devices
+    
+    DEVICENUMBER = 0x1
+    adw = ADwin.ADwin(DEVICENUMBER, 1)
+    scan.setupDevice(adw)
+    
     #if camera wasnt closed properly just keep using it without opening new one
     try:
         cam = uc480.UC480_Camera()
     except:
         pass
-        
-    DEVICENUMBER = 0x1
-    adw = ADwin.ADwin(DEVICENUMBER, 1)
-    scan.setupDevice(adw)
     
     gui = Frontend()   
     worker = Backend(cam, adw)
@@ -1045,7 +1126,8 @@ if __name__ == '__main__':
     worker.adw.Set_FPar(71, pos_zero)
     worker.adw.Set_FPar(72, pos_zero)
     
-    worker.moveTo(10, 10, 10) # in µm
+    #worker.moveTo(10, 10, 10) # in µm
+    #Very strange problem when using 
     
     gui.setWindowTitle('Focus lock')
     gui.resize(1500, 500)

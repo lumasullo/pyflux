@@ -36,16 +36,12 @@ PX_SIZE = 80.0 #px size of camera in nm
 
 class Frontend(QtGui.QFrame):
     
-    liveviewSignal = pyqtSignal(bool)
     roiInfoSignal = pyqtSignal(int, np.ndarray)
     closeSignal = pyqtSignal()
     saveDataSignal = pyqtSignal(bool)
     
     """
     Signals
-    
-    - liveviewSignal:
-         To: [backend] liveview
              
     - roiInfoSignal:
          To: [backend] get_roi_info
@@ -131,16 +127,14 @@ class Frontend(QtGui.QFrame):
         self.roilist = []
         self.delete_roiButton.setChecked(False)
         self.ROInumber = 0
+     
+    @pyqtSlot(bool)
+    def toggle_liveview(self, on):
         
-    def toggle_liveview(self):
-        
-        if self.liveviewButton.isChecked():
-            
-            self.liveviewSignal.emit(True)
-        
+        if on:
+            self.liveviewButton.setChecked(True)
+            print(datetime.now(), '[xy_tracking] Live view started')
         else:
-            
-            self.liveviewSignal.emit(False)
             self.liveviewButton.setChecked(False)
             self.emit_roi_info()
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
@@ -207,7 +201,22 @@ class Frontend(QtGui.QFrame):
             
 #            self.xyDataEllipse.setData(x, y)
 #            self.xyDataMean.setData([xmean], [ymean])
+
+    @pyqtSlot(int, bool)    
+    def update_shutter(self, num, on):
         
+        '''
+        setting of num-value:
+            0 - signal send by scan-gui-button --> change state of all minflux shutters
+            1...6 - shutter 1-6 will be set according to on-variable, i.e. either true or false; only 1-4 controlled from here
+            7 - set all minflux shutters according to on-variable
+            8 - set all shutters according to on-variable
+        for handling of shutters 1-5 see [scan] and [focus]
+        '''
+        
+        if (num == 6)  or (num == 8):
+            self.shutterCheckbox.setChecked(on)
+                    
     @pyqtSlot(bool, bool, bool)
     def get_backend_states(self, tracking, feedback, savedata):
         
@@ -253,6 +262,8 @@ class Frontend(QtGui.QFrame):
         backend.changedImage.connect(self.get_image)
         backend.changedData.connect(self.get_data)
         backend.updateGUIcheckboxSignal.connect(self.get_backend_states)
+        backend.shuttermodeSignal.connect(self.update_shutter)
+        backend.liveviewSignal.connect(self.toggle_liveview)
         
     def setup_gui(self):
         
@@ -362,9 +373,8 @@ class Frontend(QtGui.QFrame):
         
         # LiveView Button
 
-        self.liveviewButton = QtGui.QPushButton('camera LIVEVIEW')
+        self.liveviewButton = QtGui.QPushButton('Camera LIVEVIEW')
         self.liveviewButton.setCheckable(True)
-        self.liveviewButton.clicked.connect(self.toggle_liveview)
         
         # create ROI button
     
@@ -429,6 +439,7 @@ class Frontend(QtGui.QFrame):
         grid.addWidget(self.xyGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1)
         
+        self.liveviewButton.clicked.connect(lambda: self.toggle_liveview(self.liveviewButton.isChecked()))
         
     def closeEvent(self, *args, **kwargs):
         
@@ -443,7 +454,8 @@ class Backend(QtCore.QObject):
     updateGUIcheckboxSignal = pyqtSignal(bool, bool, bool)
 
     xyIsDone = pyqtSignal(bool, float, float)  # signal to emit new piezo position after drift correction
-    
+    shuttermodeSignal = pyqtSignal(int, bool)
+    liveviewSignal = pyqtSignal(bool)
     """
     Signals
     
@@ -458,6 +470,9 @@ class Backend(QtCore.QObject):
         
     - xyIsDone:
         To: [psf] get_xy_is_done
+        
+    - shuttermodeSignal:
+        To: [frontend] update_shutter
 
     """
 
@@ -484,6 +499,7 @@ class Backend(QtCore.QObject):
         self.tracking_value = False
         self.save_data_state = False
         self.feedback_active = False
+        self.camON = False
 
         self.npoints = 1200
         self.buffersize = 30000
@@ -559,14 +575,18 @@ class Backend(QtCore.QObject):
     @pyqtSlot(int, bool)
     def toggle_tracking_shutter(self, num, val):
         #TODO: change code to also update checkboxes in case of minflux measurement
-        if num == 8:
+        if (num == 6)  or (num == 8):
             if val:
                 tools.toggle_shutter(self.adw, 6, True)
                 print(datetime.now(), '[xy_tracking] Tracking shutter opened')
             else:
                 tools.toggle_shutter(self.adw, 6, False)
                 print(datetime.now(), '[xy_tracking] Tracking shutter closed')
-            
+   
+    @pyqtSlot(int, bool)
+    def shutter_handler(self, num, on):
+        self.shuttermodeSignal.emit(num, on)
+        
     @pyqtSlot(bool)
     def liveview(self, value):
         
@@ -575,14 +595,13 @@ class Backend(QtCore.QObject):
         Description: toggles start/stop the liveview of the camera.
         
         '''
-        
-        
-
         if value:
+            self.camON = True
             self.liveview_start()
-
+            
         else:
             self.liveview_stop()
+            self.camON = False
 
         
     def liveview_start(self):
@@ -955,14 +974,19 @@ class Backend(QtCore.QObject):
             self.toggle_feedback(True, mode='discrete')
             self.initial = initial
             print(datetime.now(), '[xy_tracking] initial', initial)
+        
+        if not self.camON:
+            print(datetime.now(), 'liveview started')
+            self.camON = True
+            self.andor.start_acquisition()
             
-        self.andor.start_acquisition()
         time.sleep(self.expTime * 3)
 
         self.image = self.andor.most_recent_image16(self.shape)
         self.changedImage.emit(self.image)
             
         self.andor.abort_acquisition()
+        self.camON = False
         
         self.track()
         self.update_graph_data()
@@ -1087,6 +1111,7 @@ class Backend(QtCore.QObject):
         start the psf measurement with discrete xy - z corrections
         """
         
+        
         self.toggle_feedback(False)
         self.toggle_tracking(False)
         
@@ -1094,9 +1119,9 @@ class Backend(QtCore.QObject):
         self.reset_data_arrays()
         
         self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
-        
-        if stoplive:
-            self.liveview_stop()
+                
+        if not self.camON:
+            self.liveviewSignal.emit(False)
         else:
             self.viewtimer.stop()
     
@@ -1194,15 +1219,17 @@ class Backend(QtCore.QObject):
         self.export_data()
         
         self.toggle_feedback(False) # TO DO: decide wether I want feedback ON/OFF at the end of measurement
+        #check
+        self.toggle_tracking(False)
         
         self.reset()
         self.reset_data_arrays()
         
-        self.liveview_start()
+        #TODO: check whether actually necessary
+        #self.liveview_start()
         
     def make_connection(self, frontend):
             
-        frontend.liveviewSignal.connect(self.liveview)
         frontend.roiInfoSignal.connect(self.get_roi_info)
         frontend.closeSignal.connect(self.stop)
         frontend.saveDataSignal.connect(self.get_save_data_state)
@@ -1211,6 +1238,7 @@ class Backend(QtCore.QObject):
         frontend.clearDataButton.clicked.connect(self.reset_data_arrays)
         frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
         frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_tracking_shutter(8, frontend.shutterCheckbox.isChecked()))
+        frontend.liveviewButton.clicked.connect(self.liveview)
 
 #        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         
@@ -1225,17 +1253,13 @@ class Backend(QtCore.QObject):
         
         self.viewtimer.stop()
         
-        try:
-            
+        if self.camON:
             self.andor.abort_acquisition()
-            
-        except:  # TO DO: write this code properly
-            
-            pass
                 
         self.andor.shutter(0, 2, 0, 0, 0)
             
         self.andor.finalize()
+        print(datetime.now(), '[xy_tracking] Andor camera shut down')
         
         # Go back to 0 position
 
@@ -1255,8 +1279,8 @@ if __name__ == '__main__':
     else:
         app = QtGui.QApplication.instance()
         
-    app.setStyle(QtGui.QStyleFactory.create('fusion'))
-    #app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
+    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     andor = ccd.CCD()
     
