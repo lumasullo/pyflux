@@ -1959,6 +1959,7 @@ class Backend(QtCore.QObject):
             self.toggle_flipper(False)
         self.liveview_stop()
         
+        self.setpowerDiodelaser(0)
         self.diodelas.closeLaserPort()
         print(datetime.now(), '[scan] Serial port of diode laser closed')
         
@@ -2011,4 +2012,4 @@ if __name__ == '__main__':
     gui.setWindowTitle('scan')
     gui.show()
 
-    app.exec_()
+    #app.exec_()

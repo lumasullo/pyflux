@@ -78,17 +78,17 @@ class PicoHarp300(LibraryDriver):
         
         retcode = self.lib.PH_OpenDevice(ctypes.c_int(DEV_NUM), self.hwSerial)
         if retcode == 0:
-            print("  %1d     S/N %s" % (DEV_NUM, 
+            print(datetime.now(), "[picoharp 300]  device-number: %1d     S/N %s" % (DEV_NUM, 
                                         self.hwSerial.value.decode("utf-8")))
 
         else:
             if retcode == -1: # ERROR_DEVICE_OPEN_FAIL
-                print("  %1d     no device" % DEV_NUM)
+                print(datetime.now(), "[picoharp 300]  %1d     no device" % DEV_NUM)
             else:
                 self.lib.PH_GetErrorString(self.errorString, 
                                            ctypes.c_int(retcode))
                 
-                print("  %1d     %s" % (DEV_NUM, 
+                print(datetime.now(), "[picoharp 300]  %1d     %s" % (DEV_NUM, 
                                         self.errorString.value.decode("utf8")))
         
     def getHardwareInfo(self):
@@ -100,8 +100,8 @@ class PicoHarp300(LibraryDriver):
                self.hwPartno.value.decode("utf-8"),
                self.hwVersion.value.decode("utf-8")]
                
-    def setup(self):
-        
+    def setup_ph300(self):
+        #setup ph300
         self.lib.PH_Calibrate(ctypes.c_int(DEV_NUM))
         
         self.lib.PH_SetSyncDiv(ctypes.c_int(DEV_NUM), 
@@ -114,6 +114,34 @@ class PicoHarp300(LibraryDriver):
         self.lib.PH_SetInputCFD(ctypes.c_int(DEV_NUM), ctypes.c_int(1),
                                 ctypes.c_int(self.CFDLevel1), 
                                 ctypes.c_int(self.CFDZeroCross1))
+        
+        time.sleep(0.2)
+        
+    def setup_phr800(self):
+        #seperate setup procedure for PHR800
+        #start enabling routing
+        self.lib.PH_EnableRouting(ctypes.c_int(DEV_NUM), ctypes.c_int(1))
+            
+        model = ctypes.create_string_buffer(b"", 8)
+        version = ctypes.create_string_buffer(b"", 8)
+        
+        self.lib.PH_GetRouterVersion(ctypes.c_int(DEV_NUM), byref(model), byref(version))
+        modelstr = model.value.decode("utf-8")
+        
+        if modelstr == 'PHR 800':
+            # prepare all PHR800 channels
+            for i in range(0, 4):
+                #setup phr channels and their respective levels to -200 mV
+                #no other channel level was working in order to setup the phr800
+                #according to the official software a level of 1500 mV should be adequate ???
+                self.lib.PH_SetPHR800Input(ctypes.c_int(DEV_NUM), ctypes.c_int(i), 
+                                        ctypes.c_int(-200), 
+                                        ctypes.c_int(0))
+                self.lib.PH_SetPHR800CFD(ctypes.c_int(DEV_NUM), ctypes.c_int(i),
+                                        ctypes.c_int(0), 
+                                        ctypes.c_int(0))
+        else:
+            print(datetime.now(), '[picoharp 300] No PHR800 router connected!')
         
         time.sleep(0.2)
         
@@ -155,13 +183,14 @@ class PicoHarp300(LibraryDriver):
 
         self.binning = int(np.log(value/self.maxRes)/np.log(2))
         
+        
+        
     def countrate(self, channel):
         
         if channel == 0:
             
             self.lib.PH_GetCountRate(ctypes.c_int(DEV_NUM), ctypes.c_int(0), 
                                      byref(self.countRate0))
-            
             value = self.countRate0.value
             
         if channel == 1:
@@ -190,7 +219,7 @@ class PicoHarp300(LibraryDriver):
         progress = 0
        
         self.lib.PH_StartMeas(ctypes.c_int(DEV_NUM), ctypes.c_int(self.tacq))
-        print(datetime.now(), ' [picoharp 300] TCSPC measurement started')
+        print(datetime.now(), '[picoharp 300] TCSPC measurement started')
         
         # save real time for correlating with confocal images for FLIM
         f = open(outputfilename + '_ref_time_tcspc', "w+")
@@ -204,7 +233,7 @@ class PicoHarp300(LibraryDriver):
             self.lib.PH_GetFlags(ctypes.c_int(DEV_NUM), byref(self.flags))
             
             if self.flags.value & FLAG_FIFOFULL > 0:
-                print("\nFiFo Overrun!")
+                print(datetime.now(), "[picoharp 300] FiFo Overrun!")
                 self.stopTTTR()
             
             
@@ -213,7 +242,7 @@ class PicoHarp300(LibraryDriver):
                 
         
             if self.nactual.value > 0:
-                print('[picoharp 300]', self.nactual.value)
+                print(datetime.now(), '[picoharp 300] current photon count:', self.nactual.value)
                 # We could just iterate through our buffer with a for loop, however,
                 # this is slow and might cause a FIFO overrun. So instead, we shrinken
                 # the buffer to its appropriate length with array slicing, which gives
@@ -228,7 +257,7 @@ class PicoHarp300(LibraryDriver):
                 self.lib.PH_CTCStatus(ctypes.c_int(DEV_NUM), byref(self.ctcDone))
                 
                 if self.ctcDone.value > 0: 
-                    print("\nDone")
+                    print(datetime.now(), "[picoharp 300] Done")
                     self.numRecords = progress
                     self.stopTTTR()
                     
@@ -237,7 +266,7 @@ class PicoHarp300(LibraryDriver):
                     f.write(str(time.time()) + '\n')
                     f.close()
                     
-                    print('{} events recorded'.format(self.numRecords))
+                    print(datetime.now(), '[picoharp 300] {} events recorded'.format(self.numRecords))
                     meas = False
                     self.measure_state = 'done'
                     

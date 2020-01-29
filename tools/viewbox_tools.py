@@ -242,11 +242,13 @@ class ROI(pg.ROI):
         vb.addItem(self.label)
 
     def updateText(self):
-        self.label.setPos(self.pos()[0] + self.size()[0],
-                          self.pos()[1] + self.size()[1])
+        self.label.setPos(self.pos()[0],
+                          self.pos()[1])
+#        self.label.setPos(self.pos()[0] + self.size()[0],
+#                          self.pos()[1] + self.size()[1])
         size = np.round(self.size()).astype(np.int)
         #TODO: change to show ROI size in um, also in updatetext()
-        self.label.setText('{} px x {} px'.format(int(size[0]), int(size[0])))
+        self.label.setText('{} x {} [px]'.format(int(size[0]), int(size[0])))
 
     def hide(self, *args, **kwargs):
         super().hide(*args, **kwargs)

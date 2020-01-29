@@ -1164,7 +1164,9 @@ class Backend(QtCore.QObject):
         Description: activates tracking and feedback
         
         '''
-                
+        if self.camON:
+            self.liveviewSignal.emit(False)
+        
         self.toggle_tracking(True)
         self.toggle_feedback(True)
         self.save_data_state = True

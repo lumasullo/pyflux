@@ -781,8 +781,8 @@ class Backend(QtCore.QObject):
             self.reset()
             self.reset_data_arrays()
             self.camON = True
+            time.sleep(0.200)
             self.camera.start_live_video(framerate='20 Hz')
-            
             
             time.sleep(0.100)
             
@@ -902,7 +902,6 @@ class Backend(QtCore.QObject):
     @pyqtSlot()    
     def get_lock_signal(self):
         
-        self.reset()
         self.reset_data_arrays()
         
         self.toggle_feedback(True)
@@ -1054,13 +1053,13 @@ class Backend(QtCore.QObject):
             
         print(datetime.now(), '[focus] Focus stopped')
         
-        self.camera.close()
-        
         # clean up aux files from NiceLib
         
         os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\lextab.py')
         os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\yacctab.py')
-            
+        
+        self.camera.close()
+        
     def make_connection(self, frontend):
           
         frontend.changedROI.connect(self.get_new_roi)

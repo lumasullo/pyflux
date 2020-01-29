@@ -220,18 +220,19 @@ class Backend(QtCore.QObject):
     @pyqtSlot(np.ndarray)    
     def get_ROI_center(self, center):
         
-#        ''' 
-#        Connection: [scan] ROIcenterSignal
-#        Description: gets the position selected by the user in [scan]
-#        '''
+        ''' 
+        Connection: [scan] ROIcenterSignal
+        Description: gets the position selected by the user in [scan]
+        '''
         
-#        self.r0 = center[0:2]
-#        self.update_param()
-#        
+        self.r0 = center[0:2]
+        self.update_param()
+        
         time.sleep(0.4)
         
         print(datetime.now(), '[minflux] got ROI center')
         
+        #TODO delete eventually
         self.xyzStartSignal.emit()
         
     @pyqtSlot(dict)
@@ -300,9 +301,6 @@ class Backend(QtCore.QObject):
         
         self.i = 0
         self.shutterSignal.emit(8, True)
-        
-        #TODO: delete test line
-        self.get_ROI_center(self.pattern)
 
         
         if self.measType == 'Standard':

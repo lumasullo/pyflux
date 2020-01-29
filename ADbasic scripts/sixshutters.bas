@@ -18,21 +18,24 @@
 'Created by Lars Richter (Oct 2019)
 'ADwin process to control state of up to six MediaLas shutters
 
-'par_53: Shutter number (0 ... 5)
+'par_53: Shutter number (0 ... 5) or shutter family (6 - all minflux shutters, 7 - all shutters)
 'par_52: Shutter state (0 - Closed, x - Open)
 
 
 #INCLUDE .\data-acquisition.inc
 
 dim flag as long at dm_local
+dim wait_time as float at dm_local
 
 INIT:
  
   Rem Configure DIO00.DIO15 as inputs and DIO16.DIO31 as outputs
   Conf_DIO(1100b)
+  
+  wait_time = 120000 'wait for ~400 us after changing shutter state 
 
 EVENT:
-    
+  
   'Evaluate par_51 and select shutter accordingly
   SelectCase par_53
     Case 0 'Shutter 1 at port 18
@@ -76,11 +79,44 @@ EVENT:
       Else
         Digout(23, 1) 'Set TTL value to HIGH
       EndIf
-                      
+    
+    Case 6 'All MINFLUX shutters at ports 18-21
+      If (par_52 = 0) Then
+        Digout(18, 0) 'Set TTL value to LOW
+        Digout(19, 0) 'Set TTL value to LOW
+        Digout(20, 0) 'Set TTL value to LOW
+        Digout(21, 0) 'Set TTL value to LOW
+      Else
+        Digout(18, 1) 'Set TTL value to HIGH
+        Digout(19, 1) 'Set TTL value to HIGH
+        Digout(20, 1) 'Set TTL value to HIGH
+        Digout(21, 1) 'Set TTL value to HIGH
+      EndIf
+    
+    Case 7 'All shutters at ports 18-23
+      If (par_52 = 0) Then
+        Digout(18, 0) 'Set TTL value to LOW
+        Digout(19, 0) 'Set TTL value to LOW
+        Digout(20, 0) 'Set TTL value to LOW
+        Digout(21, 0) 'Set TTL value to LOW
+        Digout(22, 0) 'Set TTL value to LOW
+        Digout(23, 0) 'Set TTL value to LOW
+      Else
+        Digout(18, 1) 'Set TTL value to HIGH
+        Digout(19, 1) 'Set TTL value to HIGH
+        Digout(20, 1) 'Set TTL value to HIGH
+        Digout(21, 1) 'Set TTL value to HIGH
+        Digout(22, 1) 'Set TTL value to HIGH
+        Digout(23, 1) 'Set TTL value to HIGH
+      EndIf
+                 
     CaseElse
       flag = 0
                   
-  EndSelect     
+  EndSelect  
   
+  'Strangely, we need this sleeping time in order to not interfere with the line_scan process
+  IO_Sleep(wait_time)
+
 FINISH:
   

@@ -136,8 +136,8 @@ class Frontend(QtGui.QMainWindow):
         # sizes to fit my screen properly
         self.scanWidget.setMinimumSize(1000, 598)
         self.xyWidget.setMinimumSize(800, 598)
-        self.tcspcWidget.setMinimumSize(1050, 370)
-        self.focusWidget.setMinimumSize(750, 370)
+        self.tcspcWidget.setMinimumSize(850, 370)
+        self.focusWidget.setMinimumSize(850, 370)
         self.move(1, 1)
         
     def make_connection(self, backend):
@@ -263,8 +263,8 @@ class Backend(QtCore.QObject):
         self.zWorker.zIsDone.connect(self.chechuWorker.get_z_is_done)
         
         
-        self.chechuWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_chechu)
-        self.chechuWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_chechu)
+#        self.chechuWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_chechu)
+#        self.chechuWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_chechu)
         
     def make_connection(self, frontend):
         
