@@ -11,6 +11,8 @@ import os
 from datetime import datetime
 import matplotlib.pyplot as plt
 from scipy.stats import norm, chi2
+import win32com.client
+
 
 def convert(x, key):
     
@@ -120,6 +122,7 @@ def saveConfig(main, dateandtime, name, filename=None):
 
         'Date and time': dateandtime,
         'Initial Position [x0, y0, z0] (µm)': main.initialPos,
+        'Focus lock position (px)': str(main.focuslockpos),
         'Scan range (µm)': main.scanRange,
         'Pixel time (µs)': main.pxTime,
         'Number of pixels': main.NofPixels,
@@ -401,3 +404,31 @@ def toggle_shutter(adwBoard, num, val):
         adwBoard.Set_Par(52, 0)
         adwBoard.Start_Process(7)
         #print('Shutter', str(num+1), 'closed')    
+
+    #for some reason the process does not stop automatically
+    #this caused strange interferences with the linescan process
+    adwBoard.Stop_Process(7)
+    
+def get_MiniLasEvoPort():
+    
+    i = 1
+    j = 1
+    wmi = win32com.client.GetObject ("winmgmts:")
+    for usb in wmi.InstancesOf ("Win32_USBHub"):
+        strid = usb.DeviceID
+        print(strid)
+        if ('ML069719' in strid):
+            savei = i
+            
+        if ('VID_0403&PID_6001' in strid):
+            savej = j
+        i+= 1
+        j+= 1
+       
+    print(savei, savej)
+    if savei<savej:
+        port = 'COM7'
+    else:
+        port = 'COM3'
+    
+    return port

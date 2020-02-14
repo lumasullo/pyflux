@@ -78,7 +78,7 @@ class PicoHarp300(LibraryDriver):
         
         retcode = self.lib.PH_OpenDevice(ctypes.c_int(DEV_NUM), self.hwSerial)
         if retcode == 0:
-            print(datetime.now(), "[picoharp 300]  device-number: %1d     S/N %s" % (DEV_NUM, 
+            print(datetime.now(), "[picoharp 300]  device-number: %1d     S/N %s initialized" % (DEV_NUM, 
                                         self.hwSerial.value.decode("utf-8")))
 
         else:
@@ -153,8 +153,10 @@ class PicoHarp300(LibraryDriver):
     @binning.setter 
     def binning(self, value):
         
+
         self.lib.PH_SetBinning(ctypes.c_int(DEV_NUM), 
                                ctypes.c_int(value))
+        
         self.binningValue = value
         
     @Feat    
@@ -273,7 +275,6 @@ class PicoHarp300(LibraryDriver):
     def stopTTTR(self):
         
         self.lib.PH_StopMeas(ctypes.c_int(DEV_NUM))
-        self.lib.PH_CloseDevice(ctypes.c_int(DEV_NUM))
        
     def initialize(self):
         

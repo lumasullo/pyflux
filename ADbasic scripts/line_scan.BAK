@@ -10,7 +10,7 @@
 ' Optimize_Level                 = 2
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
-' Foldings                       = 75,80,88
+' Foldings                       = 96,103,111
 '<Header End>
 'process 1: linescan_x by luciano a. masullo
 
@@ -79,32 +79,7 @@ INIT:
 
 EVENT:
   
-  px_time = data_2[i+1] - data_2[i]
-  
-  fpar_9 = px_time
-  
-  time0 = Read_Timer() 'initial time of the pixel event
-  
-  'delay to wait for a given pixeltime)
-  DO 
-    time1 = Read_Timer()
-    
-  UNTIL (Abs(time1 - time0) > px_time)
-
-  if (par_3 = 0) then
-    
-    co1 = cnt_read(1) 'read counter
-    data_1 = co1 - co1old 'calculate counts in the current pixel
-    co1old = co1 'update co1old
-    
-  endif
-
-  if (par_3 = 1) then
-    
-    signal = ADC(3) - ai_offset
-    data_1 = signal
-
-  endif
+  'select position and move
   
   currentx = data_3[i] 
   currenty = data_4[i] + y_offset
@@ -124,7 +99,37 @@ EVENT:
   if (fpar_11 = 2) then fpar_71 = currenty
   if (fpar_11 = 6) then fpar_72 = currenty
   
-  INC(i) 'update x pixel counter
+  'wait for the given pixel time
+  
+  px_time = data_2[i+1] - data_2[i]
+  
+  fpar_9 = px_time
+  
+  time0 = Read_Timer() 'initial time of the pixel event
+  
+  DO 
+    time1 = Read_Timer()
+    
+  UNTIL (Abs(time1 - time0) > px_time)
+
+  'read the counter or analog input
+  
+  if (par_3 = 0) then
+    
+    co1 = cnt_read(1) 'read counter
+    data_1 = co1 - co1old 'calculate counts in the current pixel
+    co1old = co1 'update co1old
+    
+  endif
+
+  if (par_3 = 1) then
+    
+    signal = ADC(3) - ai_offset
+    data_1 = signal
+
+  endif
+  
+  INC(i) 'update element counter
   
   fpar_6 = Read_Timer() - time0 'measure real pixeltime
     

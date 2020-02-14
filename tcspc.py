@@ -18,7 +18,7 @@ import scipy.optimize as opt
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
-from pyqtgraph.dockarea import Dock, DockArea
+from PyQt5.QtWidgets import QGroupBox
 
 import tools.viewbox_tools as viewbox_tools
 import drivers.picoharp as picoharp
@@ -49,6 +49,7 @@ class Frontend(QtGui.QFrame):
         
     def start_measurement(self):
         
+        self.measureButton.setEnabled(False)
         self.measureSignal.emit()
 #        self.measureButton.setChecked(True) TO DO: signal from backend that toggles button
     
@@ -74,7 +75,7 @@ class Frontend(QtGui.QFrame):
         
         name = filename
         res = int(self.resolutionEdit.text())
-        tacq = int(self.acqtimeEdit.text())
+        tacq = float(self.acqtimeEdit.text())
         folder = self.folderEdit.text()
         paramlist = [name, res, tacq, folder]
         
@@ -94,6 +95,8 @@ class Frontend(QtGui.QFrame):
     @pyqtSlot(np.ndarray, np.ndarray)    
     def plot_data(self, relTime, absTime):
         
+        self.clear_data()
+        
         counts, bins = np.histogram(relTime, bins=50) # TO DO: choose proper binning
         self.histPlot.plot(bins[0:-1], counts)
 
@@ -111,6 +114,8 @@ class Frontend(QtGui.QFrame):
 #        plt.plot(time[0:-1], timetrace)
         self.tracePlot.setLabels(bottom=('Time', 'ms'),
                                         left=('Count rate', 'kHz'))
+        
+        self.measureButton.setEnabled(True)
                 
     def clear_data(self):
         
@@ -126,11 +131,8 @@ class Frontend(QtGui.QFrame):
         
         # widget with tcspc parameters
 
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-        
-        self.paramWidget.setFixedHeight(245)
+        self.paramWidget = QGroupBox('TCSPC parameter')       
+        self.paramWidget.setFixedHeight(230)
         self.paramWidget.setFixedWidth(230)
         
 #        phParamTitle = QtGui.QLabel('<h2><strong>TCSPC settings</strong></h2>')
@@ -143,17 +145,9 @@ class Frontend(QtGui.QFrame):
         
         # file/folder widget
         
-        self.fileWidget = QtGui.QFrame()
-        self.fileWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                      QtGui.QFrame.Raised)
-        
-        self.fileWidget.setFixedHeight(125)
+        self.fileWidget = QGroupBox('Save options')
+        self.fileWidget.setFixedHeight(130)
         self.fileWidget.setFixedWidth(230)
-        
-        # Shutter button
-        
-        self.shutterButton = QtGui.QPushButton('Shutters open/close')
-        self.shutterButton.setCheckable(True)
         
         # Prepare button
         
@@ -162,7 +156,7 @@ class Frontend(QtGui.QFrame):
         # Measure button
 
         self.measureButton = QtGui.QPushButton('Measure TTTR')
-        self.measureButton.setCheckable(True)
+        #self.measureButton.setCheckable(True)
         
         # forced stop measurement
         
@@ -195,8 +189,7 @@ class Frontend(QtGui.QFrame):
         self.channel1Value = QtGui.QLineEdit('')
         self.channel1Value.setReadOnly(True)
         
-        self.filenameLabel = QtGui.QLabel('File name')
-        self.filenameEdit = QtGui.QLineEdit('minfluxfile')
+        self.filenameEdit = QtGui.QLineEdit('filename')
         
         # microTime histogram and timetrace
         
@@ -223,7 +216,7 @@ class Frontend(QtGui.QFrame):
         else:  
             print(datetime.now(), '[tcspc] Successfully created the directory {}'.format(folder))
 
-        self.folderLabel = QtGui.QLabel('Folder')
+        self.folderLabel = QtGui.QLabel('Folder:')
         self.folderEdit = QtGui.QLineEdit(folder)
         self.browseFolderButton = QtGui.QPushButton('Browse')
         self.browseFolderButton.setCheckable(True)
@@ -264,18 +257,16 @@ class Frontend(QtGui.QFrame):
         
         subgrid.addWidget(self.measureButton, 17, 0)
         subgrid.addWidget(self.prepareButton, 18, 0)
-        #subgrid.addWidget(self.shutterButton, 19, 0)
         subgrid.addWidget(self.stopButton, 17, 1)
         subgrid.addWidget(self.clearButton, 18, 1)
         
         file_subgrid = QtGui.QGridLayout()
         self.fileWidget.setLayout(file_subgrid)
         
-        file_subgrid.addWidget(self.filenameLabel, 0, 0, 1, 2)
-        file_subgrid.addWidget(self.filenameEdit, 1, 0, 1, 2)
-        file_subgrid.addWidget(self.folderLabel, 2, 0, 1, 2)
-        file_subgrid.addWidget(self.folderEdit, 3, 0, 1, 2)
-        file_subgrid.addWidget(self.browseFolderButton, 4, 0)
+        file_subgrid.addWidget(self.filenameEdit, 0, 0, 1, 2)
+        file_subgrid.addWidget(self.folderLabel, 1, 0, 1, 2)
+        file_subgrid.addWidget(self.folderEdit, 2, 0, 1, 2)
+        file_subgrid.addWidget(self.browseFolderButton, 3, 0)
 
     def closeEvent(self, *args, **kwargs):
         
@@ -291,24 +282,21 @@ class Backend(QtCore.QObject):
     
     tcspcDoneSignal = pyqtSignal()
     
-    def __init__(self, ph_device, adwin, *args, **kwargs): 
+    def __init__(self, ph_device, *args, **kwargs): 
         
         super().__init__(*args, **kwargs)
           
-        self.ph = ph_device 
-        self.adw = adwin
+        self.ph = ph_device         
         
         self.tcspcTimer = QtCore.QTimer()
-       
+        #TODO check timer value
+               
     def update(self):
-        #TODO: fix this to make countrate being properly displayed apparently it 
-        #is an buffer issue because its working in the tttstart loop but not 
-        #when called from here
-        pass
+
+        self.measure_count_rate()
         
     def measure_count_rate(self):
-        
-        # TO DO: fix this method to update cts0 and cts1 automatically
+
         self.cts0 = self.ph.countrate(0)
         self.cts1 = self.ph.countrate(1)
 
@@ -321,30 +309,21 @@ class Backend(QtCore.QObject):
         self.ph.setup_ph300()
         self.ph.setup_phr800()
         
+        self.tcspcTimer.start(500)
+        
         self.ph.syncDivider = 4 # this parameter must be set such that the count rate at channel 0 (sync) is equal or lower than 10MHz
         self.ph.resolution = self.resolution # desired resolution in ps
         
-        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
-                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
-
         self.ph.offset = 0
-        self.ph.tacq = self.tacq * 1000 # time in ms
-        
-        self.cts0 = self.ph.countrate(0)
-        self.cts1 = self.ph.countrate(1)
-
-        self.ctRatesSignal.emit(self.cts0, self.cts1)
+        self.ph.tacq = int(self.tacq * 1000) # time in ms
   
         print(datetime.now(), '[tcspc] Resolution = {} ps'.format(self.ph.resolution))
-        print(datetime.now(), '[tcspc] Acquisition time = {} s'.format(self.ph.tacq))
+        print(datetime.now(), '[tcspc] Acquisition time = {} s'.format(self.tacq))
     
         print(datetime.now(), '[tcspc] Picoharp 300 prepared for TTTR measurement')
     
     @pyqtSlot()           
     def measure(self):
-        
-        # WARNING: run first once with commercial software to make it work
-        # TO DO: fix above
         
         t0 = time.time()
         
@@ -355,9 +334,6 @@ class Backend(QtCore.QObject):
         t1 = time.time()
         
         print(datetime.now(), '[tcspc] starting the PH measurement took {} s'.format(t1-t0))
-
-        #TODO check timer value
-        self.tcspcTimer.start(3000)
         
         self.ph.startTTTR(self.currentfname)
         np.savetxt(self.currentfname + '.txt', [])
@@ -370,7 +346,7 @@ class Backend(QtCore.QObject):
     @pyqtSlot(str, int, int)
     def prepare_minflux(self, fname, acqtime, n):
         
-        print(datetime.now(), ' [tcspc] preparing minflux measurement')
+        print(datetime.now(), '[tcspc] preparing minflux measurement')
         
         t0 = time.time()
         
@@ -380,7 +356,7 @@ class Backend(QtCore.QObject):
         
         self.ph.tacq = acqtime * n * 1000 # TO DO: correspond to GUI !!!
         
-        print(' [tcspc] self.ph.tacq', self.ph.tacq)
+        print('[tcspc] self.ph.tacq', self.ph.tacq)
         
         self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
                                   ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
@@ -406,13 +382,10 @@ class Backend(QtCore.QObject):
         
         # TO DO: make this function, not so easy because the while loop in the driver
         # HINT: maybe use a timer loop to be able to access variables within the loop
-        
         self.tcspcTimer.stop()
         print(datetime.now(), '[tcspc] stop measure function (empty)')
 
     def export_data(self):
-        
-#        self.reset_data()
         
         inputfile = open(self.currentfname, "rb") # TO DO: fix file selection
         print(datetime.now(), '[tcspc] opened {} file'.format(self.currentfname))
@@ -446,7 +419,7 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[tcspc] tcspc data exported')
         
         np.savetxt(self.currentfname + '.txt', []) # TO DO: build config file, now empty file
-
+            
     @pyqtSlot(list)
     def get_frontend_parameters(self, paramlist):
         
@@ -456,16 +429,6 @@ class Backend(QtCore.QObject):
         self.resolution = paramlist[1]
         self.tacq = paramlist[2]
         self.folder = paramlist[3]      
-            
-    @pyqtSlot(bool)
-    def toggle_minflux_shutters(self, val):
-        if val is True:
-            tools.toggle_shutter(self.adw, 7, True)
-            print(datetime.now(), '[tcspc] Minflux shutters opened')
-            
-        if val is False:
-            tools.toggle_shutter(self.adw, 7, False)
-            print(datetime.now(), '[tcspc] Minflux shutters closed')
 
     def make_connection(self, frontend):
 
@@ -473,12 +436,12 @@ class Backend(QtCore.QObject):
         frontend.measureSignal.connect(self.measure)
         frontend.prepareButton.clicked.connect(self.prepare_ph)
         frontend.stopButton.clicked.connect(self.stop_measure)
-        #frontend.shutterButton.clicked.connect(lambda: self.toggle_minflux_shutters(frontend.shutterButton.isChecked()))
 
         frontend.emit_param() # TO DO: change such that backend has parameters defined from the start
 
     def stop(self):
   
+        self.ph.finalize()
         self.tcspcTimer.stop()
 
 
@@ -492,12 +455,8 @@ if __name__ == '__main__':
     #app.setStyle(QtGui.QStyleFactory.create('fusion'))
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
 
-    DEVICENUMBER = 0x1
-    adw = ADwin.ADwin(DEVICENUMBER, 1)
-    scan.setupDevice(adw)
-
     ph = picoharp.PicoHarp300()
-    worker = Backend(ph, adw)
+    worker = Backend(ph)
     gui = Frontend()
     
     workerThread = QtCore.QThread()

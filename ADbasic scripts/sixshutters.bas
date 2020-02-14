@@ -18,6 +18,9 @@
 'Created by Lars Richter (Oct 2019)
 'ADwin process to control state of up to six MediaLas shutters
 
+' last update:  
+' 30.01.2020  JK  time variables as LONG --> changes of ADwin support guy
+
 'par_53: Shutter number (0 ... 5) or shutter family (6 - all minflux shutters, 7 - all shutters)
 'par_52: Shutter state (0 - Closed, x - Open)
 
@@ -33,6 +36,8 @@ INIT:
   Conf_DIO(1100b)
   
   wait_time = 120000 'wait for ~400 us after changing shutter state 
+  
+  flag = 1 ' (every variable has to be initialized) JK1
 
 EVENT:
   
@@ -113,10 +118,7 @@ EVENT:
     CaseElse
       flag = 0
                   
-  EndSelect  
-  
-  'Strangely, we need this sleeping time in order to not interfere with the line_scan process
-  IO_Sleep(wait_time)
+  EndSelect
 
 FINISH:
-  
+

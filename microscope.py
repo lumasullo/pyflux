@@ -35,7 +35,6 @@ import tcspc
 import xy_tracking
 import measurements.minflux as minflux
 import measurements.psf as psf
-import measurements.chechu as chechu
 
 import tools.tools as tools
 
@@ -62,7 +61,6 @@ class Frontend(QtGui.QMainWindow):
         
         self.psfWidget = psf.Frontend()
         self.minfluxWidget = minflux.Frontend()
-        self.chechuWidget = chechu.Frontend()
 
         self.psfMeasAction = QtGui.QAction('PSF measurement', self)
         self.psfMeasAction.setStatusTip('Routine to measure one MINFLUX PSF')
@@ -76,12 +74,6 @@ class Frontend(QtGui.QMainWindow):
         
         self.minfluxMeasAction.triggered.connect(self.minflux_measurement)
         
-        self.chechuMeasAction = QtGui.QAction('CHECHU measurement', self)
-        self.chechuMeasAction.setStatusTip('Routine to measure CHECHU')
-        fileMenu.addAction(self.chechuMeasAction)
-        
-        self.chechuMeasAction.triggered.connect(self.chechu_measurement)
-
         # GUI layout
         grid = QtGui.QGridLayout()
         self.cwidget.setLayout(grid)
@@ -149,15 +141,10 @@ class Frontend(QtGui.QMainWindow):
         
         backend.minfluxWorker.make_connection(self.minfluxWidget)
         backend.psfWorker.make_connection(self.psfWidget)
-        backend.chechuWorker.make_connection(self.chechuWidget)
 
     def psf_measurement(self):
 
         self.psfWidget.show()
-        
-    def chechu_measurement(self):
-        
-        self.chechuWidget.show()
         
     def minflux_measurement(self):
         
@@ -193,12 +180,11 @@ class Backend(QtCore.QObject):
         
         self.scanWorker = scan.Backend(adw, diodelaser)
         self.zWorker = focus.Backend(scmos, adw)
-        self.tcspcWorker = tcspc.Backend(ph, adw)
         self.xyWorker = xy_tracking.Backend(ccd, adw)
+        self.tcspcWorker = tcspc.Backend(ph)
         
         self.minfluxWorker = minflux.Backend(adw)
         self.psfWorker = psf.Backend()
-        self.chechuWorker = chechu.Backend()
             
     def setup_minflux_connections(self):
         
@@ -235,7 +221,6 @@ class Backend(QtCore.QObject):
         self.psfWorker.shutterSignal.connect(self.scanWorker.shutter_handler)
         self.psfWorker.shutterSignal.connect(self.xyWorker.shutter_handler)
         self.psfWorker.shutterSignal.connect(self.zWorker.shutter_handler)
-    
                 
         self.psfWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
         self.psfWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
@@ -243,29 +228,7 @@ class Backend(QtCore.QObject):
         self.scanWorker.frameIsDone.connect(self.psfWorker.get_scan_is_done)
         self.xyWorker.xyIsDone.connect(self.psfWorker.get_xy_is_done)
         self.zWorker.zIsDone.connect(self.psfWorker.get_z_is_done)
-        
-        
-        
-    def setup_chechu_connections(self):
-        
-        self.chechuWorker.scanSignal.connect(self.scanWorker.get_scan_signal_chechu)
-#        self.chechuWorker.xySignal.connect(self.xyWorker.single_xy_correction)
-        self.chechuWorker.zSignal.connect(self.zWorker.single_z_correction)
-#        self.chechuWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
-        self.chechuWorker.zStopSignal.connect(self.zWorker.get_stop_signal)
-        self.chechuWorker.moveToInitialSignal.connect(self.scanWorker.get_moveTo_initial_signal)
-        
-#        self.chechuWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
-        self.chechuWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
-        
-        self.scanWorker.frameIsDoneChechu.connect(self.chechuWorker.get_scan_is_done)
-#        self.xyWorker.xyIsDone.connect(self.chechuWorker.get_xy_is_done)
-        self.zWorker.zIsDone.connect(self.chechuWorker.get_z_is_done)
-        
-        
-#        self.chechuWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_chechu)
-#        self.chechuWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_chechu)
-        
+         
     def make_connection(self, frontend):
         
         frontend.focusWidget.make_connection(self.zWorker)
@@ -275,16 +238,16 @@ class Backend(QtCore.QObject):
     
         frontend.minfluxWidget.make_connection(self.minfluxWorker)
         frontend.psfWidget.make_connection(self.psfWorker)
-        frontend.chechuWidget.make_connection(self.chechuWorker)
     
         self.setup_minflux_connections()
         self.setup_psf_connections()
-        self.setup_chechu_connections()
         
         frontend.scanWidget.paramSignal.connect(self.psfWorker.get_scan_parameters)
-        frontend.scanWidget.paramSignal.connect(self.chechuWorker.get_scan_parameters)
         # TO DO: write this in a cleaner way, i. e. not in this section, not using frontend
         
+        self.scanWorker.focuslockpositionSignal.connect(self.zWorker.get_focuslockposition)
+        self.zWorker.focuslockpositionSignal.connect(self.scanWorker.get_focuslockposition)
+
         frontend.closeSignal.connect(self.stop)
         
     def stop(self):
@@ -307,7 +270,7 @@ if __name__ == '__main__':
     gui = Frontend()
     
     #initialize devices
-    port = 'COM3' #watch out so that port does not change
+    port = 'COM7' #watch out so that port does not change
     diodelaser = MiniLasEvo(port)
     
     #if camera wasnt closed properly just keep using it without opening new one
@@ -316,7 +279,7 @@ if __name__ == '__main__':
     except:
         pass
     
-    andor = ccd.CCD()
+    andor = ccd.CCD()        
     ph = picoharp.PicoHarp300()
     
     DEVICENUMBER = 0x1
@@ -338,8 +301,6 @@ if __name__ == '__main__':
 #    worker.minfluxWorker.emit_param_to_frontend()
     
     gui.psfWidget.emit_param()
-    
-    gui.chechuWidget.emit_param()
     
 #    # GUI thread
 #    
@@ -391,6 +352,8 @@ if __name__ == '__main__':
     
     tcspcWorkerThread = QtCore.QThread()
     worker.tcspcWorker.moveToThread(tcspcWorkerThread)
+    worker.tcspcWorker.tcspcTimer.moveToThread(tcspcWorkerThread)
+    worker.tcspcWorker.tcspcTimer.timeout.connect(worker.tcspcWorker.update)
     
     tcspcWorkerThread.start()
     
@@ -423,4 +386,4 @@ if __name__ == '__main__':
     # minflux measurement connections
     
     gui.show()
-    app.exec_()
+    #app.exec_()

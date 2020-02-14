@@ -9,13 +9,11 @@ import numpy as np
 import time
 import scipy.ndimage as ndi
 import matplotlib.pyplot as plt
-from scipy import optimize as opt
 from datetime import date, datetime
 import os
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
-from pyqtgraph.dockarea import Dock, DockArea
 import pyqtgraph.ptime as ptime
 import qdarkstyle # see https://stackoverflow.com/questions/48256772/dark-theme-for-in-qt-widgets
 
@@ -24,11 +22,13 @@ from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 import sys
 sys.path.append('C:\Program Files\Thorlabs\Scientific Imaging\ThorCam')
 # install from https://instrumental-lib.readthedocs.io/en/stable/install.html
-from instrumental.drivers.cameras import uc480
 import tools.viewbox_tools as viewbox_tools
 import tools.tools as tools
+import tools.PSF as PSF
 import tools.colormaps as cmaps
-import tools.pi as pi
+from scipy import optimize as opt
+
+from instrumental.drivers.cameras import uc480
 import scan
 import drivers.ADwin as ADwin
 
@@ -462,8 +462,8 @@ class Backend(QtCore.QObject):
     zIsDone = pyqtSignal(bool, float)
     shuttermodeSignal = pyqtSignal(int, bool)
     liveviewSignal = pyqtSignal(bool)
+    focuslockpositionSignal = pyqtSignal(float)
 
-    
     """
     Signals
     
@@ -482,6 +482,9 @@ class Backend(QtCore.QObject):
     - shuttermodeSignal:
         To: [frontend] update_shutter
         
+    - focuslockpositionSignal:
+        To: [scan] get current focus lock position
+        
     """
 
     def __init__(self, camera, adw, *args, **kwargs):
@@ -493,6 +496,7 @@ class Backend(QtCore.QObject):
         self.cropped = False
         self.standAlone = False
         self.camON = False
+        self.roi_area = np.zeros(4)
         
         today = str(date.today()).replace('-', '') # TO DO: change to get folder from microscope
         root = r'C:\\Data\\'
@@ -603,6 +607,31 @@ class Backend(QtCore.QObject):
     @pyqtSlot(int, bool)
     def shutter_handler(self, num, on):
         self.shuttermodeSignal.emit(num, on)
+        
+    @pyqtSlot(bool)
+    def toggle_tracking(self, val):
+        
+        '''
+        Connection: [frontend] trackingBeadsBox.stateChanged
+        Description: toggles ON/OFF tracking of IR reflection from sample. 
+        Drift correction feedback loop is not automatically started.
+        
+        '''
+
+        #TODO: write track procedure like in xy-tracking
+        self.startTime = time.time()
+        
+        if val is True:
+            
+            self.reset()
+            self.reset_data_arrays()
+            
+            self.tracking_value = True
+                    
+        if val is False:
+        
+            self.tracking_value = False
+            
         
     @pyqtSlot(bool)
     def toggle_feedback(self, val, mode='continous'):
@@ -761,11 +790,19 @@ class Backend(QtCore.QObject):
 
         self.changedImage.emit(image)
                 
+        argmax = np.unravel_index(np.argmax(image, axis=None), image.shape)
+        
+        roisize = self.roi_area[2] - self.roi_area[0]
+        if roisize == 300:
+            extent = 148 # subroi extent in px
+            argmax[0] = 150 
+        else:
+            extent = 300
+        
         # get mass center
-                
-        self.massCenter = np.array(ndi.measurements.center_of_mass(image))
-        self.focusSignal = self.massCenter[0]
-#        print(datetime.now(), '[focus] self.focusSignal', self.focusSignal)
+        self.massCenter = np.array(ndi.measurements.center_of_mass(image[argmax[0]-extent:argmax[0]+extent, argmax[1]-extent:argmax[1]+extent]))
+        print(self.massCenter[0], argmax[1], self.roi_area, image.shape)
+        self.focusSignal = argmax[0] - extent + self.massCenter[0] + self.roi_area[0]
         self.currentTime = ptime.time() - self.startTime
         
     @pyqtSlot(bool, bool)
@@ -885,26 +922,26 @@ class Backend(QtCore.QObject):
         Description: stops liveview, tracking, feedback if they where running to
         start the psf measurement with discrete xy - z corrections
         """
-        
-        if self.camON:
-            self.liveviewSignal.emit(False)
             
         self.toggle_feedback(False)
-#        self.toggle_tracking(False) # TO DO: add toggle_tracking
-        
-
+        self.toggle_tracking(False)
         
         self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
             
         self.reset()
         self.reset_data_arrays()
         
+        
     @pyqtSlot()    
     def get_lock_signal(self):
         
+        if not self.camON:
+            self.liveviewSignal.emit(True)
+            
         self.reset_data_arrays()
         
         self.toggle_feedback(True)
+        self.toggle_tracking(True)
         self.save_data_state = True
         
         # TO DO: fix updateGUIcheckboxSignal    
@@ -997,13 +1034,11 @@ class Backend(QtCore.QObject):
         self.export_data()
         
         self.toggle_feedback(False)
+        self.toggle_tracking(False)
         
         if self.camON:
+            self.focusTimer.stop()
             self.liveviewSignal.emit(False)
-        #TODO: Why is it necessary to start liveview directly after finishing measurement?
-#        self.liveviewSignal.emit(True)
-#        time.sleep(0.4)
-#        self.get_new_roi(self.roi_area)
         
     def set_moveTo_param(self, x_f, y_f, z_f, n_pixels_x=128, n_pixels_y=128,
                          n_pixels_z=128, pixeltime=2000):
@@ -1026,6 +1061,117 @@ class Backend(QtCore.QObject):
 
         self.set_moveTo_param(x_f, y_f, z_f, pixeltime)
         self.adw.Start_Process(2)
+        
+        
+    def gaussian_fit(self):
+        
+        # set main reference frame
+        
+        ymin, xmin, ymax, xmax = self.roi_area
+        ymin_nm, xmin_nm, ymax_nm, xmax_nm = self.roi_area * self.pxSize
+        
+        # select the data of the image corresponding to the ROI
+
+        array = self.image #[xmin:xmax, ymin:ymax]
+        
+        # set new reference frame
+        
+        xrange_nm = xmax_nm - xmin_nm
+        yrange_nm = ymax_nm - ymin_nm
+             
+        x_nm = np.arange(0, xrange_nm, self.pxSize)
+        y_nm = np.arange(0, yrange_nm, self.pxSize)
+        
+        (Mx_nm, My_nm) = np.meshgrid(x_nm, y_nm)
+        
+        # find max 
+        
+        argmax = np.unravel_index(np.argmax(array, axis=None), array.shape)
+        
+        x_center_id = argmax[0]
+        y_center_id = argmax[1]
+        
+        # define area around maximum
+    
+        xrange = 10 # in px
+        yrange = 10 # in px
+        
+        xmin_id = int(x_center_id-xrange)
+        xmax_id = int(x_center_id+xrange)
+        
+        ymin_id = int(y_center_id-yrange)
+        ymax_id = int(y_center_id+yrange)
+        
+        array_sub = array[xmin_id:xmax_id, ymin_id:ymax_id]
+                
+        xsubsize = 2 * xrange
+        ysubsize = 2 * yrange
+        
+#        plt.imshow(array_sub, cmap=cmaps.parula, interpolation='None')
+        
+        x_sub_nm = np.arange(0, xsubsize) * self.pxSize
+        y_sub_nm = np.arange(0, ysubsize) * self.pxSize
+
+        [Mx_sub, My_sub] = np.meshgrid(x_sub_nm, y_sub_nm)
+        
+        # make initial guess for parameters
+        
+        bkg = np.min(array)
+        A = np.max(array) - bkg
+        σ = 400 # nm
+        x0 = x_sub_nm[int(xsubsize/2)]
+        y0 = y_sub_nm[int(ysubsize/2)]
+        
+        initial_guess_G = [A, x0, y0, σ, σ, bkg]
+         
+        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx_sub, My_sub), 
+                                     array_sub.ravel(), p0=initial_guess_G)
+        
+        # retrieve results
+
+        poptG = np.around(poptG, 2)
+    
+        A, x0, y0, σ_x, σ_y, bkg = poptG
+        
+        print(poptG)
+        
+#        x = x0 + Mx_nm[xmin_id, ymin_id]
+#        y = y0 + My_nm[xmin_id, ymin_id]
+#        
+##        self.currentx = x
+##        self.currenty = y
+#        
+#        # if to avoid (probably) false localizations
+#        
+#        maxdist = 200 # in nm
+#        
+#        if self.initial is False:
+#        
+#            if np.abs(x - self.currentx) < maxdist and np.abs(y - self.currenty) < maxdist:
+#        
+#                self.currentx = x
+#                self.currenty = y
+#                
+##                print(datetime.now(), '[xy_tracking] normal')
+#                
+#            else:
+#                
+#                pass
+#                
+#                print(datetime.now(), '[xy_tracking] max dist exceeded')
+#        
+#        else:
+#            
+#            self.currentx = x
+#            self.currenty = y
+            
+#            print(datetime.now(), '[xy_tracking] else')
+       
+        print(x0, y0)
+        
+    @pyqtSlot(float)
+    def get_focuslockposition(self, position):
+        self.focuslockpositionSignal.emit(self.focusSignal)
         
     @pyqtSlot()
     def stop(self):
@@ -1051,14 +1197,18 @@ class Backend(QtCore.QObject):
     
             self.moveTo(x_0, y_0, z_0)
             
+        self.camera.close()
+
         print(datetime.now(), '[focus] Focus stopped')
         
         # clean up aux files from NiceLib
         
-        os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\lextab.py')
-        os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\yacctab.py')
+        try:
+            os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\lextab.py')
+            os.remove(r'C:\Users\USUARIO\Documents\GitHub\pyflux\yacctab.py')
+        except:
+            pass
         
-        self.camera.close()
         
     def make_connection(self, frontend):
           
@@ -1132,5 +1282,5 @@ if __name__ == '__main__':
     gui.resize(1500, 500)
 
     gui.show()
-    app.exec_()
+    #app.exec_()
         

@@ -10,9 +10,12 @@
 ' Optimize_Level                 = 2
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
-' Foldings                       = 96,103,111
+' Foldings                       = 100,107,115
 '<Header End>
 'process 1: linescan_x by luciano a. masullo
+
+' last update:  
+' 30.01.2020  JK  time variables as LONG --> changes of ADwin support guy
 
 'Parameters from 1 to 19 are used
 
@@ -44,7 +47,8 @@
 
 dim co1, co1old, signal, ai_offset as long at dm_local
 dim x, y, z, currentx, currenty, y_offset as float at dm_local
-dim time0, time1, px_time as float at dm_local
+dim time0, time1, px_time as long ' JK1
+dim time_delta as long ' JK1
 dim i as long at dm_local
 dim data_1[1024] as long as fifo
 dim DATA_2[8192] as long 

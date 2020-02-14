@@ -43,6 +43,13 @@ def circle(grid, amplitude, x0, y0, r):
     
     return array.ravel()
 
+def gaussian1D(x, amplitude, x0, sigma_x, offset):
+    
+    x0 = float(x0)
+    g = offset + amplitude*np.exp( - (((x-x0)**2)/(2*sigma_x**2))) 
+    return g.ravel()
+
+
 def gaussian2D(grid, amplitude, x0, y0, σ_x, σ_y, offset, theta=0):
     
     # TO DO (optional): change parametrization to this one
@@ -58,6 +65,18 @@ def gaussian2D(grid, amplitude, x0, y0, σ_x, σ_y, offset, theta=0):
     G = offset + amplitude*np.exp( - (a*((x-x0)**2) + 2*b*(x-x0)*(y-y0) 
                             + c*((y-y0)**2)))
     return G.ravel()
+
+#assumes fit through donut center
+#formula according to eqn. S17 of first MINFLUX paper
+def doughnut1D(x, A, x0, d, offset):
+    
+    x0 = float(x0)
+    r = np.sqrt((x-x0)**2) 
+    
+    D = offset + A * 4 * np.e * np.log(2) * (r**2/d**2) * np.exp(-4 * np.log(2) * (r**2/d**2))
+    
+    return D.ravel()
+
     
 def doughnut2D(grid, A, x0, y0, d, offset):
     
@@ -69,6 +88,8 @@ def doughnut2D(grid, A, x0, y0, d, offset):
     D = offset + A * (r**2/d**4) * np.exp(-4 * np.log(2) * (r**2/d**2))
     
     return D.ravel()
+
+
 
 
 if __name__ == '__main__':    

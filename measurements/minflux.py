@@ -301,7 +301,6 @@ class Backend(QtCore.QObject):
         
         self.i = 0
         self.shutterSignal.emit(8, True)
-
         
         if self.measType == 'Standard':
             print('[minflux] self.n, self.acqtime', self.n, self.acqtime)
@@ -352,6 +351,10 @@ class Backend(QtCore.QObject):
         Connection: [tcspc] tcspcDoneSignal
         """
         self.xyzEndSignal.emit(self.filename)
+        
+        #check whether this actually makes sense
+        self.stop()
+        print(datetime.now(), '[minflux] measurement ended')
         
     def make_connection(self, frontend):
         

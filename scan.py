@@ -18,6 +18,8 @@ from PIL import Image
 from tkinter import Tk, filedialog
 import tifffile as tiff
 import scipy.optimize as opt
+from scipy.signal import find_peaks
+
 
 from threading import Thread
 
@@ -194,6 +196,20 @@ class Frontend(QtGui.QFrame):
         self.scanRangeEdit.setText('8')
         self.initialPosEdit.setText('{} {} {}'.format(*[3, 3, 10]))
     
+    def moveto_crosshair(self):
+
+        xcenter = int(np.round(self.ch.vLine.value(), 0))
+        ycenter = int(np.round(self.ch.hLine.value(), 0))
+
+        halfsizex = int(self.roi.size()[0]/2)
+        halfsizey = int(self.roi.size()[1]/2)        
+        xmin = xcenter - halfsizex
+        ymin = ycenter - halfsizey
+        
+        if self.roi != None:
+            self.roi.setPos(xmin, ymin)
+                    
+            
     def toggle_advanced(self):
         
         if self.advanced:
@@ -299,7 +315,14 @@ class Frontend(QtGui.QFrame):
         
         if self.lineROI is None:
             
-            self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
+            if self.roi is None:
+                self.lineROI = pg.LineSegmentROI([[10, 64], [70,64]], pen='r')
+            else:
+                xmin, ymin = self.roi.pos()
+                xmax, ymax = self.roi.pos() + self.roi.size()
+                y = int((ymax - ymin)/2) + ymin
+                self.lineROI = pg.LineSegmentROI([[xmin, y], [xmax, y]], pen='r')
+                
             self.vb.addItem(self.lineROI)
             
             self.lplotWidget.show()
@@ -308,17 +331,87 @@ class Frontend(QtGui.QFrame):
 
             self.vb.removeItem(self.lineROI)
             
-            self.lineROI = pg.LineSegmentROI([[10, 64], [120,64]], pen='r')
+            if self.roi is None:
+                self.lineROI = pg.LineSegmentROI([[10, 64], [70,64]], pen='r')
+            else:
+                xmin, ymin = self.roi.pos()
+                xmax, ymax = self.roi.pos() + self.roi.size()
+                y = int((ymax - ymin)/2) + ymin
+                self.lineROI = pg.LineSegmentROI([[xmin, y], [xmax, y]], pen='r')
+
             self.vb.addItem(self.lineROI)
             
         self.lineROI.sigRegionChanged.connect(self.update_line_profile)
+        
         
     def update_line_profile(self):
         
         data = self.lineROI.getArrayRegion(self.image, self.img)
         self.lplotWidget.linePlot.clear()
-        x = self.pxSize * np.arange(np.size(data))*1000
-        self.lplotWidget.linePlot.plot(x, data)
+        #TODO: check how to make legend work that it is always deleted 
+        #when plot is updated, otherwise the labels do overlap...
+        #self.lplotWidget.linePlot.addLegend()
+
+        px_to_nm = self.pxSize * 1000.0
+        x = np.arange(np.size(data)) * px_to_nm
+        self.lplotWidget.linePlot.plot(x, data, name='Data')
+        
+        #make 1D Gauss fit
+        if self.lplotWidget.gauss:
+            popt, pcov = self.fitGauss1D(data)    
+            
+            conv_fact = 2*np.sqrt(2*np.log(2))
+            fwhm = conv_fact * popt[2]
+            fwhm_uncert = conv_fact * pcov[2, 2]
+            text = 'FWHM = ' + str(np.round(fwhm, 2)) + ' +/- ' + str(np.round(fwhm_uncert, 2)) + ' nm'      
+           
+            FWHMlabel = pg.TextItem()
+            FWHMlabel.setPos(10, int(np.max(data)/2))
+            FWHMlabel.setText(text)
+            self.lplotWidget.linePlot.addItem(FWHMlabel)
+            self.lplotWidget.linePlot.plot(x, PSF.gaussian1D(x, *popt), pen = pg.mkPen('b'), name='Gauss')
+            
+        #make 1D doughnut fit
+        if self.lplotWidget.doughnut:
+            popt, pcov = self.fitDoughnut1D(data)
+            
+            conv_fact =  1/np.sqrt(np.log(2))
+            ptp = conv_fact * popt[2]
+            ptp_uncert = conv_fact * pcov[2, 2]
+            text = 'Peak-to-peak = ' + str(np.round(ptp, 2)) + ' +/- ' + str(np.round(ptp_uncert, 2)) + ' nm'      
+           
+            FWHMlabel = pg.TextItem()
+            FWHMlabel.setPos(10, int(np.max(data)/2)+30)
+            FWHMlabel.setText(text)
+            self.lplotWidget.linePlot.addItem(FWHMlabel)
+            self.lplotWidget.linePlot.plot(x, PSF.doughnut1D(x, *popt), pen = pg.mkPen('y'), name='Doughnut')
+            
+    def fitDoughnut1D(self, data):
+        px_to_nm = self.pxSize * 1000.0
+        x = np.arange(np.size(data)) * px_to_nm
+        ofs0 = np.min(data)
+        c0 = np.max(data) - ofs0
+        peaks = find_peaks(data, distance=15, height=0.75*c0)
+        dist = abs(peaks[0][1] - peaks[0][0])
+        d = np.sqrt(np.log(2)) * dist * px_to_nm
+        x0 = (peaks[0][0] + int(dist/2)) * px_to_nm
+        guess = (c0, x0, d, ofs0)
+        popt, pcov = opt.curve_fit(PSF.doughnut1D, x, data, p0=guess)
+
+        return popt, pcov
+    
+    
+    def fitGauss1D(self, data):
+        px_to_nm = self.pxSize * 1000.0
+        x = np.arange(np.size(data)) * px_to_nm
+        x0 = np.argmax(data) * px_to_nm
+        sigma0 = 400.0 / (2*np.sqrt(2*np.log(2))) #TODO soft-code this estimation
+        ofs0 = np.min(data)
+        c0 = np.max(data) - ofs0
+        guess = (c0, x0, sigma0, ofs0)
+        popt, pcov = opt.curve_fit(PSF.gaussian1D, x, data, p0=guess)
+
+        return popt, pcov
         
     def toggle_ROI(self):
         
@@ -337,10 +430,13 @@ class Frontend(QtGui.QFrame):
 
         else:
 
+            xmin, ymin = self.roi.pos()
+            
             self.vb.removeItem(self.roi)
             self.roi.hide()
 
-            ROIpos = (0.5 * npixels - 64, 0.5 * npixels - 64)
+            ROIpos = (xmin, ymin)
+            #ROIpos = (0.5 * npixels - 64, 0.5 * npixels - 64)
             self.roi = viewbox_tools.ROI(npixels/2, self.vb, ROIpos,
                                          handlePos=(1, 0),
                                          handleCenter=(0, 1),
@@ -353,7 +449,9 @@ class Frontend(QtGui.QFrame):
             
     def select_ROI(self):
 
+        self.liveviewButton.setChecked(False)
         self.liveviewSignal.emit(False, 'liveview')
+        self.crosshairCheckbox.setChecked(False)
         
         ROIsize = np.array(self.roi.size())
         ROIpos = np.array(self.roi.pos())
@@ -572,6 +670,9 @@ class Frontend(QtGui.QFrame):
         self.vb = imageWidget.addPlot(axisItems={'bottom': self.xaxis, 
                                                  'left': self.yaxis})
         self.lplotWidget = linePlotWidget()
+        self.lplotWidget.get_scanConnection(self)
+        self.lplotWidget.gauss = False
+        self.lplotWidget.doughnut = False
         
         imageWidget.setFixedHeight(500)
         imageWidget.setFixedWidth(500)
@@ -582,6 +683,12 @@ class Frontend(QtGui.QFrame):
         self.img.translate(-0.5, -0.5)
         self.vb.addItem(self.img)
         self.vb.setAspectLocked(True)
+        
+        #create crosshair
+        #double .vb in order to get actual viewbox and not just the thingy 
+        #we called viewbox ;)
+        vbox = self.vb.vb
+        self.ch = viewbox_tools.Crosshair(vbox)
 
         # set up histogram for the liveview image
 
@@ -642,6 +749,12 @@ class Frontend(QtGui.QFrame):
         self.preview_scanButton.setCheckable(True)
         self.preview_scanButton.clicked.connect(self.preview_scan)
         
+        # toggle crosshair
+        
+        self.crosshairCheckbox = QtGui.QCheckBox('Crosshair')
+        self.crosshairCheckbox.stateChanged.connect(self.ch.toggle)
+        
+        
         # move to center button
         
         self.moveToROIcenterButton = QtGui.QPushButton('Move to ROI center') 
@@ -671,6 +784,12 @@ class Frontend(QtGui.QFrame):
         
         self.FBavScanButton = QtGui.QPushButton('F and B average scan')
         self.FBavScanButton.setCheckable(True)
+        
+        # move to crosshair button
+        
+        self.crosshairButton = QtGui.QPushButton('Move to Crosshair')
+        self.crosshairButton.clicked.connect(self.moveto_crosshair)
+
 
         # Scanning parameters
 
@@ -872,6 +991,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.currentFrameButton, 5, 3)
         
         subgrid.addWidget(self.flipperButton, 7, 2)
+        #TODO check whether we keep this button
+        subgrid.addWidget(self.crosshairCheckbox, 6, 3)
+        subgrid.addWidget(self.crosshairButton, 7, 3)
         
         subgrid.addWidget(self.ROIButton, 8, 2)
         subgrid.addWidget(self.select_ROIButton, 9, 2)
@@ -1016,6 +1138,7 @@ class Backend(QtCore.QObject):
     auxMoveSignal = pyqtSignal()
     shuttermodeSignal = pyqtSignal(int, bool)
     diodelaserEmissionSignal = pyqtSignal(bool)
+    focuslockpositionSignal = pyqtSignal(float)
     
     """
     Signals
@@ -1047,7 +1170,7 @@ class Backend(QtCore.QObject):
         self.saveScanData = False
         self.feedback_active = False
         self.flipper_state = False
-        
+        self.laserstate = False        
 
         # full_scan: True --> full scan including aux parts
         # full_scan: False --> forward part of the scan
@@ -1137,8 +1260,10 @@ class Backend(QtCore.QObject):
             self.auxMoveSignal.emit()
       
     def calculate_derived_param(self):
-        
-        self.image_to_save = self.image
+           
+        #TODO: check whether we can delete this. 
+        #caused saving zeros in some cases
+#        self.image_to_save = self.image
 
         self.pxSize = self.scanRange/self.NofPixels   # in µm
         self.frameTime = self.NofPixels**2 * self.pxTime / 10**6
@@ -1538,12 +1663,24 @@ class Backend(QtCore.QObject):
     
         self.update_device_param()
         self.emit_param()    
-            
+
+    @pyqtSlot(float)
+    def get_focuslockposition(self, position):
+        self.focuslockpos = position
+        
     def save_current_frame(self):
       
         self.save_FB = False
         
         # experiment parameters
+
+        # get z-position of focus lock
+        # in standalone mode it justs saves -0.0 as focus lock position 
+        # sleeps 0.5s to catch return signal from focus.py 
+        #TODO: find better solution than sleeping
+        self.focuslockpos = -0.0
+        self.focuslockpositionSignal.emit(0)
+        time.sleep(0.5)
         
         name = tools.getUniqueName(self.filename)
         now = time.strftime("%c")
@@ -1618,7 +1755,7 @@ class Backend(QtCore.QObject):
         line_data = self.adw.GetData_Long(1, 0, self.tot_pixels)
         
         line_data[0] = 0  # TO DO: fix the high count error on first element
-
+        
         return line_data
    
     @pyqtSlot(bool, str)
@@ -1863,6 +2000,7 @@ class Backend(QtCore.QObject):
         diodelasID = self.diodelas.idn()
         
         if enable:
+            self.laserstate = True
             self.diodelas.enabled = True
             print(datetime.now(), '[scan] Diodelaser started')
             print(datetime.now(), '[scan] Diodelaser-ID:', diodelasID)
@@ -1884,6 +2022,7 @@ class Backend(QtCore.QObject):
                 print(datetime.now(), '[scan] Diodelaser not able to emit radiation. Check status!')
             
         else:
+            self.laserstate = False
             self.setpowerDiodelaser(0)
             self.diodelas.enabled = False
             self.diodelaserEmissionSignal.emit(False)
@@ -1959,7 +2098,8 @@ class Backend(QtCore.QObject):
             self.toggle_flipper(False)
         self.liveview_stop()
         
-        self.setpowerDiodelaser(0)
+        if self.laserstate:
+            self.enableDiodelaser(False)
         self.diodelas.closeLaserPort()
         print(datetime.now(), '[scan] Serial port of diode laser closed')
         
@@ -1981,11 +2121,12 @@ if __name__ == '__main__':
         
     #app.setStyle(QtGui.QStyleFactory.create('fusion'))
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
-    
-    
+        
     #initialize devices (diode laser and AdWin board)
     
-    port = 'COM3' #watch out so that port does not change
+    port = tools.get_MiniLasEvoPort()
+    print(port)
+    #port = 'COM7' #watch out so that port does not change
     diodelaser = MiniLasEvo(port)
     
     DEVICENUMBER = 0x1

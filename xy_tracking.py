@@ -25,6 +25,7 @@ import tools.tools as tools
 import scan
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QThread
+from PyQt5.QtWidgets import QGroupBox
 import qdarkstyle
 
 from lantz.drivers.andor import ccd 
@@ -274,10 +275,7 @@ class Frontend(QtGui.QFrame):
         
         # parameters widget
         
-        self.paramWidget = QtGui.QFrame()
-        self.paramWidget.setFrameStyle(QtGui.QFrame.Panel |
-                                       QtGui.QFrame.Raised)
-        
+        self.paramWidget = QGroupBox('XY-Tracking parameter')   
         self.paramWidget.setFixedHeight(200)
         self.paramWidget.setFixedWidth(250)
         
@@ -1111,7 +1109,6 @@ class Backend(QtCore.QObject):
         start the psf measurement with discrete xy - z corrections
         """
         
-        
         self.toggle_feedback(False)
         self.toggle_tracking(False)
         
@@ -1119,12 +1116,10 @@ class Backend(QtCore.QObject):
         self.reset_data_arrays()
         
         self.save_data_state = True  # TO DO: sync this with GUI checkboxes (Lantz typedfeat?)
-                
-        if not self.camON:
+            
+        if not stoplive:
             self.liveviewSignal.emit(False)
-        else:
-            self.viewtimer.stop()
-    
+            
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
         
@@ -1164,8 +1159,9 @@ class Backend(QtCore.QObject):
         Description: activates tracking and feedback
         
         '''
-        if self.camON:
-            self.liveviewSignal.emit(False)
+        
+        if not self.camON:
+            self.liveviewSignal.emit(True)
         
         self.toggle_tracking(True)
         self.toggle_feedback(True)
@@ -1226,10 +1222,7 @@ class Backend(QtCore.QObject):
         
         self.reset()
         self.reset_data_arrays()
-        
-        #TODO: check whether actually necessary
-        #self.liveview_start()
-        
+            
     def make_connection(self, frontend):
             
         frontend.roiInfoSignal.connect(self.get_roi_info)
