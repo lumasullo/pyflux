@@ -23,6 +23,12 @@
    <layout class="QGridLayout" name="gridLayout">
     <item row="0" column="0">
      <widget class="QTabWidget" name="SelectionWidget">
+      <property name="tabPosition">
+       <enum>QTabWidget::North</enum>
+      </property>
+      <property name="tabShape">
+       <enum>QTabWidget::Rounded</enum>
+      </property>
       <property name="currentIndex">
        <number>0</number>
       </property>
@@ -30,172 +36,6 @@
        <attribute name="title">
         <string>Analysis</string>
        </attribute>
-       <widget class="QWidget" name="verticalLayoutWidget_3">
-        <property name="geometry">
-         <rect>
-          <x>1010</x>
-          <y>300</y>
-          <width>451</width>
-          <height>401</height>
-         </rect>
-        </property>
-        <layout class="QVBoxLayout" name="estimateLayout">
-         <property name="sizeConstraint">
-          <enum>QLayout::SetDefaultConstraint</enum>
-         </property>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="formLayoutWidget">
-        <property name="geometry">
-         <rect>
-          <x>1070</x>
-          <y>80</y>
-          <width>331</width>
-          <height>151</height>
-         </rect>
-        </property>
-        <layout class="QFormLayout" name="formLayout">
-         <property name="fieldGrowthPolicy">
-          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
-         </property>
-         <property name="horizontalSpacing">
-          <number>2</number>
-         </property>
-         <property name="verticalSpacing">
-          <number>5</number>
-         </property>
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_numPSF">
-           <property name="text">
-            <string># of donut positions</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="QSpinBox" name="spinBox_donuts">
-           <property name="value">
-            <number>4</number>
-           </property>
-           <property name="displayIntegerBase">
-            <number>10</number>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="label_SBR">
-           <property name="text">
-            <string>SBR</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="1">
-          <widget class="QLineEdit" name="lineEdit_sbr">
-           <property name="text">
-            <string>30</string>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="0">
-          <widget class="QLabel" name="label_winlen">
-           <property name="text">
-            <string>Window length</string>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="1">
-          <widget class="QLineEdit" name="lineEdit_winlen">
-           <property name="text">
-            <string>0.1</string>
-           </property>
-          </widget>
-         </item>
-         <item row="3" column="0">
-          <widget class="QLabel" name="label_lifetime_window_i">
-           <property name="text">
-            <string>Lifetime init in ns</string>
-           </property>
-          </widget>
-         </item>
-         <item row="3" column="1">
-          <widget class="QLineEdit" name="lineEdit_lifetimewin_i">
-           <property name="text">
-            <string>0</string>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="0">
-          <widget class="QLabel" name="label_lifetime_window_f">
-           <property name="text">
-            <string>Lifetime crop in ns</string>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="1">
-          <widget class="QLineEdit" name="lineEdit_lifetimewin_f">
-           <property name="text">
-            <string>2</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QPushButton" name="testButton">
-        <property name="geometry">
-         <rect>
-          <x>1030</x>
-          <y>10</y>
-          <width>112</width>
-          <height>34</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>test</string>
-        </property>
-       </widget>
-       <widget class="Line" name="line">
-        <property name="geometry">
-         <rect>
-          <x>0</x>
-          <y>420</y>
-          <width>991</width>
-          <height>1</height>
-         </rect>
-        </property>
-        <property name="font">
-         <font>
-          <pointsize>1</pointsize>
-         </font>
-        </property>
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-       <widget class="QLabel" name="comLabel">
-        <property name="geometry">
-         <rect>
-          <x>1010</x>
-          <y>730</y>
-          <width>441</width>
-          <height>131</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>TextLabel</string>
-        </property>
-       </widget>
-       <widget class="QPushButton" name="EstimatorButton">
-        <property name="geometry">
-         <rect>
-          <x>1150</x>
-          <y>250</y>
-          <width>171</width>
-          <height>34</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Estimate Position</string>
-        </property>
-       </widget>
        <widget class="QGroupBox" name="PSFgroupBox">
         <property name="geometry">
          <rect>
@@ -398,6 +238,12 @@
           <layout class="QHBoxLayout" name="horizontalLayout_2">
            <item>
             <widget class="QPushButton" name="browseFileTCSPC">
+             <property name="toolTip">
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select the tcspc file you want to load.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             </property>
+             <property name="toolTipDuration">
+              <number>-1</number>
+             </property>
              <property name="text">
               <string>Browse File</string>
              </property>
@@ -429,8 +275,8 @@
         <widget class="QWidget" name="verticalLayoutWidget_8">
          <property name="geometry">
           <rect>
-           <x>20</x>
-           <y>60</y>
+           <x>30</x>
+           <y>350</y>
            <width>141</width>
            <height>80</height>
           </rect>
@@ -438,6 +284,9 @@
          <layout class="QVBoxLayout" name="verticalLayout_6">
           <item>
            <widget class="QPushButton" name="pushButton_saveOntimes">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Save On-times</string>
             </property>
@@ -445,6 +294,9 @@
           </item>
           <item>
            <widget class="QPushButton" name="PushButton_LoadOntimes">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Load On-times</string>
             </property>
@@ -470,8 +322,8 @@
         <widget class="QWidget" name="verticalLayoutWidget_4">
          <property name="geometry">
           <rect>
-           <x>10</x>
-           <y>170</y>
+           <x>20</x>
+           <y>120</y>
            <width>161</width>
            <height>99</height>
           </rect>
@@ -516,7 +368,7 @@
          <property name="geometry">
           <rect>
            <x>10</x>
-           <y>290</y>
+           <y>230</y>
            <width>171</width>
            <height>99</height>
           </rect>
@@ -525,7 +377,7 @@
           <item>
            <widget class="QCheckBox" name="checkBox_TraceSelection">
             <property name="text">
-             <string>Select on times</string>
+             <string>Select window(s)</string>
             </property>
             <property name="checked">
              <bool>false</bool>
@@ -539,6 +391,295 @@
             </property>
             <property name="text">
              <string>Add window</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="gridLayoutWidget">
+         <property name="geometry">
+          <rect>
+           <x>10</x>
+           <y>30</y>
+           <width>177</width>
+           <height>80</height>
+          </rect>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="binWidthlineEdit">
+            <property name="text">
+             <string>0.1</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="0">
+           <widget class="QLabel" name="binWidthlabel">
+            <property name="text">
+             <string>Binning [ms]</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="threshold_label">
+            <property name="text">
+             <string>Threshold</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="threshold_lineEdit">
+            <property name="text">
+             <string>100</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+       <widget class="QGroupBox" name="Results_groupBox">
+        <property name="geometry">
+         <rect>
+          <x>1010</x>
+          <y>280</y>
+          <width>451</width>
+          <height>621</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Analysis</string>
+        </property>
+        <widget class="QPushButton" name="EstimatorButton">
+         <property name="geometry">
+          <rect>
+           <x>80</x>
+           <y>20</y>
+           <width>171</width>
+           <height>34</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Estimate Position</string>
+         </property>
+        </widget>
+        <widget class="QWidget" name="verticalLayoutWidget_3">
+         <property name="geometry">
+          <rect>
+           <x>10</x>
+           <y>70</y>
+           <width>431</width>
+           <height>401</height>
+          </rect>
+         </property>
+         <layout class="QVBoxLayout" name="estimateLayout">
+          <property name="sizeConstraint">
+           <enum>QLayout::SetDefaultConstraint</enum>
+          </property>
+         </layout>
+        </widget>
+        <widget class="QLabel" name="comLabel">
+         <property name="geometry">
+          <rect>
+           <x>10</x>
+           <y>480</y>
+           <width>301</width>
+           <height>131</height>
+          </rect>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Box</enum>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::AutoText</enum>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="SaveResultsButton">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="geometry">
+          <rect>
+           <x>320</x>
+           <y>560</y>
+           <width>131</width>
+           <height>34</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Save Results</string>
+         </property>
+        </widget>
+        <widget class="QCheckBox" name="CreatepdfcheckBox">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="geometry">
+          <rect>
+           <x>320</x>
+           <y>530</y>
+           <width>121</width>
+           <height>23</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Create .pdf</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="TestpushButton">
+         <property name="geometry">
+          <rect>
+           <x>310</x>
+           <y>20</y>
+           <width>112</width>
+           <height>34</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Fit Lifetime</string>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QGroupBox" name="ParametergroupBox">
+        <property name="geometry">
+         <rect>
+          <x>1010</x>
+          <y>0</y>
+          <width>441</width>
+          <height>281</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Parameter</string>
+        </property>
+        <widget class="QWidget" name="formLayoutWidget">
+         <property name="geometry">
+          <rect>
+           <x>70</x>
+           <y>30</y>
+           <width>331</width>
+           <height>207</height>
+          </rect>
+         </property>
+         <layout class="QFormLayout" name="formLayout">
+          <property name="fieldGrowthPolicy">
+           <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+          </property>
+          <property name="horizontalSpacing">
+           <number>2</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>5</number>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_numPSF">
+            <property name="text">
+             <string># of donut positions</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QSpinBox" name="spinBox_donuts">
+            <property name="value">
+             <number>4</number>
+            </property>
+            <property name="displayIntegerBase">
+             <number>10</number>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_SBR">
+            <property name="text">
+             <string>SBR</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="lineEdit_sbr">
+            <property name="text">
+             <string>30</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_winlen">
+            <property name="toolTip">
+             <string>Only matters if 'Nanoparticle' mode is used</string>
+            </property>
+            <property name="text">
+             <string>Artifical binning  [ms]</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="lineEdit_winlen">
+            <property name="text">
+             <string>0.1</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_lifetime_window_i">
+            <property name="text">
+             <string>Lifetime init in ns</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="lineEdit_lifetimewin_i">
+            <property name="text">
+             <string>0</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="label_lifetime_window_f">
+            <property name="text">
+             <string>Lifetime crop in ns</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QLineEdit" name="lineEdit_lifetimewin_f">
+            <property name="text">
+             <string>2</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="QLineEdit" name="minONlimit_lineEdit">
+            <property name="text">
+             <string>0.05</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="minONlimit_label">
+            <property name="text">
+             <string>Min. ON-time in ms</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="QLineEdit" name="minNperON_lineEdit">
+            <property name="text">
+             <string>10</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="minNperON_label">
+            <property name="text">
+             <string>Min. Photons per ON</string>
             </property>
            </widget>
           </item>
@@ -695,27 +836,11 @@
    <slot>region_selection()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>161</x>
-     <y>898</y>
+     <x>177</x>
+     <y>838</y>
     </hint>
     <hint type="destinationlabel">
      <x>913</x>
-     <y>32</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>testButton</sender>
-   <signal>clicked()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>read_ontimes()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>1111</x>
-     <y>115</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>1281</x>
      <y>32</y>
     </hint>
    </hints>
@@ -727,8 +852,8 @@
    <slot>check_tcspcmode(bool)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>45</x>
-     <y>845</y>
+     <x>61</x>
+     <y>785</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -743,8 +868,8 @@
    <slot>position_estimation()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>1272</x>
-     <y>355</y>
+     <x>1242</x>
+     <y>405</y>
     </hint>
     <hint type="destinationlabel">
      <x>1168</x>
@@ -766,6 +891,8 @@
   <slot>read_ontimes()</slot>
   <slot>check_tcspcmode(bool)</slot>
   <slot>save_psffit()</slot>
+  <slot>save_results()</slot>
+  <slot>find_lifetime()</slot>
  </slots>
  <buttongroups>
   <buttongroup name="buttonGroup_tcspcmode"/>

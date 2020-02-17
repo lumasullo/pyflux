@@ -187,23 +187,28 @@ class Crosshair():
 
     def __init__(self, viewBox):
 
-        self.showed = False
+        self.showed = False 
+        self.vb = viewBox
+        
+        proxy = pg.SignalProxy(self.vb.scene().sigMouseMoved, rateLimit=60, slot=self.mouseMoved)
+        self.vb.scene().sigMouseClicked.connect(self.mouseClicked) 
 
+    def draw_crosshair(self):
         self.vLine = pg.InfiniteLine(pos=0, angle=90, movable=False)
         self.hLine = pg.InfiniteLine(pos=0, angle=0,  movable=False)
-        self.vb = viewBox
 
-    def mouseMoved(self, pos):
-        if self.vb.sceneBoundingRect().contains(pos):
-            mousePoint = self.vb.mapSceneToView(pos)
+    def mouseMoved(self, evt):        
+        if self.vb.sceneBoundingRect().contains(evt):
+            mousePoint = self.vb.mapSceneToView(evt)
             self.vLine.setPos(mousePoint.x())
             self.hLine.setPos(mousePoint.y())
 
-    def mouseClicked(self):
+    def mouseClicked(self, evt):
         try:
             self.vb.scene().sigMouseMoved.disconnect(self.mouseMoved)
         except:
-            pass
+            self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
+
 
     def toggle(self):
         if self.showed:
@@ -212,8 +217,7 @@ class Crosshair():
             self.show()
 
     def show(self):
-        self.vb.scene().sigMouseClicked.connect(self.mouseClicked)
-        self.vb.scene().sigMouseMoved.connect(self.mouseMoved)
+        self.draw_crosshair()
         self.vb.addItem(self.vLine, ignoreBounds=False)
         self.vb.addItem(self.hLine, ignoreBounds=False)
         self.showed = True
@@ -242,10 +246,13 @@ class ROI(pg.ROI):
         vb.addItem(self.label)
 
     def updateText(self):
-        self.label.setPos(self.pos()[0] + self.size()[0],
-                          self.pos()[1] + self.size()[1])
+        self.label.setPos(self.pos()[0],
+                          self.pos()[1])
+#        self.label.setPos(self.pos()[0] + self.size()[0],
+#                          self.pos()[1] + self.size()[1])
         size = np.round(self.size()).astype(np.int)
-        self.label.setText('{}x{}'.format(int(size[0]), int(size[0])))
+        #TODO: change to show ROI size in um, also in updatetext()
+        self.label.setText('{} x {} [px]'.format(int(size[0]), int(size[0])))
 
     def hide(self, *args, **kwargs):
         super().hide(*args, **kwargs)
@@ -265,7 +272,7 @@ class ROI2(pg.ROI):
         self.label = pg.TextItem()
         self.label.setPos(self.pos()[0] + self.size()[0],
                           self.pos()[1] + self.size()[1])
-        self.label.setText('{}x{}'.format(shape, shape))
+        self.label.setText('{} px x {} px'.format(shape, shape))
         
         self.number = pg.TextItem()
         self.number.setPos(self.pos()[0] - 0.0*self.size()[0],
@@ -282,7 +289,7 @@ class ROI2(pg.ROI):
         self.label.setPos(self.pos()[0] + self.size()[0],
                           self.pos()[1] + self.size()[1])
         size = np.round(self.size()).astype(np.int)
-        self.label.setText('{}x{}'.format(int(size[0]), int(size[0])))
+        self.label.setText('{} px x {} px'.format(int(size[0]), int(size[0])))
         
         self.number.setPos(self.pos()[0] - 0.0*self.size()[0],
                           self.pos()[1] + self.size()[1])

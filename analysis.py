@@ -10,15 +10,20 @@ conda command for converting QtDesigner file to .py:
 pyuic5 -x AnalysisDesign.ui -o AnalysisDesign.py
 
 Next steps:
-    Save plots and result summary file
-    check if i == timeON.shape[0] - 1: for non-ordered ontimes, also check whole estimation
-    Save and load tcspc-windows 
-    check regionItem setMovable command for proper working (for all regions, not only 0)
-    Delete tiabs = self.trace_window_i, tfabs = self.trace_window_f params from backend
-    Delete regions
+    delete hard-coded 25 in trace_seg
+    make optimization finding offset in fit, start fitting slightly already at downslope of exponential
+    Save and load tcspc-windows
+    Make update_trace() function similar to update_image()
+    Neglect zeros in on-times when discarding them
+    Delete regions --> e.g. double-click on region
+    Swap order of EBP -- match peaks in rel-time and fitted psf
+    
     ... 
-
+    
+from pyqtgraph import examples
+examples.run()
 """
+
 import os
 
 os.chdir(r'C:\Users\Lars\Documents\Studium\Argentina\research\minflux\code\pyflux')
@@ -27,25 +32,25 @@ import sys
 import time
 import ctypes
 import configparser
-import json
 from tkinter import Tk, filedialog
 from datetime import date, datetime
 import numpy as np
 import imageio as iio
 from scipy import optimize as opt
 from scipy import ndimage as ndi
+import matplotlib.pyplot as plt
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
-from pyqtgraph.exporters import Matplotlib
-
-import matplotlib.pyplot as plt
+from pyqtgraph.Point import Point
 
 import tools.viewbox_tools as viewbox_tools
 import tools.colormaps as cmaps
+import tools.tools as tools
 import gui.AnalysisDesign
 import qdarkstyle
+from tools.lineprofile import linePlotWidget
 
 π = np.pi
 
@@ -79,6 +84,25 @@ class Frontend(QtGui.QMainWindow):
         self.tcspcMode = self.ui.radioButton_NP.text()
         
         self.ui.buttonGroup_tcspcmode.buttonClicked['QAbstractButton *'].connect(self.check_tcspcmode)
+       
+#        self.ui.LoadTCSPCButton.clicked.connect(self.update_line_profile)
+#        self.lplotWidget = linePlotWidget()
+#        self.lplotWidget.gauss = False
+#        self.lplotWidget.get_connection(self)
+
+    def update_line_profile(self):
+        
+        self.lplotWidget.show()
+                
+        data = np.arange(60)
+        self.lplotWidget.linePlot.clear()
+        x = 6.25 * np.arange(np.size(data))*1000
+        self.lplotWidget.linePlot.plot(x, data)
+        
+        print(self.lplotWidget.gauss)
+        
+        if self.lplotWidget.gauss:
+            self.lplotWidget.linePlot.plot(x, 2*data)
         
     def emit_param(self):
         params = dict()
@@ -91,18 +115,21 @@ class Frontend(QtGui.QMainWindow):
         params['lifetime_win_i'] = float(self.ui.lineEdit_lifetimewin_i.text())
         params['lifetime_win_f'] = float(self.ui.lineEdit_lifetimewin_f.text())
         params['tcspcMode'] = self.tcspcMode
-
-        if (len(self.ontimes) != 0):
-            params['trace_window_i'] = self.ontimes[0][0]
-            params['trace_window_f'] = self.ontimes[0][1]
-        
+        params['binwidth'] = float(self.ui.binWidthlineEdit.text())
+        params['threshold'] = float(self.ui.threshold_lineEdit.text())
+        params['minontime'] = float(self.ui.minONlimit_lineEdit.text())
+        params['minphotons'] = float(self.ui.minNperON_lineEdit.text())
+                
         self.paramSignal.emit(params)
 
     @pyqtSlot(dict)
     def get_backend_param(self, params):
         
         self.PX = params['pxSize']
+        self.ui.threshold_lineEdit.setText(str(params['threshold']))
         
+        self.tcspc_binning = params['binwidth']
+        self.ui.binWidthlineEdit.setText(str(self.tcspc_binning))
     
     def select_exppsf(self):
         try:
@@ -116,6 +143,9 @@ class Frontend(QtGui.QMainWindow):
                 
         except OSError:
             pass
+        
+        if root.filenamePSF == '':
+            return
         
         im = iio.mimread(root.filenamePSF)
         self.img_array = np.array(im)
@@ -162,6 +192,12 @@ class Frontend(QtGui.QMainWindow):
 
         self.empty_layout(self.ui.psfLayout)        
         self.ui.psfLayout.addWidget(imageWidget)
+        
+        #test crosshair
+        vbox = self.vb.vb
+        self.ch = viewbox_tools.Crosshair(vbox)
+        self.ch.show()
+        
     
     def fit_exppsf(self):
         #room for reading analysis parameter
@@ -188,8 +224,7 @@ class Frontend(QtGui.QMainWindow):
         
     @pyqtSlot(np.ndarray, np.ndarray)
     def plot_tcspc(self, abs_time, rel_time):
-        #TODO: set loaded times as global variables
-        
+        #TODO: set loaded times as global variables        
         if not self.tracePlot == None:
             for reg in self.region:
                 self.tracePlot.removeItem(reg)
@@ -197,19 +232,20 @@ class Frontend(QtGui.QMainWindow):
         dataWidget = pg.GraphicsLayoutWidget()
         dataWidget.clear()
         
-        histPlot = dataWidget.addPlot(row=1, col=0, title="relative time histogram")
+        histPlot = dataWidget.addPlot(row=1, col=0, title="Relative Time Histogram")
         histPlot.setLabels(bottom=('ns'),
                                 left=('counts'))
         
-        self.tracePlot = dataWidget.addPlot(row=2, col=0, title="Time trace")
+        self.tracePlot = dataWidget.addPlot(row=2, col=0, title="Time Trace")
         self.tracePlot.setLabels(bottom=('ms'),
                                 left=('counts'))
         
-        counts, bin_edges = np.histogram(rel_time, bins=100) # TODO: choose proper binning, from fernandos fct
+        nbins = int((np.max(abs_time)/self.tcspc_binning))
+        counts, bin_edges = np.histogram(rel_time, bins=nbins)
         x = np.ediff1d(bin_edges) + bin_edges[:-1]
         histPlot.plot(x, counts)
 
-        counts, bin_edges = np.histogram(abs_time, bins=100) # timetrace with 50 bins
+        counts, bin_edges = np.histogram(abs_time, bins=nbins)
         x = np.ediff1d(bin_edges) + bin_edges[:-1]
         self.tracePlot.plot(x, counts)
             
@@ -219,7 +255,9 @@ class Frontend(QtGui.QMainWindow):
         self.regionNum = 0 
         self.region_selection()
         self.region[0].setMovable(False)
-        
+        self.ui.checkBox_TraceSelection.setChecked(False)
+        self.ui.radioButton_NP.setChecked(True)
+
         print(datetime.now(), '[analysis] TCSPC data received and plotted')
     
     @pyqtSlot(bool)
@@ -230,9 +268,17 @@ class Frontend(QtGui.QMainWindow):
             self.tcspcMode = id_or_state.text()
             if not self.tcspcMode == 'Origami (manual)':
                 self.ui.pushButton_addWindow.setEnabled(False)
+            if self.tcspcMode == 'Nanoparticle':
+                for i in np.arange(1, self.regionNum):
+                    self.tracePlot.removeItem(self.region[i])
+                self.regionNum = 1
+            if self.tcspcMode == 'Origami (auto)':
+                self.tracePlot.removeItem(self.region[0])
+                self.regionNum = 0
         else:
             select_ontimes = id_or_state
-            self.region[0].setMovable(select_ontimes)
+            for i in np.arange(self.regionNum):
+                self.region[i].setMovable(select_ontimes)
             if select_ontimes:
                 if self.ui.radioButton_NP.isChecked():
                     self.ui.comLabel.setText('Modify macrotime window in plot \n and set window length for binning.')
@@ -247,7 +293,7 @@ class Frontend(QtGui.QMainWindow):
         self.region[self.regionNum].setZValue(10)
         self.tracePlot.addItem(self.region[self.regionNum], ignoreBounds=True)
         self.region[self.regionNum].setRegion([0, 0.5])
-
+        
         self.regionNum += 1
                 
     def read_ontimes(self):
@@ -267,7 +313,7 @@ class Frontend(QtGui.QMainWindow):
                 self.ui.tcspcEditBox.setText(root.filenameTCSPC)
                 
         except OSError:
-            pass       
+            pass 
 
     @pyqtSlot()
     def load_tcspc(self):
@@ -301,8 +347,8 @@ class Frontend(QtGui.QMainWindow):
         Nmean = np.mean(N)
         meanx = '<x> = ' + str(np.round(np.mean(pos[:, 0]), decimals = 1)) + ' nm'
         meany = '<y> = ' + str(np.round(np.mean(pos[:, 1]), decimals = 1)) + ' nm'
-        sx = 'σx = ' + str(sigmax) + ' nm'
-        sy = 'σy = ' + str(sigmay) + ' nm'  
+        sx = '<σx> = ' + str(sigmax) + ' nm'
+        sy = '<σy> = ' + str(sigmay) + ' nm'  
         Nm = '<N> = ' + str(int(np.round(Nmean, decimals = 0)))
         
         #start actual plotting
@@ -312,8 +358,6 @@ class Frontend(QtGui.QMainWindow):
         plot.setLabels(bottom=('x [nm]'), left=('y [nm]'))
         
         for i in np.arange(pos.shape[0]):
-            if pos[i,0] == 0:
-                continue
             pos_i = pg.ScatterPlotItem([pos[i, 0]], [pos[i, 1]], size=10, symbol='x', pen=pg.mkPen(None))
             plot.addItem(pos_i)
        
@@ -325,12 +369,16 @@ class Frontend(QtGui.QMainWindow):
         self.empty_layout(self.ui.estimateLayout)
         self.ui.estimateLayout.addWidget(estimatorWidget)
         
-        text = '[analysis] Position estimation done \n' + str(meanx) + '\n' + str(meany) + '\n' + sx + '\n' + sy + '\n' + Nm 
+        text = meanx + '\n' + meany + '\n' + sx + '\n' + sy + '\n' + Nm 
         self.ui.comLabel.setText(text)
         
         print(datetime.now(), '[analysis] Estimation done and results plotted')
-        print(datetime.now(), '[analysis] Results: ', text)
+        print(datetime.now(), '[analysis] Stats: \n', text)
+        
         #TODO: add options to save plots and result summary in txt file, also save trace length and binning in logfile, plus name of psffile plus name of tcspc file
+        #set up everything allowing to save plot
+        self.ui.SaveResultsButton.setEnabled(True)
+        self.ui.CreatepdfcheckBox.setEnabled(True)
         
     def empty_layout(self, layout):
         for i in reversed(range(layout.count())): 
@@ -343,12 +391,22 @@ class Frontend(QtGui.QMainWindow):
         backend.plotTCSPCSignal.connect(self.plot_tcspc)
         backend.positionSignal.connect(self.plot_position)
         
-    def closeEvent(self, *args, **kwargs):
-
-        print(datetime.now(), '[analysis] Analysis module closed')        
-        super().closeEvent(*args, **kwargs)
-        app.quit()
+    def testmethod(self):
+        print('test worked very fine')
         
+    def closeEvent(self, event, *args, **kwargs):
+
+        reply = QtGui.QMessageBox.question(self, 'Quit', 'Are you sure you want to quit?',
+                                           QtGui.QMessageBox.No |
+                                           QtGui.QMessageBox.Yes)
+        if reply == QtGui.QMessageBox.Yes:
+            event.accept()
+            print(datetime.now(), '[analysis] Analysis module closed')        
+            super().closeEvent(*args, **kwargs)
+            app.quit()
+        else:
+            event.ignore()
+            
 
 class Backend(QtCore.QObject):
 
@@ -379,6 +437,7 @@ class Backend(QtCore.QObject):
         self.ABS_TIME_CONVERSION = 1.0*10**(-3) #conversion factor for absolute time
         self.size = None
         self.pxexp = None
+        self.bins = 1000
 
     def emit_param(self):
         
@@ -388,6 +447,8 @@ class Backend(QtCore.QObject):
         params['absTimeConv'] = self.ABS_TIME_CONVERSION
         params['fitpsfSize'] = self.size
         params['pxCamera'] = self.pxexp
+        params['binwidth'] = self.tcspc_binning
+        params['threshold'] = self.threshold
         
         self.paramSignal.emit(params)
         
@@ -404,13 +465,11 @@ class Backend(QtCore.QObject):
         self.lifetime_win_i = params['lifetime_win_i']
         self.lifetime_win_f = params['lifetime_win_f']
         self.tcspcMode = params['tcspcMode']
+        self.threshold = params['threshold']
+        self.tcspc_binning = params['binwidth']
+        self.deltaTmin = params['minontime']
+        self.Nmin = params['minphotons']
         
-        try:
-            self.trace_window_i = params['trace_window_i']
-            self.trace_window_f = params['trace_window_f']
-        except:
-            pass
-
     def space_to_index(self, space):
 
         # size and px have to be in nm
@@ -545,6 +604,7 @@ class Backend(QtCore.QObject):
         self.PSF[2, :, :] = self.PSF[3, :, :]
         self.PSF[3, :, :] = psfTc[0,:,:]
         
+        self.emit_param()
         self.fitPSFSignal.emit(self.PSF, self.x0, self.y0)
 
 
@@ -578,7 +638,8 @@ class Backend(QtCore.QObject):
         self.rel_time = coord[0, :] 
         
         # find EBP pulses times
-        [y, bin_edges] = np.histogram(self.rel_time, bins=100)
+        nbins = int((np.max(self.abs_time)/self.tcspc_binning))
+        [y, bin_edges] = np.histogram(self.rel_time, bins = nbins)
         x = np.ediff1d(bin_edges) + bin_edges[:-1]
         
         T = len(y)//(self.k) * np.arange((self.k+1))
@@ -588,10 +649,10 @@ class Backend(QtCore.QObject):
         for i in np.arange(self.k):        
             ind[i] = np.argmax(y[T[i]:T[i+1]]) + T[i]
                 
-        
         ind = ind.astype(int)
         self.τ = x[ind]
 
+        self.emit_param()
         self.plotTCSPCSignal.emit(self.abs_time, self.rel_time)
     
     @pyqtSlot(np.ndarray)    
@@ -626,17 +687,22 @@ class Backend(QtCore.QObject):
         for i in range(len(x0)):
             self.x0[i] = int(x0[i])
             self.y0[i] = int(y0[i])
+            
+        self.emit_param()
         
     @pyqtSlot(np.ndarray)
     def find_position(self, ontimes):
         
         mode = self.tcspcMode
-        print(datetime.now(), '[analysis] Position estimation performed in', mode,  'mode')
 
+        print(datetime.now(), '[analysis] Position estimation performed in <', mode,  '> mode')
+        
+        ontimes = ontimes.flatten()
+        
         #TODO: change to fixed number of windows and then show window length
         if mode == 'Nanoparticle':
-            tiabs = self.trace_window_i
-            tfabs = self.trace_window_f
+            tiabs = ontimes[0]
+            tfabs = ontimes[1]
             num_windows = int((tfabs - tiabs) / self.NP_binning)
             timeON = np.zeros(2*num_windows)
             for i in np.arange(0, 2*num_windows, 2):
@@ -646,55 +712,66 @@ class Backend(QtCore.QObject):
             timeON[-1] = tfabs
             
         elif mode == 'Origami (manual)':
-            timeON = ontimes.flatten()
-            print(timeON)
+            timeON = ontimes
         
+        elif mode == 'Origami (auto)':
+            [T, bwt] = self.trace_seg(self.abs_time)
+            #TODO: soft-code scaling factors
+            bwt = 10*bwt
+            T = 5*T
+            nbinsopt = int((np.max(self.abs_time)/bwt))
+            seqbin, times = np.histogram(self.abs_time, bins=nbinsopt)
+            
+            fig1, ax1 = plt.subplots()
+            ax1.plot(times[0:-1],seqbin) 
+            ax1.axhline(y=(T), color = 'r') 
+            ax1.legend(['bin width = ' + str(bwt), 'T = ' + str(T)], loc='upper right')
+            
+            mask = seqbin>T
+            indexes = np.argwhere(np.diff(mask)).squeeze()
+            timeON = times[indexes]            
+            print('Threshold:', T, 'Binwidth:', bwt)
+        
+        self.timeON = timeON
         number = len(timeON)
-        
         t = {}
         absTimeON = {}
-        relTimeON = {}
+        self.relTimeON = {}
         
         for i in np.arange(0, number, 2):
-            print(i)
             j = i//2
-#            if i == timeON.shape[0] - 1:
-#                t[i] = timeON[i] < self.abs_time
-#            else:
             t[i] = (timeON[i] < self.abs_time) & (self.abs_time < timeON[i+1])
             absTimeONp = self.abs_time * t[i]
+            #changed fron relTime... to not exclude rel. times exactly equal to 0.000...
             absTimeON[j] = self.abs_time[np.nonzero(absTimeONp)]
-            relTimeON[j] = self.rel_time[np.nonzero(absTimeONp)] #changed fron relTime... to not exclude rel. times exactly equal to 0.000...
-    
-        Nsegments = len(absTimeON)
-                
-        Tot = Nsegments #check whether it can be correct
+            self.relTimeON[j] = self.rel_time[np.nonzero(absTimeONp)] 
+            
+        Nsegments = len(absTimeON)                
+        Tot = Nsegments
         n = np.zeros((Tot, 4))
-        pos = np.zeros((Tot, 2))
+        self.pos = np.zeros((Tot, 2))
         indrec = np.zeros((Tot, 2))    
-        N = np.zeros(Tot)
+        self.N = np.zeros(Tot)
         deltaT = np.zeros(Tot)
                 
         for i in np.arange(Tot):
-            n[i, :] = self.n_minflux(relTimeON[i])
-            N[i] = np.sum(n[i, :])
+            n[i, :] = self.n_minflux(self.relTimeON[i])
+            self.N[i] = np.sum(n[i, :])
             
             #calculate time length of selected trace segment
             deltaT[i] = absTimeON[i][-1] - absTimeON[i][0]
 
             #check if above min. time length and photon threshold
-            #TODO: soft-code both mentioned quantities
-            if deltaT[i] > 0.01:
-                if N[i] > 1000:
-                    [indrec[i,:], pos[i, :], Ltot] = self.pos_minflux(n[i, :])
+            if deltaT[i] > self.deltaTmin:
+                if self.N[i] > self.Nmin:
+                    [indrec[i,:], self.pos[i, :], Ltot] = self.pos_minflux(n[i, :])
                 else:
-                    pass
+                    print(datetime.now(), '[analysis] Time window', str(i), ' neglected as it contains too few photons')
             else:
-                pass
- 
-        print(pos)
-        self.positionSignal.emit(indrec, pos, Ltot, N)
-    
+                print(datetime.now(), '[analysis] Time window', str(i), ' neglected as too short')
+        
+        self.positionSignal.emit(indrec, self.pos, Ltot, self.N)
+
     def n_minflux(self, reltimes_i):
         
         """
@@ -775,12 +852,14 @@ class Backend(QtCore.QObject):
     def save_psffit(self):
          
         root = os.path.splitext(self.psffilename)[0]
+        filename = root + '_fit'
+        uname = tools.getUniqueName_New(filename, '.txt')
+        parameter_filename = uname + '.txt'
+        fit_filename = uname + '.tiff'
         
-        fit_filename = root + '_fit.tiff'
         data = np.array(self.PSF, dtype=np.float32)
         iio.mimwrite(fit_filename, data)
         
-        parameter_filename = root + '_fit-parameter.txt'
         config = configparser.ConfigParser()
     
         config['PSF-fit parameter'] = {
@@ -788,17 +867,221 @@ class Backend(QtCore.QObject):
             'Date and time': datetime.now(),
             'Name of PSF source file': self.psffilename,
             'Experimental px size [nm]': str(self.pxexp),
-            'x-/ y-size of saved PSF fit [px]': str(self.size),
+            'x-/ y-size of saved psf fit [px]': str(self.size),
             'Final px size of PSF fit [nm]': str(self.PX),
             'Number of fitted excitation donuts': str(self.k),
-            'x-coordinates of donut centers [px]': str(self.x0),
-            'y-coordinates of donut centers [px]': str(self.y0)}
+            'x-coordinates of donut centers [nm]': str(self.x0),
+            'y-coordinates of donut centers [nm]': str(self.y0)}
     
         with open(parameter_filename, 'w') as configfile:
             config.write(configfile)
 
         print(datetime.now(), '[analysis] Fitted PSF and parameter file saved')
         
+    @pyqtSlot(bool)    
+    def save_results(self, saveplot):
+        
+        root = os.path.splitext(self.psffilename)[0]
+        filename = root + '_localization'
+        uname = tools.getUniqueName_New(filename, '.txt')
+        log_filename = uname + '.txt'
+        plot_filename = uname + '.pdf'
+
+        #### PLOT SECTION#####
+        if saveplot:
+            marker = ['yo', 'ro', 'ko', 'bo']
+                    
+            fig, ax = plt.subplots(1, 1)  
+            ax.set_title('Np Au, <N> = ' + str(int(np.round(np.mean(self.N), decimals = 0))) , fontsize=16) 
+            ax.set_aspect('equal', 'box')
+            ax.set_xlabel('x [nm]')
+            ax.set_ylabel('y [nm]')
+            
+            for i in np.arange(self.k):
+                ax.plot(self.x0[i], self.y0[i], marker[i], markersize = 10)
+                
+            for i in np.arange(self.pos.shape[0]):
+                ax.plot(self.pos[i,0], self.pos[i,1], marker='*', markersize = 5)
+            
+            plt.savefig(plot_filename, format='pdf', dpi=1000)
+        
+        ###  PARAMETER FILE####
+        
+        sigmax = np.round(np.std(self.pos[:, 0]), 1)
+        sigmay = np.round(np.std(self.pos[:, 1]), 1)
+        meanx = np.round(np.mean(self.pos[:, 0]), 1)
+        meany = np.round(np.mean(self.pos[:, 1]), 1)
+        Nmean = np.round(np.mean(self.N), 0)
+        
+        #configparser can save parameter description only in lower-case letters
+        config = configparser.ConfigParser()
+        config['Position Estimation Summary'] = {
+    
+            'Date and time': datetime.now(),
+            'Name of psf source file': self.psffilename,
+            'Name of tcspc source file': self.tcspcfilename,
+            'Number of excitation donuts': str(self.k),
+            'x-coordinates of donut centers [nm]': str(self.x0),
+            'y-coordinates of donut centers [nm]': str(self.y0),
+            'signal-noise ratio': str(self.sbr),
+            'Timing of detected EBP pulses': self.τ, 
+            'Lifetime init [ns]': str(self.lifetime_win_i),
+            'Lifetime crop [ns]': str(self.lifetime_win_f),
+            'Analysis mode': self.tcspcMode,
+            'on-times': self.timeON,
+            '<n>': str(Nmean),
+            '<pos x> [nm]': str(meanx),
+            '<pos y> [nm]': str(meany),
+            '<std x> [nm]': str(sigmax),
+            '<std y> [nm]': str(sigmay)}
+    
+        with open(log_filename, 'w') as configfile:
+            config.write(configfile)
+
+        print(datetime.now(), '[analysis] Saved Results')
+        
+    def find_lifetime(self):
+        
+        print('hello')
+        self.fitarray = []
+        for i in np.arange(len(self.relTimeON)):
+            self.fitarray = np.concatenate((self.fitarray, self.relTimeON[i]))
+        
+        #TODO: delete later on
+        print(self.fitarray)
+        
+        # inter-photon times histogram 
+        #TODO: soft-code bin width
+        #change self.bins to self.tcspc_binning to clean up
+        [y, bin_edges] = np.histogram(self.fitarray, self.bins)
+        x = np.ediff1d(bin_edges) + bin_edges[:-1]
+        
+        # double exponential fit of the ipt histogram
+        def single_exp(t, a, b, offset):
+            return (a * np.exp(b * t) + offset)
+        
+        lifetguess = -1.0
+        offsetguess = 25
+        aguess = 500
+        
+        p0 = [aguess, lifetguess, offsetguess]
+        
+        p, cov = opt.curve_fit(single_exp, x, y, p0)
+        
+        print(p, cov)
+        
+        fig, ax = plt.subplots()
+        ax.plot(x, y)
+        ax.plot(x, single_exp(x, *p))
+   
+            
+    def trace_seg(self, absTime):
+        #TODO: NEEDS TO BE FULLY AUTOMATED
+        """    
+        Trace segmentation in case of blinking
+        Find optimal bin width and threshold
+        (Adapted from F.D. Stefani PhD Thesis)
+            
+        Inputs
+        ----------
+        absTime : time tags of detected photons (macro time)
+    
+        Returns
+        -------
+        bw : optimal bin width
+        T : threshold
+        
+        Parameters
+        ----------
+        bwmin, bwmax : boundaries for bw
+        Tamx : max threshold
+           
+        """
+        # compute inter-photon times (in absTime units)
+        ipt = np.ediff1d(absTime)
+        size = len(ipt)
+        binsipt = int(np.sqrt(size))
+        # inter-photon times histogram 
+        [y, bin_edges] = np.histogram(ipt, bins=binsipt)
+        x = np.ediff1d(bin_edges) + bin_edges[:-1]
+        
+        ind = np.min(np.where(y<0.01)) 
+        x = x[0:ind]
+        y = y[0:ind]
+        # double exponential fit of the ipt histogram
+        def double_exp(t, a1, a2, b1, b2, offset):
+            return a1 * np.exp(b1 * t) + a2 * np.exp(b2 * t) + offset
+        
+        p,cov = opt.curve_fit(double_exp, x, y)
+        
+        # ON and OFF parameters from fit
+        Ion = -np.min(p[2:4])
+        Ioff = -np.max(p[2:4])
+        Aon = np.max(p[0:2])
+        Aoff = np.min(p[0:2])
+        
+        fig, ax = plt.subplots()
+        ax.plot(x, y)
+        lifelabel = 'τ_on = ' + str(1/Ion*10**(6)) + ' +/- ' + str(1/cov[3, 3]*10**(6)) + ' ns'
+        ax.plot(x, double_exp(x, *p), label = lifelabel)
+        ax.set_xlabel('t [ms]')
+        ax.set_ylabel('counts')
+        print(lifelabel)
+         
+        # minimum bin width
+#        bwmin = 2*(np.max(absTime)/len(absTime))  
+#        ordermin = int(-np.log10(bwmin))
+        
+        # bw boundaries
+        bwmin = 0.001
+        bwmax = 0.005
+        
+        # iterations over bw and over threshold T    
+        for i in np.arange(bwmin, bwmax, 0.0001):
+      
+            bwt = i     
+            # average ON and OFF times
+            Ton = Aon/(Ion*(1-np.exp(-Ion*bwt)))
+            Toff = Aoff/(Ioff*(1-np.exp(-Ioff*bwt)))
+            # bins on and off
+            bon = Ton/bwt
+            boff = Toff/bwt
+            
+    #        # maximum threshold for a given bw
+    #        Tmax = Ion * bwt
+            # Pon and Poff functions
+            def P(n, I, b):
+                
+                a = (((I*b)**n)*np.exp(-I*b))
+                b = np.math.factorial(n)
+         
+                r = (a/b)
+                
+                return r
+            # maximum threshold for a given bw
+            Tmax = 30000 #Tmax
+            for j in np.arange(0, int(Tmax), 1):
+            
+                T = j 
+                Pon = np.zeros(T+1)
+                Poff = np.zeros(T+1)
+                
+                for n in np.arange(0, T+1, 1):
+                    Pon[n] = P(n, Ion, bwt)
+                    Poff[n] = P(n, Ioff, bwt)
+                
+                PonT = np.sum(Pon)
+                PoffT = np.sum(Poff)
+                # evaluate wrong bins for a given bw and T
+                Wb = bon*PonT + boff*(1-PoffT)
+    #            print(Wb)
+    #        
+                if Wb <0.0000001:
+                    break
+            if Wb <0.000001:
+                break 
+    
+        return T, bwt
     
     def poly_func(self, grid, x0, y0, c00, c01, c02, c03, c04, c10, c11, c12, c13, c14, 
                   c20, c21, c22, c23, c24, c30, c31, c32, c33, c34,
@@ -852,11 +1135,13 @@ class Backend(QtCore.QObject):
         frontend.sendPSFfitSignal.connect(self.catch_psf)
 
         frontend.ui.pushButton_saveFit.clicked.connect(self.save_psffit)
+        frontend.ui.SaveResultsButton.clicked.connect(lambda: self.save_results(frontend.ui.CreatepdfcheckBox.isChecked()))
+        frontend.ui.TestpushButton.clicked.connect(self.find_lifetime)
 
 if __name__ == '__main__':
     
     if not QtGui.QApplication.instance():
-        app = QtGui.QApplication(sys.argv)
+        app = QtGui.QApplication([])
     else:
         app = QtGui.QApplication.instance()
 
@@ -881,4 +1166,4 @@ if __name__ == '__main__':
     gui.show() #Maximized()
     #gui.showFullScreen()
         
-    app.exec_()
+    #app.exec_()
