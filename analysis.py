@@ -10,11 +10,14 @@ conda command for converting QtDesigner file to .py:
 pyuic5 -x AnalysisDesign.ui -o AnalysisDesign.py
 
 Next steps:
+    
+    Make update_trace() function similar to update_image()
+    Neglect zeros in on-times when discarding them
+    
     delete hard-coded 25 in trace_seg
     make optimization finding offset in fit, start fitting slightly already at downslope of exponential
     Save and load tcspc-windows
-    Make update_trace() function similar to update_image()
-    Neglect zeros in on-times when discarding them
+
     Delete regions --> e.g. double-click on region
     Swap order of EBP -- match peaks in rel-time and fitted psf
     
@@ -37,6 +40,8 @@ from datetime import date, datetime
 import numpy as np
 import imageio as iio
 from scipy import optimize as opt
+from scipy.interpolate import interp1d
+from scipy.signal import savgol_filter
 from scipy import ndimage as ndi
 import matplotlib.pyplot as plt
 
@@ -84,25 +89,6 @@ class Frontend(QtGui.QMainWindow):
         self.tcspcMode = self.ui.radioButton_NP.text()
         
         self.ui.buttonGroup_tcspcmode.buttonClicked['QAbstractButton *'].connect(self.check_tcspcmode)
-       
-#        self.ui.LoadTCSPCButton.clicked.connect(self.update_line_profile)
-#        self.lplotWidget = linePlotWidget()
-#        self.lplotWidget.gauss = False
-#        self.lplotWidget.get_connection(self)
-
-    def update_line_profile(self):
-        
-        self.lplotWidget.show()
-                
-        data = np.arange(60)
-        self.lplotWidget.linePlot.clear()
-        x = 6.25 * np.arange(np.size(data))*1000
-        self.lplotWidget.linePlot.plot(x, data)
-        
-        print(self.lplotWidget.gauss)
-        
-        if self.lplotWidget.gauss:
-            self.lplotWidget.linePlot.plot(x, 2*data)
         
     def emit_param(self):
         params = dict()
@@ -177,7 +163,7 @@ class Frontend(QtGui.QMainWindow):
         self.vb = imageWidget.addPlot(row=0, col=0, axisItems={'bottom': self.xaxis, 
                                                  'left': self.yaxis})
 
-        img = pg.ImageItem(self.current_images[image_number,:,:]) #TODO:edit later on 
+        img = pg.ImageItem(self.current_images[image_number,:,:])
         self.vb.clear()
         self.vb.addItem(img)
         self.vb.setAspectLocked(True)
@@ -192,15 +178,9 @@ class Frontend(QtGui.QMainWindow):
 
         self.empty_layout(self.ui.psfLayout)        
         self.ui.psfLayout.addWidget(imageWidget)
-        
-        #test crosshair
-        vbox = self.vb.vb
-        self.ch = viewbox_tools.Crosshair(vbox)
-        self.ch.show()
-        
     
     def fit_exppsf(self):
-        #room for reading analysis parameter
+        #TODO: room for reading analysis parameter
         self.k = int(self.ui.spinBox_donuts.text())
         self.emit_param()
         print(datetime.now(), '[analysis] PSF fitting started')
@@ -224,7 +204,6 @@ class Frontend(QtGui.QMainWindow):
         
     @pyqtSlot(np.ndarray, np.ndarray)
     def plot_tcspc(self, abs_time, rel_time):
-        #TODO: set loaded times as global variables        
         if not self.tracePlot == None:
             for reg in self.region:
                 self.tracePlot.removeItem(reg)
@@ -237,7 +216,7 @@ class Frontend(QtGui.QMainWindow):
                                 left=('counts'))
         
         self.tracePlot = dataWidget.addPlot(row=2, col=0, title="Time Trace")
-        self.tracePlot.setLabels(bottom=('ms'),
+        self.tracePlot.setLabels(bottom=('s'),
                                 left=('counts'))
         
         nbins = int((np.max(abs_time)/self.tcspc_binning))
@@ -339,17 +318,6 @@ class Frontend(QtGui.QMainWindow):
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
     def plot_position(self, indrec, pos, Ltot, N):
 #https://stackoverflow.com/questions/41060163/pyqtgraph-scatterplotitem-setbrush
-
-        #do some statistics        
-        sigmax = np.round(np.std(pos[:, 0]), decimals = 1)
-        sigmay = np.round(np.std(pos[:, 1]), decimals = 1)
-
-        Nmean = np.mean(N)
-        meanx = '<x> = ' + str(np.round(np.mean(pos[:, 0]), decimals = 1)) + ' nm'
-        meany = '<y> = ' + str(np.round(np.mean(pos[:, 1]), decimals = 1)) + ' nm'
-        sx = '<σx> = ' + str(sigmax) + ' nm'
-        sy = '<σy> = ' + str(sigmay) + ' nm'  
-        Nm = '<N> = ' + str(int(np.round(Nmean, decimals = 0)))
         
         #start actual plotting
         estimatorWidget = pg.GraphicsLayoutWidget()
@@ -369,13 +337,23 @@ class Frontend(QtGui.QMainWindow):
         self.empty_layout(self.ui.estimateLayout)
         self.ui.estimateLayout.addWidget(estimatorWidget)
         
-        text = meanx + '\n' + meany + '\n' + sx + '\n' + sy + '\n' + Nm 
+        #do some statistics        
+        sigmax = np.round(np.std(pos[:, 0]), decimals = 1)
+        sigmay = np.round(np.std(pos[:, 1]), decimals = 1)
+
+        Nmean = np.mean(N)
+        meanx = '<x> = ' + str(np.round(np.mean(pos[:, 0]), decimals = 1)) + ' nm'
+        meany = '<y> = ' + str(np.round(np.mean(pos[:, 1]), decimals = 1)) + ' nm'
+        sx = '<σx> = ' + str(sigmax) + ' nm'
+        sy = '<σy> = ' + str(sigmay) + ' nm'  
+        Nm = '<N> = ' + str(int(np.round(Nmean, decimals = 0)))
+        
+        text = meanx + ' , ' + meany + '\n' + sx + ' , ' + sy + '\n' + Nm 
         self.ui.comLabel.setText(text)
         
         print(datetime.now(), '[analysis] Estimation done and results plotted')
         print(datetime.now(), '[analysis] Stats: \n', text)
         
-        #TODO: add options to save plots and result summary in txt file, also save trace length and binning in logfile, plus name of psffile plus name of tcspc file
         #set up everything allowing to save plot
         self.ui.SaveResultsButton.setEnabled(True)
         self.ui.CreatepdfcheckBox.setEnabled(True)
@@ -390,16 +368,13 @@ class Frontend(QtGui.QMainWindow):
         backend.fitPSFSignal.connect(self.plot_psffit)
         backend.plotTCSPCSignal.connect(self.plot_tcspc)
         backend.positionSignal.connect(self.plot_position)
-        
-    def testmethod(self):
-        print('test worked very fine')
-        
+         
     def closeEvent(self, event, *args, **kwargs):
 
-        reply = QtGui.QMessageBox.question(self, 'Quit', 'Are you sure you want to quit?',
-                                           QtGui.QMessageBox.No |
-                                           QtGui.QMessageBox.Yes)
-        if reply == QtGui.QMessageBox.Yes:
+        popuptext = 'Do you really want quit?'
+        qPopup = viewbox_tools.popupWindow(self, popuptext)
+        
+        if qPopup.reply == qPopup.msgBox.Yes:
             event.accept()
             print(datetime.now(), '[analysis] Analysis module closed')        
             super().closeEvent(*args, **kwargs)
@@ -434,11 +409,10 @@ class Backend(QtCore.QObject):
         super().__init__(*args, **kwargs)
 
         self.PX = 1.0 #px size of function grid for psf interpolation/ fit in nm
-        self.ABS_TIME_CONVERSION = 1.0*10**(-3) #conversion factor for absolute time
+        self.ABS_TIME_CONVERSION = 1.0*10**(-3) #convert absTime to s
         self.size = None
         self.pxexp = None
-        self.bins = 1000
-
+        
     def emit_param(self):
         
         params = dict()
@@ -665,7 +639,7 @@ class Backend(QtCore.QObject):
         self.fitPSFSignal.emit(self.PSF, self.x0, self.y0)
      
     def read_parameterfile(self):        
-        fitparameter = os.path.splitext(self.psffilename)[0] + '-parameter.txt'
+        fitparameter = os.path.splitext(self.psffilename)[0] + '.txt'
         
         config = configparser.ConfigParser()
         config.sections()
@@ -675,9 +649,9 @@ class Backend(QtCore.QObject):
         self.size = int(config['PSF-fit parameter']['x-/ y-size of saved PSF fit [px]'])
         self.PX = float(config['PSF-fit parameter']['Final px size of PSF fit [nm]'])
         self.k = int(config['PSF-fit parameter']['Number of fitted excitation donuts'])
-        #update donut number in gui
-        x0 = config['PSF-fit parameter']['x-coordinates of donut centers [px]']
-        y0 = config['PSF-fit parameter']['y-coordinates of donut centers [px]']
+        #TODO: update donut number in gui
+        x0 = config['PSF-fit parameter']['x-coordinates of donut centers [nm]']
+        y0 = config['PSF-fit parameter']['y-coordinates of donut centers [nm]']
         
         x0 = x0[1:-2].split('.')
         y0 = y0[1:-2].split('.')
@@ -687,6 +661,9 @@ class Backend(QtCore.QObject):
         for i in range(len(x0)):
             self.x0[i] = int(x0[i])
             self.y0[i] = int(y0[i])
+            
+        print(datetime.now(), '[analysis] PSF fit parameter loaded.')
+
             
         self.emit_param()
         
@@ -853,7 +830,7 @@ class Backend(QtCore.QObject):
          
         root = os.path.splitext(self.psffilename)[0]
         filename = root + '_fit'
-        uname = tools.getUniqueName_New(filename, '.txt')
+        uname = tools.getUniqueName(filename)
         parameter_filename = uname + '.txt'
         fit_filename = uname + '.tiff'
         
@@ -883,7 +860,7 @@ class Backend(QtCore.QObject):
         
         root = os.path.splitext(self.psffilename)[0]
         filename = root + '_localization'
-        uname = tools.getUniqueName_New(filename, '.txt')
+        uname = tools.getUniqueName(filename)
         log_filename = uname + '.txt'
         plot_filename = uname + '.pdf'
 
@@ -913,6 +890,7 @@ class Backend(QtCore.QObject):
         meany = np.round(np.mean(self.pos[:, 1]), 1)
         Nmean = np.round(np.mean(self.N), 0)
         
+        
         #configparser can save parameter description only in lower-case letters
         config = configparser.ConfigParser()
         config['Position Estimation Summary'] = {
@@ -941,38 +919,63 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[analysis] Saved Results')
         
     def find_lifetime(self):
-        
-        print('hello')
+                
         self.fitarray = []
         for i in np.arange(len(self.relTimeON)):
             self.fitarray = np.concatenate((self.fitarray, self.relTimeON[i]))
         
-        #TODO: delete later on
-        print(self.fitarray)
-        
+
         # inter-photon times histogram 
-        #TODO: soft-code bin width
-        #change self.bins to self.tcspc_binning to clean up
-        [y, bin_edges] = np.histogram(self.fitarray, self.bins)
+        nbins = int((np.max(self.abs_time)/self.tcspc_binning))
+        counts, bin_edges = np.histogram(self.fitarray, bins = nbins) 
         x = np.ediff1d(bin_edges) + bin_edges[:-1]
         
-        # double exponential fit of the ipt histogram
-        def single_exp(t, a, b, offset):
-            return (a * np.exp(b * t) + offset)
         
+        # exponential fit of the ipt histogram
+        def single_exp(t, a, b, offset, t0):
+            return (a * np.exp(b * (t-t0)) + offset)
+        
+        x = x[np.argmax(counts):]
+        counts = counts[np.argmax(counts):]
+        
+        xx = np.linspace(x.min(), x.max(), nbins)
+        
+        # interpolate + smooth
+        itp = interp1d(x,counts, kind='linear')
+        window_size, poly_order = 101, 3
+        yy_sg = savgol_filter(itp(xx), window_size, poly_order)
+        
+        #plot histogram
+        fig, ax = plt.subplots()
+        ax.plot(x, counts, label='Raw data')
+        ax.plot(xx, yy_sg, label='Filtered')
+        ax.set_title('Rel-time histogram of ON-interval')
+        ax.set_xlabel('Time in ns')
+        ax.set_ylabel('counts')
+        
+        #fit
         lifetguess = -1.0
-        offsetguess = 25
-        aguess = 500
+        offsetguess = np.median(yy_sg)
+        aguess = np.max(yy_sg) - offsetguess
+        t0 = x[np.argmax(yy_sg)]
         
-        p0 = [aguess, lifetguess, offsetguess]
+        p0 = [aguess, lifetguess, offsetguess, t0]
         
-        p, cov = opt.curve_fit(single_exp, x, y, p0)
+        start = np.argmax(yy_sg) + 10
+        end = start + 100
         
-        print(p, cov)
+        xnew = xx[start:end]
+        ynew = yy_sg[start:end]
+        
+        p, cov = opt.curve_fit(single_exp, xnew, ynew, p0)
+        
+        print(datetime.now(), '[analysis] Optimization parameter:', p, cov)
+        print(datetime.now(), '[analysis] Lifetime guess:', -1/p[1], '+-', 1/cov[1,1])
+
         
         fig, ax = plt.subplots()
-        ax.plot(x, y)
-        ax.plot(x, single_exp(x, *p))
+        ax.plot(xnew, ynew)
+        ax.plot(xnew, single_exp(xnew, *p))
    
             
     def trace_seg(self, absTime):
@@ -1012,6 +1015,7 @@ class Backend(QtCore.QObject):
         def double_exp(t, a1, a2, b1, b2, offset):
             return a1 * np.exp(b1 * t) + a2 * np.exp(b2 * t) + offset
         
+        #TODO: write add initial guess for optimization
         p,cov = opt.curve_fit(double_exp, x, y)
         
         # ON and OFF parameters from fit
@@ -1136,7 +1140,7 @@ class Backend(QtCore.QObject):
 
         frontend.ui.pushButton_saveFit.clicked.connect(self.save_psffit)
         frontend.ui.SaveResultsButton.clicked.connect(lambda: self.save_results(frontend.ui.CreatepdfcheckBox.isChecked()))
-        frontend.ui.TestpushButton.clicked.connect(self.find_lifetime)
+        frontend.ui.lifetimeButton.clicked.connect(self.find_lifetime)
 
 if __name__ == '__main__':
     
@@ -1145,7 +1149,6 @@ if __name__ == '__main__':
     else:
         app = QtGui.QApplication.instance()
 
-    #app.setStyle(QtGui.QStyleFactory.create('fusion'))
     app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     
     icon_path = r'pics/icon.jpg'

@@ -312,3 +312,15 @@ class cropROI(pg.ROI):
                         scaleSnap=True, translateSnap=True, movable=False,
                         pen='y', *args, **kwargs)
         self.addScaleHandle((0, 1), (1, 0))
+        
+class popupWindow():
+    
+    def __init__(self, gui, text):
+        self.msgBox = QtGui.QMessageBox
+        
+#        self.reply = self.msgBox.warning(gui, 'Quit', text,
+#                                           self.msgBox.Ok)
+        
+        self.reply = self.msgBox.question(gui, 'Quit', text,
+                                           self.msgBox.No |
+                                           self.msgBox.Yes)
