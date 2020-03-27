@@ -256,7 +256,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>Binning [ms]</string>
+        <string>Binning [s]</string>
        </property>
        <property name="scaledContents">
         <bool>false</bool>
@@ -571,7 +571,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="label_SBR">
           <property name="text">
-           <string>SBR</string>
+           <string>Background [kHz]</string>
           </property>
          </widget>
         </item>
@@ -581,7 +581,7 @@
            <bool>true</bool>
           </property>
           <property name="text">
-           <string>30</string>
+           <string>16.98</string>
           </property>
          </widget>
         </item>
@@ -591,7 +591,7 @@
            <string>Only matters if 'Nanoparticle' mode is used</string>
           </property>
           <property name="text">
-           <string>Artifical binning [ms]</string>
+           <string>Artifical binning [s]</string>
           </property>
          </widget>
         </item>
@@ -633,7 +633,7 @@
         <item row="5" column="0">
          <widget class="QLabel" name="minONlimit_label">
           <property name="text">
-           <string>Min. ON-time [ms]</string>
+           <string>Min. ON-time [s]</string>
           </property>
          </widget>
         </item>
@@ -816,8 +816,8 @@
    <slot>fit_exppsf()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>532</x>
-     <y>239</y>
+     <x>521</x>
+     <y>209</y>
     </hint>
     <hint type="destinationlabel">
      <x>427</x>
@@ -832,8 +832,8 @@
    <slot>load_tcspc()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>533</x>
-     <y>429</y>
+     <x>540</x>
+     <y>379</y>
     </hint>
     <hint type="destinationlabel">
      <x>853</x>
@@ -848,8 +848,8 @@
    <slot>select_tcspc()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>191</x>
-     <y>429</y>
+     <x>205</x>
+     <y>379</y>
     </hint>
     <hint type="destinationlabel">
      <x>585</x>
@@ -864,8 +864,8 @@
    <slot>select_exppsf()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>199</x>
-     <y>215</y>
+     <x>203</x>
+     <y>143</y>
     </hint>
     <hint type="destinationlabel">
      <x>274</x>
@@ -877,11 +877,11 @@
    <sender>psfScrollbar</sender>
    <signal>valueChanged(int)</signal>
    <receiver>MainWindow</receiver>
-   <slot>update_image(int)</slot>
+   <slot>show_psf(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>673</x>
-     <y>487</y>
+     <x>686</x>
+     <y>428</y>
     </hint>
     <hint type="destinationlabel">
      <x>940</x>
@@ -896,8 +896,8 @@
    <slot>region_selection()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>177</x>
-     <y>838</y>
+     <x>173</x>
+     <y>772</y>
     </hint>
     <hint type="destinationlabel">
      <x>913</x>
@@ -912,8 +912,8 @@
    <slot>check_tcspcmode(bool)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>61</x>
-     <y>785</y>
+     <x>74</x>
+     <y>731</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -928,8 +928,8 @@
    <slot>position_estimation()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>1242</x>
-     <y>405</y>
+     <x>1222</x>
+     <y>386</y>
     </hint>
     <hint type="destinationlabel">
      <x>1168</x>
@@ -953,6 +953,7 @@
   <slot>save_psffit()</slot>
   <slot>save_results()</slot>
   <slot>find_lifetime()</slot>
+  <slot>show_psf(int)</slot>
  </slots>
  <buttongroups>
   <buttongroup name="buttonGroup_tcspcmode"/>
