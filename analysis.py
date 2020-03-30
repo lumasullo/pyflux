@@ -12,6 +12,11 @@ pyuic5 -x AnalysisDesign.ui -o AnalysisDesign.py
 Next steps:
     
     Delete update image method and change signalling in designer 
+    Write init_psfplot method which builds the whole psf image, this method is only called when starting the program, when a new file is selected 
+    or a (PSF fit is sent from the backend) <-- check whether you can just change the image and deactivate the roi
+    At the same time write a update method which only updates the image wrt the image number
+    the scrollbar then only calls the update method
+    
 
     Make update image processes such that axis and everything is initialized at beginning and then only updated
     Make axis showing nm instead of px and also [px] wo ()
@@ -152,7 +157,7 @@ class Frontend(QtGui.QMainWindow):
         #transpose image and reverse data in y to display as in scan.py
         for i in range(im.shape[0]):
             im[i] = im[i].T[:,::-1] 
-            
+        
         self.img_array = im
        
         self.emit_param()
@@ -630,14 +635,14 @@ class Backend(QtCore.QObject):
         self.aopt = np.zeros((self.k,27))
             
         print('[analysis] Fitting loop started')
-        for i in range(2): #np.arange(self.k): 
+        for i in np.arange(self.k): 
             # initial values for fit parameters x0,y0 and c00
             ind1 = np.unravel_index(np.argmin(psfTc[i, :, :], 
                 axis=None), psfTc[i, :, :].shape)
             x0i = x[ind1]
             y0i = y[ind1]
             c00i = np.min(psfTc[i, :, :])     
-            p0 = [x0i, y0i, c00i, 1 ,1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+            p0 = [x0i, y0i, c00i, 0 ,1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
                   0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             print('fit started')
             self.aopt[i,:], cov = opt.curve_fit(self.poly_func, (x,y), psfTc[i, :, :].ravel(), p0)   
