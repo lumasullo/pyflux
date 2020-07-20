@@ -1,0 +1,961 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1500</width>
+    <height>1002</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="windowTitle">
+   <string>Analysis</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QGridLayout" name="Layout">
+    <item row="1" column="0">
+     <widget class="QGroupBox" name="TCSPCgroupBox">
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>540</height>
+       </size>
+      </property>
+      <property name="sizeIncrement">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="title">
+       <string>TCSPC</string>
+      </property>
+      <widget class="QWidget" name="verticalLayoutWidget_2">
+       <property name="geometry">
+        <rect>
+         <x>190</x>
+         <y>50</y>
+         <width>791</width>
+         <height>431</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="tcspcLayout">
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="verticalLayoutWidget_4">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>140</y>
+         <width>161</width>
+         <height>99</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QRadioButton" name="radioButton_NP">
+          <property name="text">
+           <string>Nanoparticle</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+          <attribute name="buttonGroup">
+           <string notr="true">buttonGroup_tcspcmode</string>
+          </attribute>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="radioButton_origami_manual">
+          <property name="text">
+           <string>Origami (manual)</string>
+          </property>
+          <attribute name="buttonGroup">
+           <string notr="true">buttonGroup_tcspcmode</string>
+          </attribute>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="radioButton_origami_auto">
+          <property name="text">
+           <string>Origami (auto)</string>
+          </property>
+          <attribute name="buttonGroup">
+           <string notr="true">buttonGroup_tcspcmode</string>
+          </attribute>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QCheckBox" name="checkBox_TraceSelection">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>260</y>
+         <width>149</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Select window(s)</string>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="pushButton_addWindow">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>290</y>
+         <width>141</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Add window</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="pushButton_saveOntimes">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>370</y>
+         <width>141</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Save On-times</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="PushButton_LoadOntimes">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>410</y>
+         <width>141</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Load On-times</string>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="threshold_lineEdit">
+       <property name="geometry">
+        <rect>
+         <x>125</x>
+         <y>85</y>
+         <width>56</width>
+         <height>25</height>
+        </rect>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text">
+        <string>100</string>
+       </property>
+       <property name="frame">
+        <bool>true</bool>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+      <widget class="QLabel" name="threshold_label">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>80</y>
+         <width>101</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Threshold</string>
+       </property>
+      </widget>
+      <widget class="QLineEdit" name="binWidthlineEdit">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>125</x>
+         <y>55</y>
+         <width>56</width>
+         <height>25</height>
+        </rect>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Fixed" vsizetype="Ignored">
+         <horstretch>100</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>1000</width>
+         <height>1000</height>
+        </size>
+       </property>
+       <property name="sizeIncrement">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="baseSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>0.1</string>
+       </property>
+       <property name="maxLength">
+        <number>1000</number>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+      <widget class="QLabel" name="binWidthlabel">
+       <property name="geometry">
+        <rect>
+         <x>20</x>
+         <y>50</y>
+         <width>101</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Binning [s]</string>
+       </property>
+       <property name="scaledContents">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </widget>
+    </item>
+    <item row="0" column="0">
+     <widget class="QGroupBox" name="PSFgroupBox">
+      <property name="minimumSize">
+       <size>
+        <width>1000</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="title">
+       <string>Data</string>
+      </property>
+      <widget class="QWidget" name="verticalLayoutWidget">
+       <property name="geometry">
+        <rect>
+         <x>570</x>
+         <y>20</y>
+         <width>401</width>
+         <height>371</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="psfLayout"/>
+      </widget>
+      <widget class="QScrollBar" name="psfScrollbar">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>570</x>
+         <y>400</y>
+         <width>401</width>
+         <height>16</height>
+        </rect>
+       </property>
+       <property name="maximum">
+        <number>19</number>
+       </property>
+       <property name="pageStep">
+        <number>1</number>
+       </property>
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+      </widget>
+      <widget class="QGroupBox" name="PSFfile_groupBox">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>30</y>
+         <width>541</width>
+         <height>221</height>
+        </rect>
+       </property>
+       <property name="title">
+        <string>PSF file selection</string>
+       </property>
+       <widget class="QLineEdit" name="psfFileEditBox">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>40</y>
+          <width>489</width>
+          <height>25</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="browseFilePSF">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>70</y>
+          <width>161</width>
+          <height>31</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Browse File</string>
+        </property>
+       </widget>
+       <widget class="QGroupBox" name="PSFmode_groupBox">
+        <property name="geometry">
+         <rect>
+          <x>60</x>
+          <y>120</y>
+          <width>201</width>
+          <height>91</height>
+         </rect>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="title">
+         <string>PSF type</string>
+        </property>
+        <widget class="QRadioButton" name="radioButton_exppsf">
+         <property name="geometry">
+          <rect>
+           <x>20</x>
+           <y>60</y>
+           <width>161</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Experimental PSF</string>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="radioButton_psffit">
+         <property name="geometry">
+          <rect>
+           <x>20</x>
+           <y>30</y>
+           <width>101</width>
+           <height>23</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>PSF fit</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QWidget" name="layoutWidget">
+        <property name="geometry">
+         <rect>
+          <x>320</x>
+          <y>131</y>
+          <width>181</width>
+          <height>81</height>
+         </rect>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_3">
+         <item>
+          <layout class="QVBoxLayout" name="verticalLayout_5">
+           <item>
+            <widget class="QPushButton" name="LoadPSFButton">
+             <property name="text">
+              <string>Fit PSF</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButton_saveFit">
+             <property name="text">
+              <string>Save Fit</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+      <widget class="QGroupBox" name="TCSPCfile_groupBox">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>260</y>
+         <width>541</width>
+         <height>131</height>
+        </rect>
+       </property>
+       <property name="title">
+        <string>TCSPC file selection</string>
+       </property>
+       <widget class="QLineEdit" name="tcspcEditBox">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>30</x>
+          <y>40</y>
+          <width>489</width>
+          <height>25</height>
+         </rect>
+        </property>
+        <property name="mouseTracking">
+         <bool>false</bool>
+        </property>
+        <property name="focusPolicy">
+         <enum>Qt::StrongFocus</enum>
+        </property>
+       </widget>
+       <widget class="QWidget" name="layoutWidget">
+        <property name="geometry">
+         <rect>
+          <x>30</x>
+          <y>70</y>
+          <width>489</width>
+          <height>41</height>
+         </rect>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_2">
+         <item>
+          <widget class="QPushButton" name="browseFileTCSPC">
+           <property name="toolTip">
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select the tcspc file you want to load.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           </property>
+           <property name="toolTipDuration">
+            <number>-1</number>
+           </property>
+           <property name="text">
+            <string>Browse File</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="LoadTCSPCButton">
+           <property name="text">
+            <string>Load TCSPC</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+    <item row="0" column="1">
+     <widget class="QGroupBox" name="ParametergroupBox">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="title">
+       <string>Parameter</string>
+      </property>
+      <widget class="QWidget" name="formLayoutWidget">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>40</y>
+         <width>342</width>
+         <height>211</height>
+        </rect>
+       </property>
+       <layout class="QFormLayout" name="formLayout">
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
+        <property name="fieldGrowthPolicy">
+         <enum>QFormLayout::ExpandingFieldsGrow</enum>
+        </property>
+        <property name="rowWrapPolicy">
+         <enum>QFormLayout::WrapLongRows</enum>
+        </property>
+        <property name="labelAlignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="formAlignment">
+         <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+        </property>
+        <property name="horizontalSpacing">
+         <number>30</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>5</number>
+        </property>
+        <property name="leftMargin">
+         <number>10</number>
+        </property>
+        <property name="rightMargin">
+         <number>20</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label_numPSF">
+          <property name="text">
+           <string># of donut positions</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="spinBox_donuts">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="value">
+           <number>4</number>
+          </property>
+          <property name="displayIntegerBase">
+           <number>10</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="label_SBR">
+          <property name="text">
+           <string>Background [kHz]</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="lineEdit_sbr">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="text">
+           <string>16.98</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_winlen">
+          <property name="toolTip">
+           <string>Only matters if 'Nanoparticle' mode is used</string>
+          </property>
+          <property name="text">
+           <string>Artifical binning [s]</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QLineEdit" name="lineEdit_winlen">
+          <property name="text">
+           <string>0.1</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="label_lifetime_window_i">
+          <property name="text">
+           <string>Lifetime init [ns]</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QLineEdit" name="lineEdit_lifetimewin_i">
+          <property name="text">
+           <string>0</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="label_lifetime_window_f">
+          <property name="text">
+           <string>Lifetime crop [ns]</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QLineEdit" name="lineEdit_lifetimewin_f">
+          <property name="text">
+           <string>2</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="minONlimit_label">
+          <property name="text">
+           <string>Min. ON-time [s]</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QLineEdit" name="minONlimit_lineEdit">
+          <property name="text">
+           <string>0.05</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="minNperON_label">
+          <property name="text">
+           <string>Min. Photons per ON</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="1">
+         <widget class="QLineEdit" name="minNperON_lineEdit">
+          <property name="text">
+           <string>10</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QPushButton" name="EstimatorButton">
+       <property name="geometry">
+        <rect>
+         <x>60</x>
+         <y>340</y>
+         <width>141</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Estimate Position</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="lifetimeButton">
+       <property name="geometry">
+        <rect>
+         <x>240</x>
+         <y>340</y>
+         <width>141</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Fit Lifetime</string>
+       </property>
+      </widget>
+     </widget>
+    </item>
+    <item row="1" column="1">
+     <widget class="QGroupBox" name="Results_groupBox">
+      <property name="title">
+       <string>Results</string>
+      </property>
+      <widget class="QWidget" name="verticalLayoutWidget_3">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>30</y>
+         <width>441</width>
+         <height>411</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="estimateLayout">
+        <property name="sizeConstraint">
+         <enum>QLayout::SetDefaultConstraint</enum>
+        </property>
+       </layout>
+      </widget>
+      <widget class="QLabel" name="comLabel">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>450</y>
+         <width>281</width>
+         <height>81</height>
+        </rect>
+       </property>
+       <property name="frameShape">
+        <enum>QFrame::Box</enum>
+       </property>
+       <property name="text">
+        <string/>
+       </property>
+       <property name="textFormat">
+        <enum>Qt::AutoText</enum>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="SaveResultsButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>320</x>
+         <y>490</y>
+         <width>121</width>
+         <height>34</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Save Results</string>
+       </property>
+      </widget>
+      <widget class="QCheckBox" name="CreatepdfcheckBox">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>320</x>
+         <y>460</y>
+         <width>121</width>
+         <height>23</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Create .pdf</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <action name="actionOne">
+   <property name="text">
+    <string>One</string>
+   </property>
+  </action>
+  <action name="actionTwo">
+   <property name="text">
+    <string>Two</string>
+   </property>
+  </action>
+  <action name="actionThree">
+   <property name="text">
+    <string>Three</string>
+   </property>
+  </action>
+  <action name="actionFour">
+   <property name="text">
+    <string>Four</string>
+   </property>
+  </action>
+  <action name="actionFive">
+   <property name="text">
+    <string>Five</string>
+   </property>
+  </action>
+  <action name="action1">
+   <property name="text">
+    <string>1</string>
+   </property>
+  </action>
+  <action name="action2">
+   <property name="text">
+    <string>2</string>
+   </property>
+  </action>
+  <action name="action3">
+   <property name="text">
+    <string>3</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>LoadPSFButton</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>fit_exppsf()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>521</x>
+     <y>209</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>427</x>
+     <y>38</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>LoadTCSPCButton</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>load_tcspc()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>540</x>
+     <y>379</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>853</x>
+     <y>0</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>browseFileTCSPC</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>select_tcspc()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>205</x>
+     <y>379</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>585</x>
+     <y>37</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>browseFilePSF</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>select_exppsf()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>203</x>
+     <y>143</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>274</x>
+     <y>31</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>psfScrollbar</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>show_psf(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>686</x>
+     <y>428</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>940</x>
+     <y>42</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_addWindow</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>region_selection()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>173</x>
+     <y>772</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>913</x>
+     <y>32</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>checkBox_TraceSelection</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>check_tcspcmode(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>74</x>
+     <y>731</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>727</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>EstimatorButton</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>position_estimation()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>1222</x>
+     <y>386</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>1168</x>
+     <y>36</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <slots>
+  <slot>closeEvent()</slot>
+  <slot>closeAllWindows()</slot>
+  <slot>select_exppsf()</slot>
+  <slot>fit_exppsf()</slot>
+  <slot>load_tcspc()</slot>
+  <slot>position_estimation()</slot>
+  <slot>select_tcspc()</slot>
+  <slot>update_image(int)</slot>
+  <slot>region_selection()</slot>
+  <slot>read_ontimes()</slot>
+  <slot>check_tcspcmode(bool)</slot>
+  <slot>save_psffit()</slot>
+  <slot>save_results()</slot>
+  <slot>find_lifetime()</slot>
+  <slot>show_psf(int)</slot>
+ </slots>
+ <buttongroups>
+  <buttongroup name="buttonGroup_tcspcmode"/>
+ </buttongroups>
+</ui>
