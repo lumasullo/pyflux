@@ -71,7 +71,7 @@ import qdarkstyle
 from tools.lineprofile import linePlotWidget
 
 π = np.pi
-donutmarker = [[0, 0, 255], [128,128,128], [204,255,0], [255,165,0]]
+donutmarker = [[29, 112, 183], [128, 128, 128], [255, 237, 0], [243, 170, 80]]
 
 # see https://stackoverflow.com/questions/1551605
 # /how-to-set-applications-taskbar-icon-in-windows-7/1552105#1552105
@@ -655,7 +655,7 @@ class Backend(QtCore.QObject):
             self.y0[i] = ind[1]
             print(datetime.now(), '[analysis]', str(i+1), '/', str(self.k), ' donuts fitted')
        
-        #use code for swapping PSF order
+#        #use code for swapping PSF order
 #        psfTc[0,:,:] = self.PSF[0, :, :]
 #        self.PSF[0, :, :] = self.PSF[1, :, :]
 #        self.PSF[1, :, :] = psfTc[0,:,:]
@@ -785,7 +785,8 @@ class Backend(QtCore.QObject):
             timeON = ontimes
         
         elif mode == 'Origami (auto)':
-            [T, bwt] = self.trace_seg(self.abs_time)
+#            [T, bwt] = self.trace_seg(self.abs_time)
+            [T, bwt] = [10, 0.005] #self.trace_seg(self.abs_time)
             #TODO: soft-code scaling factors
             bwt = 10*bwt
             T = 5*T
@@ -799,7 +800,8 @@ class Backend(QtCore.QObject):
             
             mask = seqbin>T
             indexes = np.argwhere(np.diff(mask)).squeeze()
-            timeON = times[indexes]            
+            timeON = times[indexes[1:]]           
+            print(timeON)
             print('Threshold:', T, 'Binwidth:', bwt)
         
         self.timeON = timeON
@@ -823,7 +825,8 @@ class Backend(QtCore.QObject):
         indrec = np.zeros((Tot, 2))    
         self.N = np.zeros(Tot)
         deltaT = np.zeros(Tot)
-                
+        
+        
         for i in np.arange(Tot):
             n[i, :] = self.n_minflux(self.relTimeON[i])
             self.N[i] = np.sum(n[i, :])
