@@ -45,9 +45,9 @@ INIT:
 EVENT:
   
   'This loop holds the actuator until the flag is passed to start the actual function
-  'DO
-  '  flag = par_30
-  'UNTIL (flag = 1)
+  DO
+    flag = par_30
+  UNTIL (flag = 1)
  
   setpointz = fpar_32
   

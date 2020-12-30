@@ -191,6 +191,7 @@ class Backend(QtCore.QObject):
         self.scanWorker.ROIcenterSignal.connect(self.minfluxWorker.get_ROI_center)
         
         self.minfluxWorker.tcspcPrepareSignal.connect(self.tcspcWorker.prepare_minflux)
+        self.minfluxWorker.tcspcStartSignal.connect(self.xyWorker.start_tracking_pattern)
         self.minfluxWorker.tcspcStartSignal.connect(self.tcspcWorker.measure_minflux)
         
         self.minfluxWorker.xyzStartSignal.connect(self.xyWorker.get_lock_signal)
@@ -205,10 +206,12 @@ class Backend(QtCore.QObject):
         self.minfluxWorker.shutterSignal.connect(self.zWorker.shutter_handler)
         
         self.tcspcWorker.tcspcDoneSignal.connect(self.minfluxWorker.get_tcspc_done_signal)
-        
+       
+        self.minfluxWorker.saveConfigSignal.connect(self.scanWorker.saveConfigfile)
         self.minfluxWorker.xyzEndSignal.connect(self.xyWorker.get_end_measurement_signal)
         self.minfluxWorker.xyzEndSignal.connect(self.zWorker.get_end_measurement_signal)
-        
+        self.minfluxWorker.xyStopSignal.connect(self.xyWorker.get_stop_signal)
+
     def setup_psf_connections(self):
         
         self.psfWorker.scanSignal.connect(self.scanWorker.get_scan_signal)
@@ -224,6 +227,7 @@ class Backend(QtCore.QObject):
                 
         self.psfWorker.endSignal.connect(self.xyWorker.get_end_measurement_signal)
         self.psfWorker.endSignal.connect(self.zWorker.get_end_measurement_signal)
+        self.psfWorker.saveConfigSignal.connect(self.scanWorker.saveConfigfile)
         
         self.scanWorker.frameIsDone.connect(self.psfWorker.get_scan_is_done)
         self.xyWorker.xyIsDone.connect(self.psfWorker.get_xy_is_done)
@@ -270,7 +274,9 @@ if __name__ == '__main__':
     gui = Frontend()
     
     #initialize devices
-    port = 'COM7' #watch out so that port does not change
+    
+    port = tools.get_MiniLasEvoPort()
+    print('MiniLasEvo diode laser port:', port)
     diodelaser = MiniLasEvo(port)
     
     #if camera wasnt closed properly just keep using it without opening new one
@@ -383,7 +389,5 @@ if __name__ == '__main__':
 #
 #    psfThread.start()
     
-    # minflux measurement connections
-    
-    gui.show()
+    gui.showMaximized()
     #app.exec_()

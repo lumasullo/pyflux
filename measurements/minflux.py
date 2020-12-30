@@ -198,11 +198,16 @@ class Backend(QtCore.QObject):
     
     xyzStartSignal = pyqtSignal()
     xyzEndSignal = pyqtSignal(str)
+    xyStopSignal = pyqtSignal(bool)
+
     
     moveToSignal = pyqtSignal(np.ndarray, np.ndarray)
     
     paramSignal = pyqtSignal(np.ndarray, np.ndarray, int)
     shutterSignal = pyqtSignal(int, bool)
+    
+    saveConfigSignal = pyqtSignal(str)
+
     
     def __init__(self, adwin, *args, **kwargs):
         
@@ -350,10 +355,13 @@ class Backend(QtCore.QObject):
         """
         Connection: [tcspc] tcspcDoneSignal
         """
+        #make scan saving config file
+        self.saveConfigSignal.emit(self.filename)
+
         self.xyzEndSignal.emit(self.filename)
         
-        #check whether this actually makes sense
         self.stop()
+        
         print(datetime.now(), '[minflux] measurement ended')
         
     def make_connection(self, frontend):

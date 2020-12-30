@@ -220,32 +220,10 @@ class Frontend(QtGui.QFrame):
                     
     @pyqtSlot(bool, bool, bool)
     def get_backend_states(self, tracking, feedback, savedata):
-        
-#        print(datetime.now(), '[xy_tracking] Got backend states')
-        
-        if tracking is True:
-            
-            self.trackingBeadsBox.setChecked(True)
-        
-        if tracking is False:
-            
-            self.trackingBeadsBox.setChecked(False)
-            
-        if feedback is True:
-            
-            self.feedbackLoopBox.setChecked(True)
-            
-        if feedback is False:
-            
-            self.feedbackLoopBox.setChecked(False)
-            
-        if savedata is True:
-            
-            self.saveDataBox.setChecked(True)
-            
-        if savedata is False:
-            
-            self.saveDataBox.setChecked(False)
+
+        self.trackingBeadsBox.setChecked(tracking)
+        self.feedbackLoopBox.setChecked(feedback)
+        self.saveDataBox.setChecked(savedata)            
 
     def emit_save_data_state(self):
         
@@ -276,7 +254,7 @@ class Frontend(QtGui.QFrame):
         # parameters widget
         
         self.paramWidget = QGroupBox('XY-Tracking parameter')   
-        self.paramWidget.setFixedHeight(200)
+        self.paramWidget.setFixedHeight(260)
         self.paramWidget.setFixedWidth(250)
         
         grid.addWidget(self.paramWidget, 0, 1)
@@ -416,6 +394,10 @@ class Frontend(QtGui.QFrame):
         #shutter button and label
         self.shutterLabel = QtGui.QLabel('Shutter open?')
         self.shutterCheckbox = QtGui.QCheckBox('473 nm laser')
+
+        # LiveView Button
+
+        self.xyPatternButton = QtGui.QPushButton('Move')
         
         # buttons and param layout
         
@@ -433,6 +415,7 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.saveDataBox, 3, 1)
         subgrid.addWidget(self.shutterLabel, 7, 0)
         subgrid.addWidget(self.shutterCheckbox, 7, 1)
+        subgrid.addWidget(self.xyPatternButton, 9, 0)
         
         grid.addWidget(self.xyGraph, 1, 0)
         grid.addWidget(self.xyPoint, 1, 1)
@@ -509,6 +492,9 @@ class Backend(QtCore.QObject):
         self.reset_data_arrays()
         
         self.counter = 0
+        # saves displacement when offsetting setpoint for feedbackloop
+        self.displacement = np.array([0.0, 0.0])
+        self.pattern = False
         
     def setup_camera(self):
         
@@ -648,10 +634,16 @@ class Backend(QtCore.QObject):
             if self.feedback_active:
                     
                 self.correct()
-                         
+        
+        if self.pattern:
+            val = (self.counter - self.initcounter)
+            reprate = 10
+            if (val % reprate == 0):
+                self.make_tracking_pattern(val//reprate)
+            
         self.counter += 1  # counter to check how many times this function is executed
 
-            
+
     def update_view(self):
         """ Image update while in Liveview mode """
 
@@ -662,8 +654,8 @@ class Backend(QtCore.QObject):
         """ Update the data displayed in the graphs """
         
         if self.ptr < self.npoints:
-            self.xData[self.ptr] = self.x
-            self.yData[self.ptr] = self.y
+            self.xData[self.ptr] = self.x + self.displacement[0]
+            self.yData[self.ptr] = self.y + self.displacement[1]
             self.time[self.ptr] = self.currentTime
             
             self.changedData.emit(self.time[0:self.ptr + 1],
@@ -672,9 +664,9 @@ class Backend(QtCore.QObject):
 
         else:
             self.xData[:-1] = self.xData[1:]
-            self.xData[-1] = self.x
+            self.xData[-1] = self.x + self.displacement[0]
             self.yData[:-1] = self.yData[1:]
-            self.yData[-1] = self.y
+            self.yData[-1] = self.y + self.displacement[1]
             self.time[:-1] = self.time[1:]
             self.time[-1] = self.currentTime
             
@@ -725,6 +717,7 @@ class Backend(QtCore.QObject):
             
                 self.set_actuator_param()
                 self.adw.Start_Process(4)
+                print('process 4 status', self.adw.Process_Status(4))
             
             if DEBUG:
                 print(datetime.now(), '[xy_tracking] Feedback loop ON')
@@ -735,15 +728,17 @@ class Backend(QtCore.QObject):
             
             if mode == 'continous':
 
-#                self.adw.Stop_Process(4)
+                self.adw.Stop_Process(4)
                 print(datetime.now(), '[xy_tracking] Process 4 stopped')
+                self.displacement = np.array([0.0, 0.0])
+
             
             if DEBUG:
                 print(datetime.now(), '[xy_tracking] Feedback loop OFF')
-            
-        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
-                                          self.feedback_active, 
-                                          self.save_data_state)
+#            
+#        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
+#                                          self.feedback_active, 
+#                                          self.save_data_state)
             
     def gaussian_fit(self):
         
@@ -881,8 +876,8 @@ class Backend(QtCore.QObject):
         if self.save_data_state:
             
             self.time_array[self.j] = self.currentTime
-            self.x_array[self.j] = self.x
-            self.y_array[self.j] = self.y
+            self.x_array[self.j] = self.x + self.displacement[0]
+            self.y_array[self.j] = self.y + self.displacement[1]
             
             self.j += 1
                         
@@ -897,10 +892,10 @@ class Backend(QtCore.QObject):
 
         dx = 0
         dy = 0
-        threshold = 7
-        far_threshold = 15
+        threshold = 5
+        far_threshold = 12
         correct_factor = 0.6
-        security_thr = 0.15 # in µm
+        security_thr = 0.35 # in µm
         
         if np.abs(self.x) > threshold:
             
@@ -965,8 +960,8 @@ class Backend(QtCore.QObject):
         Description: Starts acquisition of the camera and makes one single xy
         track and, if feedback_val is True, corrects for the drift
         """
-#        if DEBUG:
-#            print(datetime.now(), '[xy_tracking] Feedback {}'.format(feedback_val))
+        if DEBUG:
+            print(datetime.now(), '[xy_tracking] Feedback {}'.format(feedback_val))
         
         if initial:
             self.toggle_feedback(True, mode='discrete')
@@ -1047,9 +1042,9 @@ class Backend(QtCore.QObject):
 
         self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
 
-    def moveTo(self, x_f, y_f, z_f, pixeltime=2000): 
+    def moveTo(self, x_f, y_f, z_f): 
 
-        self.set_moveTo_param(x_f, y_f, z_f, pixeltime=2000)
+        self.set_moveTo_param(x_f, y_f, z_f)
         self.adw.Start_Process(2)
             
     def reset(self):
@@ -1108,7 +1103,7 @@ class Backend(QtCore.QObject):
         Description: stops liveview, tracking, feedback if they where running to
         start the psf measurement with discrete xy - z corrections
         """
-        
+                
         self.toggle_feedback(False)
         self.toggle_tracking(False)
         
@@ -1203,7 +1198,31 @@ class Backend(QtCore.QObject):
 #        self.toggle_feedback(True) # TO DO: fix each position lock
         
 
+    def start_tracking_pattern(self):
         
+        self.pattern = True
+        self.initcounter = self.counter
+
+    def make_tracking_pattern(self, step):
+                
+        if (step < 2) or (step > 5):
+            return
+        elif step == 2:
+            dist = np.array([0.0, 20.0])
+        elif step == 3:
+            dist = np.array([20.0, 0.0])
+        elif step == 4:
+            dist = np.array([0.0, -20.0])
+        elif step == 5:
+            dist = np.array([-20.0, 0.0])
+        
+        
+        self.initialx = self.initialx + dist[0]
+        self.initialy = self.initialy + dist[1]
+        self.displacement = self.displacement + dist
+        
+        print(datetime.now(), '[xy_tracking] Moved setpoint by', dist)
+      
     @pyqtSlot(str)    
     def get_end_measurement_signal(self, fname):
         
@@ -1216,9 +1235,11 @@ class Backend(QtCore.QObject):
         self.filename = fname
         self.export_data()
         
-        self.toggle_feedback(False) # TO DO: decide wether I want feedback ON/OFF at the end of measurement
+        
+        self.toggle_feedback(False) # TO DO: decide whether I want feedback ON/OFF at the end of measurement
         #check
         self.toggle_tracking(False)
+        self.pattern = False
         
         self.reset()
         self.reset_data_arrays()
@@ -1234,8 +1255,8 @@ class Backend(QtCore.QObject):
         frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
         frontend.shutterCheckbox.stateChanged.connect(lambda: self.toggle_tracking_shutter(8, frontend.shutterCheckbox.isChecked()))
         frontend.liveviewButton.clicked.connect(self.liveview)
-
-#        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+        frontend.xyPatternButton.clicked.connect(lambda: self.make_tracking_pattern(1))
+        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         
         # TO DO: clean-up checkbox create continous and discrete feedback loop
         
@@ -1301,10 +1322,6 @@ if __name__ == '__main__':
     
     time.sleep(0.200)
         
-    worker.piezoXposition = 10.0 # in µm
-    worker.piezoYposition = 10.0 # in µm
-    worker.piezoZposition = 10.0 # in µm
-
     gui.setWindowTitle('xy drift correction')
     gui.show()
     app.exec_()

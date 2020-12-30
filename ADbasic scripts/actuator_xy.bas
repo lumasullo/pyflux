@@ -47,9 +47,9 @@ INIT:
 EVENT:
   
   'This loop holds the actuator until the flag is passed to start the actual function
-  DO
-    flag = par_40
-  UNTIL (flag = 1)
+  'DO
+  '  flag = par_40
+  'UNTIL (flag = 1)
  
   setpointx = fpar_40
   setpointy = fpar_41
@@ -76,6 +76,7 @@ EVENT:
     time1 = Read_Timer()
     
   UNTIL (Abs(time1 - time0) > fpar_46)
+  
    
 FINISH:
   

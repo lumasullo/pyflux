@@ -152,8 +152,7 @@ class PicoHarp300(LibraryDriver):
         
     @binning.setter 
     def binning(self, value):
-        
-
+    
         self.lib.PH_SetBinning(ctypes.c_int(DEV_NUM), 
                                ctypes.c_int(value))
         
@@ -167,7 +166,8 @@ class PicoHarp300(LibraryDriver):
     @offset.setter
     def offset(self,value):
         
-        self.lib.PH_SetOffset(ctypes.c_int(DEV_NUM), ctypes.c_int(value))
+        #changed from PH_SetOffset to PH_SetSyncOffset
+        self.lib.PH_SetSyncOffset(ctypes.c_int(DEV_NUM), ctypes.c_int(value))
         self.offsetValue = value
         
     @Feat
@@ -184,8 +184,6 @@ class PicoHarp300(LibraryDriver):
         # calculation: resolution = maxRes * 2**binning
 
         self.binning = int(np.log(value/self.maxRes)/np.log(2))
-        
-        
         
     def countrate(self, channel):
         
@@ -275,7 +273,8 @@ class PicoHarp300(LibraryDriver):
     def stopTTTR(self):
         
         self.lib.PH_StopMeas(ctypes.c_int(DEV_NUM))
-       
+#        self.lib.PH_CloseDevice(ctypes.c_int(DEV_NUM))
+
     def initialize(self):
         
         self.lib.PH_Initialize(ctypes.c_int(DEV_NUM), ctypes.c_int(self.mode))

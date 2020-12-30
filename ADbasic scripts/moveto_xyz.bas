@@ -129,9 +129,10 @@ EVENT:
     fpar_70 = currentx
     fpar_71 = currenty
     fpar_72 = currentz
-    
-    End
    
+    End
+    
+    
   endif  
   
 

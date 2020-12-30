@@ -50,9 +50,9 @@ def setupDevice(adw):
     PROCESS_2 = "moveto_xyz.TB2"
     PROCESS_3 = "actuator_z.TB3"
     PROCESS_4 = "actuator_xy.TB4"
-    PROCESS_5 = "shutter.TB5"
+    PROCESS_5 = "flipper.TB5"
     PROCESS_6 = "trace.TB6"
-    PROCESS_7 = "sixshutters.TB7"
+    PROCESS_7 = "shutters.TB7"
     
     btl = adw.ADwindir + BTL
     adw.Boot(btl)
@@ -194,6 +194,8 @@ class Frontend(QtGui.QFrame):
         # TO DO: move this function to backend and implement "typedfeat" variables
         
         self.scanRangeEdit.setText('8')
+        self.NofPixelsEdit.setText('80')
+        self.pxTimeEdit.setText('500')
         self.initialPosEdit.setText('{} {} {}'.format(*[3, 3, 10]))
     
     def moveto_crosshair(self):
@@ -415,6 +417,7 @@ class Frontend(QtGui.QFrame):
         
     def toggle_ROI(self):
         
+        self.select_ROIButton.setEnabled(True)
         ROIpen = pg.mkPen(color='y')
         npixels = int(self.NofPixelsEdit.text())
 
@@ -452,6 +455,8 @@ class Frontend(QtGui.QFrame):
         self.liveviewButton.setChecked(False)
         self.liveviewSignal.emit(False, 'liveview')
         self.crosshairCheckbox.setChecked(False)
+        self.select_ROIButton.setEnabled(False)
+
         
         ROIsize = np.array(self.roi.size())
         ROIpos = np.array(self.roi.pos())
@@ -484,11 +489,15 @@ class Frontend(QtGui.QFrame):
         
             xmin, ymin = self.roi.pos()
             xmax, ymax = self.roi.pos() + self.roi.size()
-            
+                        
             ymin, ymax = [int(self.NofPixelsEdit.text()) - ymax, 
                           int(self.NofPixelsEdit.text()) - ymin]
             
             coordinates = np.array([xmin, xmax, ymin, ymax])  
+            
+
+            print('FRONTEND roi ', coordinates)
+
           
             if actionType == 'fit':
           
@@ -541,10 +550,10 @@ class Frontend(QtGui.QFrame):
         for i in range(4):
         
             if i == 0:
-                mybrush = pg.mkBrush(255, 255, 0, 255)
+                mybrush = pg.mkBrush(255, 127, 80, 255)
                 
             if i == 1:
-                mybrush = pg.mkBrush(255, 127, 80, 255)
+                mybrush = pg.mkBrush(255, 255, 0, 255)
                 
             if i == 2:
                 mybrush = pg.mkBrush(135, 206, 235, 255)
@@ -639,6 +648,9 @@ class Frontend(QtGui.QFrame):
             self.shutter3Checkbox.setChecked(on)
             self.shutter4Checkbox.setChecked(on)
             
+        if num == 11:
+            self.diodeShutter.setChecked(on)
+            
     @pyqtSlot(bool)    
     def update_led(self, emission):
         if emission:
@@ -702,11 +714,11 @@ class Frontend(QtGui.QFrame):
         imageWidget.addItem(self.hist, row=0, col=1)
         
         # widget with scanning parameters
-        self.paramWidget = QGroupBox('Scan settings')
+        self.paramWidget = QGroupBox('Scan Settings')
     
         # LiveView Button
 
-        self.liveviewButton = QtGui.QPushButton('confocal liveview')
+        self.liveviewButton = QtGui.QPushButton('Confocal Liveview')
         self.liveviewButton.setFont(QtGui.QFont('Helvetica', weight=QtGui.QFont.Bold))
         self.liveviewButton.setCheckable(True)
         self.liveviewButton.setStyleSheet("font-size: 12px; background-color:rgb(180, 180, 180)")
@@ -718,8 +730,10 @@ class Frontend(QtGui.QFrame):
         self.ROIButton.setCheckable(True)
         self.ROIButton.clicked.connect(self.toggle_ROI)
 
-        self.select_ROIButton = QtGui.QPushButton('select ROI')
+        self.select_ROIButton = QtGui.QPushButton('Select ROI')
         self.select_ROIButton.clicked.connect(self.select_ROI)
+        self.select_ROIButton.setEnabled(False)
+
         
         #Shutters
         self.shutterLabel = QtGui.QLabel('Minflux shutter open?')
@@ -880,20 +894,19 @@ class Frontend(QtGui.QFrame):
         self.diodepowerLabel = QtGui.QLabel('Power [mW]')
         self.diodepowerSpinBox = QtGui.QSpinBox()
         self.diodepowerSpinBox.setRange(0, 78) #max value given by manual  
-        #self.diodetempLabel = QtGui.QLabel('Temp. [°C]')
-        #self.diodetempBox = QtGui.QLineEdit('')
-        #self.diodetempBox.setReadOnly(True)
+        
+        self.diodeShutter = QtGui.QCheckBox('Open')
         
         diode_subgrid = QtGui.QGridLayout()
         diodelaserWidget.setLayout(diode_subgrid)
         
-        diode_subgrid.addWidget(self.diodelaserButton, 0, 0, 1, 2)
+        diode_subgrid.addWidget(self.diodelaserButton, 0, 0)
+        diode_subgrid.addWidget(self.diodeShutter, 0, 1)
         diode_subgrid.addWidget(self.diodeemissionLabel, 1, 0)
         diode_subgrid.addWidget(self.diodeemissionStatus, 1, 1)
         diode_subgrid.addWidget(self.diodepowerLabel, 2, 0)
         diode_subgrid.addWidget(self.diodepowerSpinBox, 2, 1)
-        #diode_subgrid.addWidget(self.diodetempLabel, 3, 0)
-        #diode_subgrid.addWidget(self.diodetempBox, 3, 1)        
+      
         
         # widget with EBP parameters and buttons
         self.EBPWidget = QtGui.QFrame()
@@ -997,7 +1010,7 @@ class Frontend(QtGui.QFrame):
         
         subgrid.addWidget(self.ROIButton, 8, 2)
         subgrid.addWidget(self.select_ROIButton, 9, 2)
-        subgrid.addWidget(self.moveToROIcenterButton, 10, 2)
+#        subgrid.addWidget(self.moveToROIcenterButton, 10, 2)
         subgrid.addWidget(self.mainROIButton, 11, 2)
         
         subgrid.addWidget(self.lineProfButton, 8, 3)
@@ -1194,7 +1207,7 @@ class Backend(QtCore.QObject):
 
         self.flag = 0
         
-        # initialize fpar_50, fpar_51, fpar_52 ADwin position parameters
+        # initialize fpar_70, fpar_71, fpar_72 ADwin position parameters
         
         pos_zero = tools.convert(0, 'XtoU')
         
@@ -1477,8 +1490,11 @@ class Backend(QtCore.QObject):
         time.sleep(.2)
         
         self.trace_measurement()
+        self.shuttermodeSignal.emit(11, False)
         
-    def psf_fit(self, image, d, function='doughnut'):
+    def psf_fit(self, image, d, function='gaussian'):
+        
+        self.shift_param = 0
         
         # set main reference frame (relative to the confocal image)
         
@@ -1488,8 +1504,8 @@ class Backend(QtCore.QObject):
         
         if d == 'B':
             
-            xmin = xmin - 8
-            xmax = xmax - 8
+            xmin = xmin - self.shift_param
+            xmax = xmax - self.shift_param
         
         elif d == 'F':
             
@@ -1503,8 +1519,11 @@ class Backend(QtCore.QObject):
 
 #        array = self.image_copy[xmin:xmax, ymin:ymax]
         array = image[ymin:ymax, xmin:xmax]
+        # normalize image to countrate in kHz
+        array = array/self.pxTime * 1000
         
         print('shape of array', array.shape)
+
         
         if array.shape[0] > array.shape[1]:
             
@@ -1523,7 +1542,7 @@ class Backend(QtCore.QObject):
         shape = array.shape
         
         print('[scan] shape of array', array.shape)
-            
+        
         # create x and y arrays and meshgrid
         
         xmin_nm, xmax_nm, ymin_nm, ymax_nm = np.array([xmin, xmax, ymin, ymax]) * px_size_nm
@@ -1533,10 +1552,19 @@ class Backend(QtCore.QObject):
         extent = [xmin_nm + self.initialPos[0] * 1000, self.initialPos[0] * 1000 + xmax_nm,
                   self.initialPos[1] * 1000 + ymax_nm, self.initialPos[1] * 1000 + ymin_nm]
         
-        plt.figure('raw data psf')
-        plt.imshow(array, cmap=cmaps.parula, interpolation='None', extent=extent)
-        plt.xlabel('x (nm)')
-        plt.ylabel('y (nm)')
+        if d == 'F':
+        
+            plt.figure('raw data psf - Forward')
+            plt.imshow(array, cmap=cmaps.parula, interpolation='None', extent=extent)
+            plt.xlabel('x (nm)')
+            plt.ylabel('y (nm)')
+            
+        elif d == 'B':
+            
+            plt.figure('raw data psf - Backwards')
+            plt.imshow(array, cmap=cmaps.parula, interpolation='None', extent=extent)
+            plt.xlabel('x (nm)')
+            plt.ylabel('y (nm)')
              
 #        x_nm = np.arange(xmin_nm + px_size_nm/2, xmax_nm + px_size_nm/2, px_size_nm) # TO DO: check +/- px_size_nm/2
 #        y_nm = np.arange(ymin_nm + px_size_nm/2, ymax_nm + px_size_nm/2, px_size_nm)
@@ -1544,10 +1572,10 @@ class Backend(QtCore.QObject):
         x_nm = np.linspace(xmin_nm + px_size_nm/2, xmax_nm + px_size_nm/2, size)
         y_nm = np.linspace(ymin_nm + px_size_nm/2, ymax_nm + px_size_nm/2, size)
         
-        print('[scan] x_nm', x_nm)
+#        print('[scan] x_nm', x_nm)
         print('[scan] x_nm shape', x_nm.shape)
         
-        print('[scan] y_nm', y_nm)
+#        print('[scan] y_nm', y_nm)
         print('[scan] y_nm shape', y_nm.shape)
         
         (Mx_nm, My_nm) = np.meshgrid(x_nm, y_nm)
@@ -1599,13 +1627,25 @@ class Backend(QtCore.QObject):
           
           gaussianFit = PSF.gaussian2D((Mx_nm, My_nm), *popt).reshape(shape)
           
-          plt.figure('gaussian fit')
-          plt.imshow(gaussianFit, cmap=cmaps.parula, interpolation='None', extent=extent)
-          plt.xlabel('x (nm)')
-          plt.ylabel('y (nm)')
+          if d == 'F':
+          
+              plt.figure('gaussian fit - Forward')
+              plt.imshow(gaussianFit, cmap=cmaps.parula, interpolation='None', extent=extent)
+              plt.xlabel('x (nm)')
+              plt.ylabel('y (nm)')
+              
+          elif d == 'B':
+          
+              plt.figure('gaussian fit - Backwards')
+              plt.imshow(gaussianFit, cmap=cmaps.parula, interpolation='None', extent=extent)
+              plt.xlabel('x (nm)')
+              plt.ylabel('y (nm)')
           
           x0_fit = popt[1]
           y0_fit = popt[2]
+          print('SCAN GAUSSIAN CENTER', x0_fit, y0_fit)
+          print('SCAN INITIAL', self.initialPos)
+
           
           gaussian_center = np.array([x0_fit, y0_fit, 0], dtype=np.float64)/1000 # in µm
           target = self.initialPos + gaussian_center 
@@ -1668,6 +1708,17 @@ class Backend(QtCore.QObject):
     def get_focuslockposition(self, position):
         self.focuslockpos = position
         
+    @pyqtSlot(str)
+    def saveConfigfile(self, fname):
+        
+        self.focuslockpositionSignal.emit(-9999)
+        self.focuslockpos = -0.0
+        time.sleep(0.5)
+        now = time.strftime("%c")
+        tools.saveConfig(self, now, 'test', filename=fname)
+        print('[scan] saved configfile', fname)
+
+        
     def save_current_frame(self):
       
         self.save_FB = False
@@ -1726,21 +1777,6 @@ class Backend(QtCore.QObject):
         
         self.liveview(lvbool, mode)
         
-    @pyqtSlot(bool, str, float)
-    def get_scan_signal_chechu(self, lvbool, mode, target_z):
-    
-        """
-        Connection: [psf] scanSignal
-        Description: get drift-corrected initial position, calculates the
-        derived parameters (and updates ADwin data)
-        """
-        
-#        print('[scan] target_z', target_z, type(target_z))
-        
-        self.initialPos[2] = target_z
-        self.calculate_derived_param()
-        
-        self.liveview(lvbool, mode)
         
     def line_acquisition(self):
         
@@ -1887,6 +1923,7 @@ class Backend(QtCore.QObject):
                 
                 self.liveview_stop()
                 self.frameIsDone.emit(True, self.image)
+                
                 
             if self.acquisitionMode == 'chechu':
                 
@@ -2077,6 +2114,7 @@ class Backend(QtCore.QObject):
         frontend.shutter2Checkbox.stateChanged.connect(lambda: self.control_shutters(2, frontend.shutter2Checkbox.isChecked()))
         frontend.shutter3Checkbox.stateChanged.connect(lambda: self.control_shutters(3, frontend.shutter3Checkbox.isChecked()))
         frontend.shutter4Checkbox.stateChanged.connect(lambda: self.control_shutters(4, frontend.shutter4Checkbox.isChecked()))
+        frontend.diodeShutter.stateChanged.connect(lambda: self.control_shutters(11, frontend.diodeShutter.isChecked()))
 
         frontend.flipperButton.clicked.connect(lambda: self.toggle_flipper(frontend.flipperButton.isChecked()))
         frontend.FBavScanButton.clicked.connect(lambda: self.toggle_FBav_scan(frontend.FBavScanButton.isChecked()))
@@ -2125,8 +2163,7 @@ if __name__ == '__main__':
     #initialize devices (diode laser and AdWin board)
     
     port = tools.get_MiniLasEvoPort()
-    print(port)
-    #port = 'COM7' #watch out so that port does not change
+    print('[scan] MiniLasEvo diode laser port:', port)
     diodelaser = MiniLasEvo(port)
     
     DEVICENUMBER = 0x1
@@ -2149,7 +2186,6 @@ if __name__ == '__main__':
     
     scanThread.start()
 
-    
     gui.setWindowTitle('scan')
     gui.show()
 

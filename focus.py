@@ -32,7 +32,7 @@ from instrumental.drivers.cameras import uc480
 import scan
 import drivers.ADwin as ADwin
 
-DEBUG = True
+DEBUG = False
 
 def actuatorParameters(adwin, z_f, n_pixels_z=50, pixeltime=1000):
 
@@ -81,6 +81,14 @@ class Frontend(QtGui.QFrame):
 
         self.setup_gui()
         
+        x0 = 0
+        y0 = 0
+        x1 = 1280 
+        y1 = 1024 
+            
+        value = np.array([x0, y0, x1, y1])
+        self.changedROI.emit(value)
+        
     def emit_param(self):
         
         params = dict()
@@ -128,28 +136,18 @@ class Frontend(QtGui.QFrame):
         
         self.selectROIbutton.setEnabled(True)
         
-    def select_roi(self):
+    def select_roi(self): 
         
         self.cropped = True
         self.getStats = True
-    
-        ROIpos = np.array(self.roi.pos())
-        roisize = np.array(self.roi.size())
         
-        y0 = int(ROIpos[0])
-        x0 = int(ROIpos[1])
-        y1 = int(ROIpos[0] + roisize[0])
-        x1 = int(ROIpos[1] + roisize[1])
-        
-        value = np.array([x0, y0, x1, y1])
-        
-        if (value[0] < 0) or (value[1] < 0) or (value[2] > 1280) or (value[3] > 1024):
-            print(datetime.now(), '[focus] ROI cannot be set as outside of camera FOV')
-            x0 = 0
-            y0 = 0
-            x1 = 1280 
-            y1 = 1024 
-            value = np.array([x0, y0, x1, y1])
+        extent = 150
+        y0 = int(640-extent)
+        x0 = int(512-extent)
+        y1 = int(640+extent)
+        x1 = int(512+extent)
+            
+        value = np.array([y0, x0, y1, x1])
             
         self.changedROI.emit(value)
     
@@ -157,8 +155,6 @@ class Frontend(QtGui.QFrame):
         self.roi.hide()
         self.roi = None
         
-        self.selectROIbutton.setEnabled(False)
-        self.deleteROIbutton.setEnabled(True)
         self.vb.enableAutoRange()
         
 #    def toggleFocus(self):
@@ -173,23 +169,23 @@ class Frontend(QtGui.QFrame):
 #            
 #            self.lockFocusSignal.emit(False)
         
-    def delete_roi(self):
-        
-        self.vb.removeItem(self.roi)
-        x0 = 0
-        y0 = 0
-        x1 = 1280 
-        y1 = 1024 
-            
-        value = np.array([x0, y0, x1, y1])
-        self.changedROI.emit(value)
-        self.cropped = False
-        
-        self.roi = None
-        
-        print(datetime.now(), '[focus] ROI deleted')
-        
-        self.deleteROIbutton.setEnabled(False)
+#    def delete_roi(self):
+#        
+#        self.vb.removeItem(self.roi)
+#        x0 = 0
+#        y0 = 0
+#        x1 = 1280 
+#        y1 = 1024 
+#            
+#        value = np.array([x0, y0, x1, y1])
+#        self.changedROI.emit(value)
+#        self.cropped = False
+#        
+#        self.roi = None
+#        
+#        print(datetime.now(), '[focus] ROI deleted')
+#        
+#        self.deleteROIbutton.setEnabled(False)
             
     @pyqtSlot(bool)        
     def toggle_liveview(self, on):
@@ -198,11 +194,11 @@ class Frontend(QtGui.QFrame):
             print(datetime.now(), '[focus] focus live view started')
         else:
             self.liveviewButton.setChecked(False)
-            try:
-                self.roi.hide()
-            except:
-                pass
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
+            self.cropped = False
+            self.roi.hide()
+            self.roi = None
+
             print(datetime.now(), '[focus] focus live view stopped')
             
     def emit_save_data_state(self):
@@ -235,11 +231,34 @@ class Frontend(QtGui.QFrame):
         if self.cropped is False: 
             
             self.img.setImage(img, autoLevels=False)
+            
+            if self.roi == None:
+            
+                extent = 150
+                y0 = int(640-extent)
+                x0 = int(512-extent)
+                y1 = int(640+extent)
+                x1 = int(512+extent)
+                
+                value = np.array([x0, y0, x1, y1])
+    
+                
+                self.roi = viewbox_tools.ROI(300, self.vb, value,
+                                                 handlePos=(1, 0),
+                                                 handleCenter=(0, 1),
+                                                 scaleSnap=True,
+                                                 translateSnap=True,
+                                                 pen=pg.mkPen(color='y'), movable = False)
+                self.roi.label.hide()
+                self.roi.removeHandle(0)
         
         else:
 
             croppedimg = img[0:300, 0:300]
             self.img.setImage(croppedimg)
+
+            
+
             
     @pyqtSlot(np.ndarray, np.ndarray)
     def get_data(self, time, position):
@@ -264,7 +283,7 @@ class Frontend(QtGui.QFrame):
         
         self.setPoint = value
         
-        print('[focus] set point', value)
+        print(datetime.now(), '[focus] set point', value)
         
         # TO DO: fix setpoint line
         
@@ -334,10 +353,12 @@ class Frontend(QtGui.QFrame):
         self.shutterCheckbox = QtGui.QCheckBox('IR laser')
         
         # ROI button
+        
+        # TODO: completely remove the ROI stuff from the code
 
-        self.ROIbutton = QtGui.QPushButton('ROI')
+#        self.ROIbutton = QtGui.QPushButton('ROI')
         self.selectROIbutton = QtGui.QPushButton('Select ROI')
-        self.deleteROIbutton = QtGui.QPushButton('Delete ROI')
+#        self.deleteROIbutton = QtGui.QPushButton('Delete ROI')
         self.calibrationButton = QtGui.QPushButton('Calibrate')
         
         self.exportDataButton = QtGui.QPushButton('Export data')
@@ -348,8 +369,8 @@ class Frontend(QtGui.QFrame):
         self.pxSizeEdit = QtGui.QLineEdit('10')
         self.focusPropertiesDisplay = QtGui.QLabel(' st_dev = 0  max_dev = 0')
         
-        self.deleteROIbutton.setEnabled(False)
-        self.selectROIbutton.setEnabled(False)
+#        self.deleteROIbutton.setEnabled(False)
+#        self.selectROIbutton.setEnabled(False)
 
         
         # gui connections
@@ -358,8 +379,8 @@ class Frontend(QtGui.QFrame):
         self.selectROIbutton.clicked.connect(self.select_roi)
         self.clearDataButton.clicked.connect(self.clear_graph)
         self.pxSizeEdit.textChanged.connect(self.emit_param)
-        self.deleteROIbutton.clicked.connect(self.delete_roi)
-        self.ROIbutton.clicked.connect(self.roi_method)
+#        self.deleteROIbutton.clicked.connect(self.delete_roi)
+#        self.ROIbutton.clicked.connect(self.roi_method)
 
         # focus camera display
         
@@ -429,9 +450,9 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.saveDataBox, 10, 0)
         
         subgrid.addWidget(self.liveviewButton, 1, 0, 1, 2)
-        subgrid.addWidget(self.ROIbutton, 2, 0, 1, 2)
+#        subgrid.addWidget(self.ROIbutton, 2, 0, 1, 2)
         subgrid.addWidget(self.selectROIbutton, 3, 0, 1, 2)
-        subgrid.addWidget(self.deleteROIbutton, 4, 0, 1, 2)
+#        subgrid.addWidget(self.deleteROIbutton, 4, 0, 1, 2)
         
         subgrid.addWidget(self.shutterLabel, 11, 0)
         subgrid.addWidget(self.shutterCheckbox, 12, 0)
@@ -514,14 +535,14 @@ class Backend(QtCore.QObject):
         rawimage = self.camera.latest_frame()
         image = np.sum(rawimage, axis=2)
         
-        self.pxSize = 10   # in nm, TO DO: change for an input from the user
+        self.pxSize = 10   # in nm, TODO: check correspondence with GUI
         
         self.sensorSize = np.array(image.shape)
         self.focusSignal = 0
         
         # set focus update rate
         
-        self.scansPerS = 20
+        self.scansPerS = 10
 
         self.focusTime = 1000 / self.scansPerS
         self.focusTimer = QtCore.QTimer()
@@ -545,7 +566,6 @@ class Backend(QtCore.QObject):
         z_f = tools.convert(10, 'XtoU') # TO DO: make this more robust
         
         self.adw.Set_FPar(32, z_f)
-
         self.adw.Set_Par(30, 1)
         
     def actuator_z(self, z_f):
@@ -553,7 +573,6 @@ class Backend(QtCore.QObject):
         z_f = tools.convert(z_f, 'XtoU')
           
         self.adw.Set_FPar(32, z_f)
-        
         self.adw.Set_Par(30, 1)
     
     @pyqtSlot(bool)
@@ -578,6 +597,7 @@ class Backend(QtCore.QObject):
         self.camera.start_live_video(framerate='20 Hz')
 
         self.focusTimer.start(self.focusTime)
+
         
     def liveview_stop(self):
         
@@ -650,6 +670,7 @@ class Backend(QtCore.QObject):
             if mode == 'continous':
             
                 self.set_actuator_param()
+#                self.adw.Set_Par(39, 0)
                 self.adw.Start_Process(3)
                 print(datetime.now(), '[focus] Process 3 started')
             
@@ -658,12 +679,14 @@ class Backend(QtCore.QObject):
         if val is False:
             
             self.feedback_active = False
-            print(datetime.now(), ' [focus] Feedback loop OFF')
             
             if mode == 'continous':
             
                 self.adw.Stop_Process(3)
+#                self.adw.Set_Par(39, 1) # Par 39 stops Process 3 (see ADbasic code)
                 print(datetime.now(), '[focus] Process 3 stopped')
+                
+            print(datetime.now(), ' [focus] Feedback loop OFF')
 
     
     @pyqtSlot()    
@@ -671,23 +694,17 @@ class Backend(QtCore.QObject):
         
         ''' set up on/off feedback loop'''
         
-        print(datetime.now(), '[focus] feedback setup 0')
-
         self.setPoint = self.focusSignal * self.pxSize # define setpoint
         initial_z = tools.convert(self.adw.Get_FPar(72), 'UtoX') # current z position of the piezo
         self.target_z = initial_z # set initial_z as target_z
         
         self.changedSetPoint.emit(self.focusSignal)
         
-        print(datetime.now(), '[focus] feedback setup 1')
-
         # TO DO: implement calibrated version of this
     
     def update_feedback(self, mode='continous'):
-        
+         
         dz = self.focusSignal * self.pxSize - self.setPoint
-
-#        print('dz', dz, ' nm')
         
         threshold = 7 # in nm
         far_threshold = 20 # in nm
@@ -707,15 +724,14 @@ class Backend(QtCore.QObject):
         else:
             
             self.target_z = self.target_z + dz/1000  # conversion to µm
-            
+                        
             if mode == 'continous':
                 
                 self.actuator_z(self.target_z)
                 
             if mode == 'discrete':
-                
-                pass  # it's enough to have saved the value self.target_z
-                
+                 
+                # it's enough to have saved the value self.target_z
                 print(datetime.now(), '[focus] discrete correction to', self.target_z)
             
     def update_graph_data(self):
@@ -780,52 +796,53 @@ class Backend(QtCore.QObject):
             self.z_array.append(self.focusSignal)
             
     def acquire_data(self):
-        
+                
         # acquire image
     
         raw_image = self.camera.latest_frame()
+
         image = np.sum(raw_image, axis=2)   # sum the R, G, B images
 
         # send image to gui
-
         self.changedImage.emit(image)
                 
-        argmax = np.unravel_index(np.argmax(image, axis=None), image.shape)
-        
-        roisize = self.roi_area[2] - self.roi_area[0]
-        if roisize == 300:
-            extent = 148 # subroi extent in px
-            argmax[0] = 150 
+        extent = 150
+        correction = 512 - extent
+
+
+        if image.shape[0] > (2*extent):
+            image = image[512-extent:512+extent, 640-extent:640+extent]
         else:
-            extent = 300
+            image = image[:, 0:300]
         
         # get mass center
-        self.massCenter = np.array(ndi.measurements.center_of_mass(image[argmax[0]-extent:argmax[0]+extent, argmax[1]-extent:argmax[1]+extent]))
-        print(self.massCenter[0], argmax[1], self.roi_area, image.shape)
-        self.focusSignal = argmax[0] - extent + self.massCenter[0] + self.roi_area[0]
+        self.massCenter = np.array(ndi.measurements.center_of_mass(image))
+        self.focusSignal = self.massCenter[0] + correction
         self.currentTime = ptime.time() - self.startTime
+        
         
     @pyqtSlot(bool, bool)
     def single_z_correction(self, feedback_val, initial):
         
         if initial:
-        
-            if self.camON:
-                self.focusTimer.stop()
-                self.camera.stop_live_video()            
+                    
+            if not self.camON:
+                self.camON = True
+                self.camera.start_live_video(framerate='20 Hz')
+                time.sleep(0.200)
+                    
+            y0 = int(640-150)
+            x0 = int(512-150)
+            y1 = int(640+150)
+            x1 = int(512+150)
+            value = np.array([y0, x0, y1, x1])
+            self.camera._set_AOI(*value)
             
-            #self.liveviewSignal.emit(True)
             self.reset()
             self.reset_data_arrays()
-            self.camON = True
-            time.sleep(0.200)
-            self.camera.start_live_video(framerate='20 Hz')
             
-            time.sleep(0.100)
-            
-            self.get_new_roi(self.roi_area)
-        
             time.sleep(0.200)
+            
         
         self.acquire_data()
         self.update_graph_data()
@@ -954,12 +971,12 @@ class Backend(QtCore.QObject):
             
     @pyqtSlot(np.ndarray)
     def get_new_roi(self, val):
-        
-        
+                
         self.roi_area = val
         
-        if (val[0] < 0) or (val[1] < 0) or (val[2] > 1280) or (val[3] > 1024):
-            print(datetime.now(), '[focus] ROI cannot be set as outside camera FOV')
+        if (val[0] <= 0) or (val[1] <= 0) or (val[2] >= 1280) or (val[3] >= 1024):
+            if DEBUG:
+                print(datetime.now(), '[focus] ROI cannot be set as outside camera FOV')
             x0 = 0
             y0 = 0
             x1 = 1280 
@@ -1057,11 +1074,10 @@ class Backend(QtCore.QObject):
 
         self.adw.Set_FPar(26, tools.timeToADwin(pixeltime))
 
-    def moveTo(self, x_f, y_f, z_f, pixeltime=2000):
+    def moveTo(self, x_f, y_f, z_f):
 
-        self.set_moveTo_param(x_f, y_f, z_f, pixeltime)
+        self.set_moveTo_param(x_f, y_f, z_f)
         self.adw.Start_Process(2)
-        
         
     def gaussian_fit(self):
         
@@ -1132,9 +1148,7 @@ class Backend(QtCore.QObject):
         poptG = np.around(poptG, 2)
     
         A, x0, y0, σ_x, σ_y, bkg = poptG
-        
-        print(poptG)
-        
+                
 #        x = x0 + Mx_nm[xmin_id, ymin_id]
 #        y = y0 + My_nm[xmin_id, ymin_id]
 #        
@@ -1167,11 +1181,16 @@ class Backend(QtCore.QObject):
             
 #            print(datetime.now(), '[xy_tracking] else')
        
-        print(x0, y0)
         
     @pyqtSlot(float)
     def get_focuslockposition(self, position):
-        self.focuslockpositionSignal.emit(self.focusSignal)
+        
+        if position == -9999:
+            position = self.setPoint
+        else:
+            position = self.focusSignal
+            
+        self.focuslockpositionSignal.emit(position)
         
     @pyqtSlot()
     def stop(self):
@@ -1215,7 +1234,7 @@ class Backend(QtCore.QObject):
         frontend.changedROI.connect(self.get_new_roi)
         frontend.closeSignal.connect(self.stop)
 #        frontend.lockFocusSignal.connect(self.lock_focus)
-#        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+        frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         frontend.saveDataSignal.connect(self.get_save_data_state)
         frontend.exportDataButton.clicked.connect(self.export_data)
         frontend.clearDataButton.clicked.connect(self.reset)
@@ -1255,9 +1274,9 @@ if __name__ == '__main__':
     worker = Backend(cam, adw)
     worker.standAlone = True
     
-    worker.make_connection(gui)
     gui.make_connection(worker)
-    
+    worker.make_connection(gui)
+
     gui.emit_param()
     
     focusThread = QtCore.QThread()
@@ -1268,16 +1287,14 @@ if __name__ == '__main__':
     focusThread.start()
     
     # initialize fpar_70, fpar_71, fpar_72 ADwin position parameters
-        
     pos_zero = tools.convert(0, 'XtoU')
         
     worker.adw.Set_FPar(70, pos_zero)
     worker.adw.Set_FPar(71, pos_zero)
     worker.adw.Set_FPar(72, pos_zero)
     
-    #worker.moveTo(10, 10, 10) # in µm
-    #Very strange problem when using 
-    
+    worker.moveTo(3, 3, 10) # in µm
+
     gui.setWindowTitle('Focus lock')
     gui.resize(1500, 500)
 

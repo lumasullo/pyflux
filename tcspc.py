@@ -77,7 +77,9 @@ class Frontend(QtGui.QFrame):
         res = int(self.resolutionEdit.text())
         tacq = float(self.acqtimeEdit.text())
         folder = self.folderEdit.text()
-        paramlist = [name, res, tacq, folder]
+        offset = float(self.offsetEdit.text())
+        
+        paramlist = [name, res, tacq, folder, offset]
         
         self.paramSignal.emit(paramlist)
         
@@ -179,7 +181,7 @@ class Frontend(QtGui.QFrame):
         self.resolutionLabel = QtGui.QLabel('Resolution [ps]')
         self.resolutionEdit = QtGui.QLineEdit('8')
         self.offsetLabel = QtGui.QLabel('Offset [ns]')
-        self.offsetEdit = QtGui.QLineEdit('0')
+        self.offsetEdit = QtGui.QLineEdit('3')
         
         self.channel0Label = QtGui.QLabel('Input 0 (sync) [kHz]')
         self.channel0Value = QtGui.QLineEdit('')
@@ -228,6 +230,7 @@ class Frontend(QtGui.QFrame):
         self.clearButton.clicked.connect(self.clear_data)    
         
         self.acqtimeEdit.textChanged.connect(self.emit_param)
+        self.offsetEdit.textChanged.connect(self.emit_param)
         self.resolutionEdit.textChanged.connect(self.emit_param)
 
         # general GUI layout
@@ -309,18 +312,27 @@ class Backend(QtCore.QObject):
         self.ph.setup_ph300()
         self.ph.setup_phr800()
         
-        self.tcspcTimer.start(500)
-        
         self.ph.syncDivider = 4 # this parameter must be set such that the count rate at channel 0 (sync) is equal or lower than 10MHz
         self.ph.resolution = self.resolution # desired resolution in ps
         
-        self.ph.offset = 0
+        self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
+                                  ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
+             
+        self.ph.offset = int(self.offset * 1000) # time in ps
+        self.ph.lib.PH_SetSyncOffset(ctypes.c_int(0), ctypes.c_int(3000))
+
         self.ph.tacq = int(self.tacq * 1000) # time in ms
-  
+
+        # necessarry sleeping time tcspc needs after ph.initialize() --> PicoQuant demo script
+        time.sleep(0.2)
+        
         print(datetime.now(), '[tcspc] Resolution = {} ps'.format(self.ph.resolution))
-        print(datetime.now(), '[tcspc] Acquisition time = {} s'.format(self.tacq))
-    
+        print(datetime.now(), '[tcspc] Acquisition time = {} ms'.format(self.ph.tacq))
+        print(datetime.now(), '[tcspc] Offset = {} ps'.format(self.ph.offset))
+
         print(datetime.now(), '[tcspc] Picoharp 300 prepared for TTTR measurement')
+        
+        self.tcspcTimer.start(500)
     
     @pyqtSlot()           
     def measure(self):
@@ -342,6 +354,9 @@ class Backend(QtCore.QObject):
             pass
         
         self.export_data()
+        
+#        self.ph.lib.PH_ClearHistMem(ctypes.c_int(0), 
+#                                  ctypes.c_int(0))
                 
     @pyqtSlot(str, int, int)
     def prepare_minflux(self, fname, acqtime, n):
@@ -355,12 +370,11 @@ class Backend(QtCore.QObject):
         self.prepare_ph()
         
         self.ph.tacq = acqtime * n * 1000 # TO DO: correspond to GUI !!!
-        
-        print('[tcspc] self.ph.tacq', self.ph.tacq)
-        
+                
         self.ph.lib.PH_SetBinning(ctypes.c_int(0), 
                                   ctypes.c_int(1)) # TO DO: fix this in a clean way (1 = 8 ps resolution)
-   
+        self.ph.lib.PH_SetSyncOffset(ctypes.c_int(0), ctypes.c_int(3000))
+
         t1 = time.time()
         
         print(datetime.now(), '[tcspc] preparing the PH measurement took {} s'.format(t1-t0))
@@ -383,6 +397,7 @@ class Backend(QtCore.QObject):
         # TO DO: make this function, not so easy because the while loop in the driver
         # HINT: maybe use a timer loop to be able to access variables within the loop
         self.tcspcTimer.stop()
+
         print(datetime.now(), '[tcspc] stop measure function (empty)')
 
     def export_data(self):
@@ -398,6 +413,7 @@ class Backend(QtCore.QObject):
 
         inputfile.close()
         
+        print('max and min relTime', np.max(relTime), np.min(relTime))
         relTime = relTime * timeRes # in real time units (s)
         self.relTime = relTime * 1e9  # in (ns)
 
@@ -419,7 +435,7 @@ class Backend(QtCore.QObject):
         print(datetime.now(), '[tcspc] tcspc data exported')
         
         np.savetxt(self.currentfname + '.txt', []) # TO DO: build config file, now empty file
-            
+
     @pyqtSlot(list)
     def get_frontend_parameters(self, paramlist):
         
@@ -428,7 +444,8 @@ class Backend(QtCore.QObject):
         self.fname = paramlist[0]
         self.resolution = paramlist[1]
         self.tacq = paramlist[2]
-        self.folder = paramlist[3]      
+        self.folder = paramlist[3]  
+        self.offset = paramlist[4]
 
     def make_connection(self, frontend):
 
@@ -472,5 +489,5 @@ if __name__ == '__main__':
     gui.setWindowTitle('Time-correlated single-photon counting')
     gui.show()
 
-    app.exec_()
+#    app.exec_()
     

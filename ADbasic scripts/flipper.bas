@@ -1,5 +1,5 @@
 '<ADbasic Header, Headerversion 001.001>
-' Process_Number                 = 7
+' Process_Number                 = 5
 ' Initial_Processdelay           = 2000
 ' Eventsource                    = Timer
 ' Control_long_Delays_for_Stop   = No
@@ -12,7 +12,7 @@
 ' Stacksize                      = 1000
 ' Info_Last_Save                 = PC-MINFLUX  PC-MINFLUX\USUARIO
 '<Header End>
-'process 5: shutter by luciano a. masullo
+'process 5: flipper by luciano a. masullo
 
 'par_55: 0 -> shutter, 1 -> flipper
 'par_50: 1 -> open shutter, 0 -> close shutter
@@ -20,8 +20,9 @@
 
 
 'README:
-'Very simpe process to digitally control the Thorlabs shutter
+'Very simple process to digitally control the Thorlabs shutter
 
+'The shutter part is not used because there is now a seperate script
 'The flipper part is different because it needs rising edges to switch state
 
 #INCLUDE .\data-acquisition.inc

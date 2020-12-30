@@ -395,19 +395,15 @@ def cov_ellipse(cov, q=None, nsig=None, **kwargs):
 
 def toggle_shutter(adwBoard, num, val):
     num = num - 1
-    adwBoard.Set_Par(53, num)
+    adwBoard.Set_Par(73, num)
     if val is True:
-        adwBoard.Set_Par(52, 1)
+        adwBoard.Set_Par(72, 1)
         adwBoard.Start_Process(7)
         #print('Shutter', str(num+1), 'opened')
     if val is False:
-        adwBoard.Set_Par(52, 0)
+        adwBoard.Set_Par(72, 0)
         adwBoard.Start_Process(7)
         #print('Shutter', str(num+1), 'closed')    
-
-    #for some reason the process does not stop automatically
-    #this caused strange interferences with the linescan process
-    adwBoard.Stop_Process(7)
     
 def get_MiniLasEvoPort():
     
@@ -416,7 +412,7 @@ def get_MiniLasEvoPort():
     wmi = win32com.client.GetObject ("winmgmts:")
     for usb in wmi.InstancesOf ("Win32_USBHub"):
         strid = usb.DeviceID
-        print(strid)
+#        print(strid)
         if ('ML069719' in strid):
             savei = i
             
@@ -425,7 +421,7 @@ def get_MiniLasEvoPort():
         i+= 1
         j+= 1
        
-    print(savei, savej)
+#    print(savei, savej)
     if savei<savej:
         port = 'COM7'
     else:

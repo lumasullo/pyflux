@@ -8,6 +8,7 @@ Created on Tue Apr 16 15:38:16 2019
 import numpy as np
 import os
 from datetime import date, datetime
+import time
 
 from pyqtgraph.Qt import QtCore, QtGui
 
@@ -20,7 +21,7 @@ import imageio as iio
 
 π = np.pi
 
-DEBUG = False
+DEBUG = True
 
 class Frontend(QtGui.QFrame):
     
@@ -244,6 +245,8 @@ class Backend(QtCore.QObject):
     
     shutterSignal = pyqtSignal(int, bool)
     
+    saveConfigSignal = pyqtSignal(str)
+    
     """
     Signals
     
@@ -263,6 +266,7 @@ class Backend(QtCore.QObject):
         self.measTimer.timeout.connect(self.loop)
         
         self.checkboxID_old = 7
+        self.alignMode = False
 
     def start(self):
         
@@ -274,7 +278,8 @@ class Backend(QtCore.QObject):
         
         self.progressSignal.emit(0)
         
-        self.shutterSignal.emit(8, False)
+        self.shutterSignal.emit(7, False)
+        self.shutterSignal.emit(11, False)
         
         print(datetime.now(), '[psf] PSF measurement started')
           
@@ -303,7 +308,7 @@ class Backend(QtCore.QObject):
         self.shutterSignal.emit(8, False)
         
         #new filename indicating that getUniqueName() has already found filename
-        #rerunning would only cause errors in files being saved focus and xy_tracking
+        #rerunning would only cause errors in files being saved by focus and xy_tracking
         attention_filename = '!' + self.filename
         self.endSignal.emit(attention_filename)
         
@@ -350,7 +355,7 @@ class Backend(QtCore.QObject):
                         
                     initialPos = np.array([self.target_x, self.target_y, 
                                            self.target_z], dtype=np.float64)
-    
+                      
                     self.scanSignal.emit(True, 'frame', initialPos)
                     self.scan_flag = False
                     
@@ -392,14 +397,12 @@ class Backend(QtCore.QObject):
         fname = self.filename
         filename = tools.getUniqueName(fname)
 
-        #TODO: create proper log file
-        np.savetxt(filename + '.txt', [])
-        
-        #tifffile has strange bug which prevented me from saving stack only
-        #containing 4 instead of 20 images...
         self.data = np.array(self.data, dtype=np.float32)
         
         iio.mimwrite(filename + '.tiff', self.data)
+        
+        #make scan saving config file
+        self.saveConfigSignal.emit(filename)
     
     @pyqtSlot(dict)
     def get_frontend_param(self, params):
@@ -472,7 +475,8 @@ class Backend(QtCore.QObject):
         
         self.checkboxID_old = checkboxID
         #elif isinstance(button_or_id, int):
-        #    print('"Id {}" was clicked'.format(button_or_id))
+#        print('"Id {}" was clicked'.format(button_or_id))
+
         
     def make_connection(self, frontend):
         

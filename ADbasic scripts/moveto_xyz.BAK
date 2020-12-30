@@ -3,8 +3,7 @@
 ' Initial_Processdelay           = 3000
 ' Eventsource                    = Timer
 ' Control_long_Delays_for_Stop   = No
-' Priority                       = Low
-' Priority_Low_Level             = 1
+' Priority                       = High
 ' Version                        = 1
 ' ADbasic_Version                = 6.2.0
 ' Optimize                       = Yes
@@ -130,8 +129,6 @@ EVENT:
     fpar_70 = currentx
     fpar_71 = currenty
     fpar_72 = currentz
-    
-    End
    
   endif  
   
