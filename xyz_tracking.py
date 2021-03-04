@@ -38,15 +38,17 @@ from instrumental import Q_
 from drivers import bpc_piezo as bpc
 
 
-
 DEBUG = True
 
 PX_SIZE = 35.0 # px size of camera in nm
 PX_Z = 15.0 # px size for z in nm
 
+N_NP = 5 # number of AuNP required
+
 class Frontend(QtGui.QFrame):
     
-    roiInfoSignal = pyqtSignal(str, int, np.ndarray)
+    roiInfoSignal = pyqtSignal(str, int, list)
+    z_roiInfoSignal = pyqtSignal(str, int, list)
     closeSignal = pyqtSignal()
     saveDataSignal = pyqtSignal(bool)
     
@@ -122,6 +124,7 @@ class Frontend(QtGui.QFrame):
             else:
                 
                 coordinates = np.zeros((4))
+                coordinates_list = []
                 
                 for i in range(len(self.roilist)):
                     
@@ -129,11 +132,9 @@ class Frontend(QtGui.QFrame):
                     xmax, ymax = self.roilist[i].pos() + self.roilist[i].size()
             
                     coordinates = np.array([xmin, xmax, ymin, ymax])  
-    #            roicoordinates[i] = coordinates
-    # TODO: generalize to N rois, now it's only working for one roi (the last one)
-                    
-    #            self.roiInfoSignal.emit(roinumber, roicoordinates)
-                self.roiInfoSignal.emit('xy', roinumber, coordinates)
+                    coordinates_list.append(coordinates)
+                                                            
+                self.roiInfoSignal.emit('xy', roinumber, coordinates_list)
                     
         if roi_type == 'z':
             
@@ -141,8 +142,9 @@ class Frontend(QtGui.QFrame):
             xmax, ymax = self.roi_z.pos() + self.roi_z.size()
             
             coordinates = np.array([xmin, xmax, ymin, ymax]) 
+            coordinates_list = [coordinates]
             
-            self.roiInfoSignal.emit('z', 0, coordinates)
+            self.z_roiInfoSignal.emit('z', 0, coordinates_list)
 
     def delete_roi(self):
         
@@ -186,15 +188,34 @@ class Frontend(QtGui.QFrame):
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
     def get_data(self, time, xData, yData, zData):
         
-        self.xCurve.setData(time, xData)
-        self.yCurve.setData(time, yData)
+        # x data
+        
+        for i in range(N_NP):
+        
+            self.xCurve[i].setData(time, xData[:, i])
+            
+        self.xmeanCurve.setData(time, np.mean(xData, axis=1))
+        
+        # y data
+            
+        for i in range(N_NP):
+        
+            self.yCurve[i].setData(time, yData[:, i])
+            
+        self.ymeanCurve.setData(time, np.mean(yData, axis=1))
+        
+        # z data
+        
         self.zCurve.setData(time, zData)
         
-        self.xyDataItem.setData(xData, yData)
+        self.xyDataItem.setData(np.mean(xData, axis=1), np.mean(yData, axis=1))
         
         if len(xData) > 2:
             
             self.plot_ellipse(xData, yData)
+            
+            x, y = np.histogram(zData, bins=60)
+            self.zHist.setOpts(height=x)
         
     def plot_ellipse(self, x_array, y_array):
         
@@ -264,9 +285,7 @@ class Frontend(QtGui.QFrame):
         self.paramWidget = QGroupBox('XYZ-Tracking parameter')   
         self.paramWidget.setFixedHeight(260)
         self.paramWidget.setFixedWidth(240)
-        
-        grid.addWidget(self.paramWidget, 0, 1)
-        
+                
         # image widget layout
         
         imageWidget = pg.GraphicsLayoutWidget()
@@ -292,7 +311,6 @@ class Frontend(QtGui.QFrame):
         self.vb.addItem(self.img)
         self.vb.setAspectLocked(True)
         imageWidget.setAspectLocked(True)
-        grid.addWidget(imageWidget, 0, 0)
                 
         # set up histogram for the liveview image
 
@@ -322,13 +340,24 @@ class Frontend(QtGui.QFrame):
         self.xyzGraph.xPlot.setLabels(bottom=('Time', 's'),
                                       left=('X position', 'nm'))
         self.xyzGraph.xPlot.showGrid(x=True, y=True)
-        self.xCurve = self.xyzGraph.xPlot.plot(pen='b')
         
+        self.xCurve = [0] * N_NP
+        for i in range(N_NP):
+            self.xCurve[i] = self.xyzGraph.xPlot.plot(pen='b', alpha=0.3)
+            self.xCurve[i].setAlpha(0.3, auto=False)
+        self.xmeanCurve = self.xyzGraph.xPlot.plot(pen='b', width=40)
+            
         self.xyzGraph.yPlot = self.xyzGraph.addPlot(row=1, col=0)
         self.xyzGraph.yPlot.setLabels(bottom=('Time', 's'),
                                      left=('Y position', 'nm'))
         self.xyzGraph.yPlot.showGrid(x=True, y=True)
-        self.yCurve = self.xyzGraph.yPlot.plot(pen='r')
+        
+        self.yCurve = [0] * N_NP
+        for i in range(N_NP):
+            self.yCurve[i] = self.xyzGraph.yPlot.plot(pen='r', alpha=0.3)
+            self.yCurve[i].setAlpha(0.3, auto=False)
+        self.ymeanCurve = self.xyzGraph.yPlot.plot(pen='r', width=40)
+        
         
         self.xyzGraph.zPlot = self.xyzGraph.addPlot(row=2, col=0)
         self.xyzGraph.zPlot.setLabels(bottom=('Time', 's'),
@@ -358,7 +387,15 @@ class Frontend(QtGui.QFrame):
                                                symbolSize=5, symbolPen=None)
         
         self.xyDataEllipse = self.xyplotItem.plot(pen=(117, 184, 200))
+        
+        # z drift graph (1D histogram)
+        x = np.arange(-30, 30)
+        y = np.zeros(len(x))
+    
+        self.zHist = pg.BarGraphItem(x=x, height=y, width=0.6, brush='g')
 
+        self.zWin = self.xyPoint.addPlot()
+        self.zWin.addItem(self.zHist)
         
         # LiveView Button
 
@@ -426,6 +463,9 @@ class Frontend(QtGui.QFrame):
                 
         # buttons and param layout
         
+        grid.addWidget(self.paramWidget, 0, 1)
+        grid.addWidget(imageWidget, 0, 0)
+
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
 
@@ -448,10 +488,12 @@ class Frontend(QtGui.QFrame):
         
         self.liveviewButton.clicked.connect(lambda: self.toggle_liveview(self.liveviewButton.isChecked()))
         
-    def close_event(self, *args, **kwargs):
+    def closeEvent(self, *args, **kwargs):
+        
+        print('close in frontend')
         
         self.closeSignal.emit()
-        super().close_event(*args, **kwargs)
+        super().closeEvent(*args, **kwargs)
         app.quit()
         
         
@@ -492,7 +534,7 @@ class Backend(QtCore.QObject):
                 
         # folder
         
-        today = str(date.today()).replace('-', '')  # TODO: change to get folder from microscope
+        today = str(date.today()).replace('-', '')  # TODO: change to right folder
         root = r'C:\\Data\\'
         folder = root + today
         
@@ -510,10 +552,7 @@ class Backend(QtCore.QObject):
 
         self.npoints = 1200
         self.buffersize = 30000
-        
-        self.currentx = 0
-        self.currenty = 0
-        
+                
         self.reset()
         self.reset_data_arrays()
         
@@ -582,8 +621,6 @@ class Backend(QtCore.QObject):
     def update_view(self):
         """ Image update while in Liveview mode """
 
-        print(self.camera._get_exposure())
-
         # acquire image
     
         raw_image = self.camera.latest_frame()
@@ -594,12 +631,48 @@ class Backend(QtCore.QObject):
         
         self.changedImage.emit(self.image)
             
+    # def update_graph_data(self):
+    #     """ Update the data displayed in the graphs """
+        
+    #     print('update graph data')
+    #     print(np.mean(self.x))
+    #     print(np.mean(self.y))
+        
+    #     if self.ptr < self.npoints:
+    #         self.xData[self.ptr] = np.mean(self.x)
+    #         self.yData[self.ptr] = np.mean(self.y)
+    #         self.zData[self.ptr] = self.z
+    #         self.time[self.ptr] = self.currentTime
+            
+    #         self.changedData.emit(self.time[0:self.ptr + 1],
+    #                               self.xData[0:self.ptr + 1],
+    #                               self.yData[0:self.ptr + 1],
+    #                               self.zData[0:self.ptr + 1])
+
+    #     else:
+    #         self.xData[:-1] = self.xData[1:]
+    #         self.xData[-1] = np.mean(self.x)
+    #         self.yData[:-1] = self.yData[1:]
+    #         self.yData[-1] = np.mean(self.y)
+    #         self.zData[:-1] = self.zData[1:]
+    #         self.zData[-1] = self.z
+    #         self.time[:-1] = self.time[1:]
+    #         self.time[-1] = self.currentTime
+            
+    #         self.changedData.emit(self.time, self.xData, self.yData, self.zData)
+
+    #     self.ptr += 1
+    
     def update_graph_data(self):
         """ Update the data displayed in the graphs """
         
+        print('update graph data')
+        print(np.mean(self.x))
+        print(np.mean(self.y))
+        
         if self.ptr < self.npoints:
-            self.xData[self.ptr] = self.x
-            self.yData[self.ptr] = self.y
+            self.xData[self.ptr, :] = self.x
+            self.yData[self.ptr, :] = self.y
             self.zData[self.ptr] = self.z
             self.time[self.ptr] = self.currentTime
             
@@ -610,9 +683,9 @@ class Backend(QtCore.QObject):
 
         else:
             self.xData[:-1] = self.xData[1:]
-            self.xData[-1] = self.x
+            self.xData[-1, :] = self.x
             self.yData[:-1] = self.yData[1:]
-            self.yData[-1] = self.y
+            self.yData[-1, :] = self.y
             self.zData[:-1] = self.zData[1:]
             self.zData[-1] = self.z
             self.time[:-1] = self.time[1:]
@@ -642,6 +715,20 @@ class Backend(QtCore.QObject):
             
             self.tracking_value = True
             self.counter = 0
+            
+            # initialize relevant xy-tracking arrays
+        
+            size = len(self.roi_coordinates_list)
+            
+            self.currentx = np.zeros(size)
+            self.currenty = np.zeros(size)
+            self.x = np.zeros(size)
+            self.y = np.zeros(size)
+            
+            if self.initial is True:
+                
+                self.initialx = np.zeros(size)
+                self.initialy = np.zeros(size)
                     
         if val is False:
         
@@ -687,12 +774,19 @@ class Backend(QtCore.QObject):
         
         self.currentz = np.sqrt(self.m_center[0]**2 + self.m_center[1]**2)
           
-    def gaussian_fit(self):
+    def gaussian_fit(self, roi_coordinates):
+        
+        print('roi_coordinates', roi_coordinates)
         
         # set main reference frame
         
-        xmin, xmax, ymin, ymax = self.ROIcoordinates
-        xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates * PX_SIZE
+        # xmin, xmax, ymin, ymax = self.ROIcoordinates
+        # xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates * PX_SIZE
+        
+        roi_coordinates = np.array(roi_coordinates, dtype=np.int)
+        
+        xmin, xmax, ymin, ymax = roi_coordinates
+        xmin_nm, xmax_nm, ymin_nm, ymax_nm = roi_coordinates * PX_SIZE
         
         # select the data of the image corresponding to the ROI
 
@@ -760,32 +854,36 @@ class Backend(QtCore.QObject):
         x = x0 + Mx_nm[xmin_id, ymin_id]
         y = y0 + My_nm[xmin_id, ymin_id]
         
-#        self.currentx = x
-#        self.currenty = y
+        currentx = x
+        currenty = y
+        
+        # TODO: delete this section, doesn't seem useful
         
         # if to avoid (probably) false localizations
         
-        maxdist = 200 # in nm
+        # maxdist = 200 # in nm
         
-        if self.initial is False:
+        # if self.initial is False:
         
-            if np.abs(x - self.currentx) < maxdist and np.abs(y - self.currenty) < maxdist:
+        #     if np.abs(x - self.currentx) < maxdist and np.abs(y - self.currenty) < maxdist:
         
-                self.currentx = x  # self.currentx is the absolute x position
-                self.currenty = y
+        #         currentx = x  # currentx is the absolute x position
+        #         currenty = y
                 
-                print(datetime.now(), '[xy_tracking] normal')
+        #         print(datetime.now(), '[xy_tracking] normal')
                 
-            else:
+        #     else:
                                 
-                print(datetime.now(), '[xy_tracking] max dist exceeded')
+        #         print(datetime.now(), '[xy_tracking] max dist exceeded')
         
-        else:
+        # else:
             
-            self.currentx = x
-            self.currenty = y
+        #     currentx = x
+        #     currenty = y
             
 #            print(datetime.now(), '[xy_tracking] else')
+
+        return currentx, currenty
         
             
     def track(self, track_type):
@@ -798,43 +896,62 @@ class Backend(QtCore.QObject):
         
         """
         
+
+            
+        # xy track routine of N=size fiducial AuNP
+
         if track_type == 'xy':
-        
-            try:
-                self.gaussian_fit()
+            
+            for i, roi in enumerate(self.roi_coordinates_list):
                 
-            except(RuntimeError, ValueError):
+                # try:
+                #     roi = self.roi_coordinates_list[i]
+                #     self.currentx[i], self.currenty[i] = self.gaussian_fit(roi)
+                    
+                # except(RuntimeError, ValueError):
+                    
+                #     print(datetime.now(), '[xy_tracking] Gaussian fit did not work')
+                #     self.toggle_feedback(False)
                 
-                print(datetime.now(), '[xy_tracking] Gaussian fit did not work')
-                self.toggle_feedback(False)
-                   
+                roi = self.roi_coordinates_list[i]
+                self.currentx[i], self.currenty[i] = self.gaussian_fit(roi)
+           
             if self.initial is True:
                 
-                self.initialx = self.currentx
-                self.initialy = self.currenty
-                
+                for i, roi in enumerate(self.roi_coordinates_list):
+                       
+                    self.initialx[i] = self.currentx[i]
+                    self.initialy[i] = self.currenty[i]
+                    
                 self.initial = False
-                
-            self.x = self.currentx - self.initialx  # self.x is relative to initial pos
-            self.y = self.currenty - self.initialy
             
-            self.currentTime = time.time() - self.startTime
-            
-            if self.save_data_state:
+            for i, roi in enumerate(self.roi_coordinates_list):
+                    
+                self.x[i] = self.currentx[i] - self.initialx[i]  # self.x is relative to initial pos
+                self.y[i] = self.currenty[i] - self.initialy[i]
                 
-                self.time_array[self.j] = self.currentTime
-                self.x_array[self.j] = self.x 
-                self.y_array[self.j] = self.y
+                self.currentTime = time.time() - self.startTime
                 
-                self.j += 1
+            print('x, y', self.x, self.y)
+            print('currentx, currenty', self.currentx, self.currenty)
+                
+            # if self.save_data_state: # TODO: fix this part for N NPs
+                
+            #     self.time_array[self.j] = self.currentTime
+            #     self.x_array[self.j] = self.x 
+            #     self.y_array[self.j] = self.y
+                
+            #     self.j += 1
                             
-                if self.j >= (self.buffersize - 5):    # TODO: -5, arbitrary bad fix
+            #     if self.j >= (self.buffersize - 5):    # TODO: -5, arbitrary bad fix
                     
-                    self.export_data()
-                    self.reset_data_arrays()
+            #         self.export_data()
+            #         self.reset_data_arrays()
                     
-                    print(datetime.now(), '[xy_tracking] Data array, longer than buffer size, data_array reset')
-                    
+            #         print(datetime.now(), '[xy_tracking] Data array, longer than buffer size, data_array reset')
+            
+        # z track of the reflected IR beam        
+            
         if track_type == 'z':
             
             self.center_of_mass()
@@ -853,14 +970,18 @@ class Backend(QtCore.QObject):
         dx = 0
         dy = 0
         dz = 0
-        threshold = 5
+        threshold = 3
         far_threshold = 12
-        correct_factor = 0.6
+        # correct_factor = 0.6
+        correct_factor = 1.0
         security_thr = 0.35 # in µm
         
-        if np.abs(self.x) > threshold:
+        xmean = np.mean(self.x)
+        ymean = np.mean(self.y)
+        
+        if np.abs(xmean) > threshold:
             
-            dx = - (self.x)/1000 # conversion to µm
+            dx = - (xmean)/1000 # conversion to µm
             
             if dx < far_threshold: #TODO: double check this conditions (do they work?)
                 
@@ -868,9 +989,9 @@ class Backend(QtCore.QObject):
 
 #                print('dx', dx)
             
-        if np.abs(self.y) > threshold:
+        if np.abs(ymean) > threshold:
                         
-            dy = - (self.y)/1000 # conversion to µm
+            dy = - (ymean)/1000 # conversion to µm
             
             if dy < far_threshold:
                 
@@ -938,8 +1059,16 @@ class Backend(QtCore.QObject):
         
         self.initial = True
         self.initial_focus = True
-        self.xData = np.zeros(self.npoints)
-        self.yData = np.zeros(self.npoints)
+        
+        try:
+            self.xData = np.zeros((self.npoints, len(self.roi_coordinates_list)))
+            self.yData = np.zeros((self.npoints, len(self.roi_coordinates_list)))
+            
+        except:
+            
+            self.xData = np.zeros(self.npoints)
+            self.yData = np.zeros(self.npoints)
+        
         self.zData = np.zeros(self.npoints)
         self.time = np.zeros(self.npoints)
         self.ptr = 0
@@ -949,6 +1078,8 @@ class Backend(QtCore.QObject):
         self.changedData.emit(self.time, self.xData, self.yData, self.zData)
         
     def reset_data_arrays(self):
+        
+        # TODO: fix for N particles
         
         self.time_array = np.zeros(self.buffersize, dtype=np.float16)
         self.x_array = np.zeros(self.buffersize, dtype=np.float16)
@@ -961,7 +1092,7 @@ class Backend(QtCore.QObject):
         """
 
 #        fname = self.filename
-##        filename = tools.getUniqueName(fname)    # TO DO: make compatible with psf measurement and stand alone
+##        filename = tools.getUniqueName(fname)    # TO DO: fix filename / folder
 #        filename = fname + '_xydata.txt'
         
         fname = self.filename
@@ -996,8 +1127,8 @@ class Backend(QtCore.QObject):
         if DEBUG:
             print(datetime.now(), '[xy_tracking] save_data_state = {}'.format(val))
 
-    @pyqtSlot(str, int, np.ndarray)
-    def get_roi_info(self, roi_type, N, coordinates_array):
+    @pyqtSlot(str, int, list)
+    def get_roi_info(self, roi_type, N, coordinates_list):
         
         '''
         Connection: [frontend] roiInfoSignal
@@ -1006,23 +1137,23 @@ class Backend(QtCore.QObject):
         '''
                 
         if roi_type == 'xy':
-            
-        # TODO: generalize to N ROIs
+                    
+            # print(len(coordinates_list))
+            # print(coordinates_list)
         
-            self.ROIcoordinates = coordinates_array.astype(int)
+            self.roi_coordinates_list = coordinates_list
         
             if DEBUG:
-                print(datetime.now(), '[xy_tracking] got ROI coordinates')
+                print(datetime.now(), '[xy_tracking] got ROI coordinates list')
                 
         if roi_type == 'z':
             
-            self.zROIcoordinates = coordinates_array.astype(int)
-            
-            print(self.zROIcoordinates)
-     
+            self.zROIcoordinates = coordinates_list[0].astype(int)
+                 
     def make_connection(self, frontend):
             
         frontend.roiInfoSignal.connect(self.get_roi_info)
+        frontend.z_roiInfoSignal.connect(self.get_roi_info)
         frontend.closeSignal.connect(self.stop)
         frontend.saveDataSignal.connect(self.get_save_data_state)
         frontend.exportDataButton.clicked.connect(self.export_data)
@@ -1033,7 +1164,7 @@ class Backend(QtCore.QObject):
         frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         
-        # TODO: clean-up checkbox create continous and discrete feedback loop
+        # TODO: clean-up checkbox such that they're fully reversible
         
         # lambda function and gui_###_state are used to toggle both backend
         # states and checkbox status so that they always correspond 
@@ -1042,17 +1173,17 @@ class Backend(QtCore.QObject):
     @pyqtSlot()    
     def stop(self):
         
+        print('close in backend')
+
         self.view_timer.stop()
         
-        if self.camON:
-            self.camera.stop_live_video()
-            self.camera.close()
-
-        
-        # for i in range(10):
+        self.camera.stop_live_video()
+        self.camera.close()
+                                
+        for i in range(10):
             
-        #     self.pz.set_positions([9-i, 9-i, 0]) # go to the middle of the piezo range
-        #     time.sleep(.1)
+            self.pz.set_positions([9-i, 9-i, 0]) # go to the middle of the piezo range
+            time.sleep(.1)
             
         self.pz.close()
 
