@@ -20,6 +20,8 @@ import tools.colormaps as cmaps
 import tools.PSF as PSF
 import tools.tools as tools
 
+import tifffile
+
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot, QThread
 from PyQt5.QtWidgets import QGroupBox
 
@@ -41,9 +43,9 @@ from drivers import bpc_piezo as bpc
 DEBUG = True
 
 PX_SIZE = 35.0 # px size of camera in nm
-PX_Z = 15.0 # px size for z in nm
+PX_Z = 25.0 # px size for z in nm
 
-N_NP = 5 # number of AuNP required
+N_NP = 10 # number of AuNP required
 
 class Frontend(QtGui.QFrame):
     
@@ -51,6 +53,8 @@ class Frontend(QtGui.QFrame):
     z_roiInfoSignal = pyqtSignal(str, int, list)
     closeSignal = pyqtSignal()
     saveDataSignal = pyqtSignal(bool)
+    piParamsSignal = pyqtSignal(np.ndarray)
+    piezopiParamsSignal = pyqtSignal(np.ndarray)
     
     """
     Signals
@@ -85,8 +89,8 @@ class Frontend(QtGui.QFrame):
         
             ROIpen = pg.mkPen(color='r')
     
-            ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
-            self.roi = viewbox_tools.ROI2(self.NofPixels/2, self.vb, ROIpos,
+            ROIpos = (512 - 64, 512 - 64)
+            self.roi = viewbox_tools.ROI2(50, self.vb, ROIpos,
                                          handlePos=(1, 0),
                                          handleCenter=(0, 1),
                                          scaleSnap=True,
@@ -101,8 +105,8 @@ class Frontend(QtGui.QFrame):
             
             ROIpen = pg.mkPen(color='y')
             
-            ROIpos = (0.5 * self.NofPixels - 64, 0.5 * self.NofPixels - 64)
-            self.roi_z = viewbox_tools.ROI2(self.NofPixels/2, self.vb, ROIpos,
+            ROIpos = (512 - 64, 512 - 64)
+            self.roi_z = viewbox_tools.ROI2(140, self.vb, ROIpos,
                                             handlePos=(1, 0),
                                             handleCenter=(0, 1),
                                             scaleSnap=True,
@@ -145,17 +149,31 @@ class Frontend(QtGui.QFrame):
             coordinates_list = [coordinates]
             
             self.z_roiInfoSignal.emit('z', 0, coordinates_list)
-
+            
+    def emit_pi_params(self):
+        
+        self.piParamsSignal.emit(np.array(self.piParamsEdit.text().split(' '),
+                                          dtype=np.float64))
+        
+    def emit_piezopi_params(self):
+        
+        self.piezopiParamsSignal.emit(np.array(self.piezopiParamsEdit.text().split(' '),
+                                               dtype=np.int16))
     def delete_roi(self):
         
-        for i in range(len(self.roilist)):
+        # for i in range(len(self.roilist)):
             
-            self.vb.removeItem(self.roilist[i])
-            self.roilist[i].hide()
+        #     self.vb.removeItem(self.roilist[i])
+        #     self.roilist[i].hide()
             
-        self.roilist = []
-        self.delete_roiButton.setChecked(False)
-        self.ROInumber = 0
+        # self.roilist = []
+        # self.delete_roiButton.setChecked(False)
+        # self.ROInumber = 0
+        
+        self.vb.removeItem(self.roilist[-1])
+        self.roilist[-1].hide()
+        self.roilist = self.roilist[:-1]
+        self.ROInumber -= 1
      
     @pyqtSlot(bool)
     def toggle_liveview(self, on):
@@ -186,27 +204,35 @@ class Frontend(QtGui.QFrame):
         
         
     @pyqtSlot(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
-    def get_data(self, time, xData, yData, zData):
+    def get_data(self, tData, xData, yData, zData):
         
         # x data
         
         for i in range(N_NP):
         
-            self.xCurve[i].setData(time, xData[:, i])
+            self.xCurve[i].setData(tData, xData[:, i])
             
-        self.xmeanCurve.setData(time, np.mean(xData, axis=1))
+        self.xmeanCurve.setData(tData, np.mean(xData, axis=1))
         
+        # t0 = time.time()
+        # xstd = np.std(np.mean(xData, axis=1))
+        # xmean = np.mean(np.mean(xData, axis=1))
+        # t1 = time.time()
+        
+        # print('xstd, xmean', xstd, xmean)
+        # print('it took', t1-t0,'to calculate the stats')
+                
         # y data
             
         for i in range(N_NP):
         
-            self.yCurve[i].setData(time, yData[:, i])
+            self.yCurve[i].setData(tData, yData[:, i])
             
-        self.ymeanCurve.setData(time, np.mean(yData, axis=1))
+        self.ymeanCurve.setData(tData, np.mean(yData, axis=1))
         
         # z data
         
-        self.zCurve.setData(time, zData)
+        self.zCurve.setData(tData, zData)
         
         self.xyDataItem.setData(np.mean(xData, axis=1), np.mean(yData, axis=1))
         
@@ -216,6 +242,15 @@ class Frontend(QtGui.QFrame):
             
             x, y = np.histogram(zData, bins=60)
             self.zHist.setOpts(height=x)
+             
+            xstd = np.std(np.mean(xData, axis=1))
+            self.xstd_value.setText(str(np.around(xstd, 2)))
+            
+            ystd = np.std(np.mean(yData, axis=1))
+            self.ystd_value.setText(str(np.around(ystd, 2)))
+            
+            zstd = np.std(zData)
+            self.zstd_value.setText(str(np.around(zstd, 2)))
         
     def plot_ellipse(self, x_array, y_array):
         
@@ -247,20 +282,13 @@ class Frontend(QtGui.QFrame):
             
 #            self.xyDataEllipse.setData(x, y)
 #            self.xyDataMean.setData([xmean], [ymean])
-
-    @pyqtSlot(bool, bool, bool)
-    def get_backend_states(self, tracking, feedback, savedata):
-
-        self.trackingBeadsBox.setChecked(tracking)
-        self.feedbackLoopBox.setChecked(feedback)
-        self.saveDataBox.setChecked(savedata)            
-
+          
     def emit_save_data_state(self):
         
         if self.saveDataBox.isChecked():
             
             self.saveDataSignal.emit(True)
-            self.emit_roi_info()
+            # self.emit_roi_info()
             
         else:
             
@@ -270,8 +298,6 @@ class Frontend(QtGui.QFrame):
             
         backend.changedImage.connect(self.get_image)
         backend.changedData.connect(self.get_data)
-        backend.updateGUIcheckboxSignal.connect(self.get_backend_states)
-        # backend.liveviewSignal.connect(self.toggle_liveview)
         
     def setup_gui(self):
         
@@ -283,8 +309,24 @@ class Frontend(QtGui.QFrame):
         # parameters widget
         
         self.paramWidget = QGroupBox('XYZ-Tracking parameter')   
-        self.paramWidget.setFixedHeight(260)
-        self.paramWidget.setFixedWidth(240)
+        self.paramWidget.setFixedHeight(350)
+        self.paramWidget.setFixedWidth(270)
+        # self.paramWidget.setFixedWidth(350)
+
+        # stats widget
+        
+        self.statWidget = QGroupBox('Live statistics')   
+        self.statWidget.setFixedHeight(300)
+        # self.statWidget.setFixedWidth(240)
+        self.statWidget.setFixedWidth(350)
+
+        self.xstd_label = QtGui.QLabel('X std (nm)')
+        self.ystd_label = QtGui.QLabel('Y std (nm)')
+        self.zstd_label = QtGui.QLabel('Z std (nm)')
+        
+        self.xstd_value = QtGui.QLabel('0')
+        self.ystd_value = QtGui.QLabel('0')
+        self.zstd_value = QtGui.QLabel('0')
                 
         # image widget layout
         
@@ -370,6 +412,7 @@ class Frontend(QtGui.QFrame):
         self.xyPoint = pg.GraphicsWindow()
         self.xyPoint.resize(400, 400)
         self.xyPoint.setAntialiasing(False)
+        # self.xyPoint.setAspectLocked(True)
         
 #        self.xyPoint.xyPointPlot = self.xyzGraph.addPlot(col=1)
 #        self.xyPoint.xyPointPlot.showGrid(x=True, y=True)
@@ -452,6 +495,16 @@ class Frontend(QtGui.QFrame):
         self.saveDataBox = QtGui.QCheckBox("Save data")
         self.saveDataBox.stateChanged.connect(self.emit_save_data_state)
         
+        # pi feedback loop params
+        
+        self.piParamsLabel = QtGui.QLabel('PI params')
+        self.piParamsEdit = QtGui.QLineEdit('0.37 0.37 0.37 0.022 0.022 0.022')
+        self.piParamsEdit.textChanged.connect(self.emit_pi_params)
+        
+        self.piezopiParamsLabel = QtGui.QLabel('Piezo internal PI params')
+        self.piezopiParamsEdit =QtGui.QLineEdit('0.0 0.0')
+        self.piezopiParamsEdit.textChanged.connect(self.emit_piezopi_params)
+
         
         # button to clear the data
         
@@ -465,6 +518,7 @@ class Frontend(QtGui.QFrame):
         
         grid.addWidget(self.paramWidget, 0, 1)
         grid.addWidget(imageWidget, 0, 0)
+        grid.addWidget(self.statWidget, 0, 2)
 
         subgrid = QtGui.QGridLayout()
         self.paramWidget.setLayout(subgrid)
@@ -475,16 +529,30 @@ class Frontend(QtGui.QFrame):
         subgrid.addWidget(self.selectxyROIbutton, 3, 0)
         subgrid.addWidget(self.selectzROIbutton, 4, 0)
         subgrid.addWidget(self.delete_roiButton, 5, 0)
-        subgrid.addWidget(self.exportDataButton, 6, 0)
-        subgrid.addWidget(self.clearDataButton, 7, 0)
-        subgrid.addWidget(self.resetPiezoPosButton, 8, 0)
+        # subgrid.addWidget(self.exportDataButton, 6, 0)
+        subgrid.addWidget(self.clearDataButton, 6, 0)
+        subgrid.addWidget(self.resetPiezoPosButton, 7, 0)
         subgrid.addWidget(self.trackingBeadsBox, 1, 1)
         # subgrid.addWidget(self.trackZbeamBox, 2, 1)
         subgrid.addWidget(self.feedbackLoopBox, 2, 1)
         subgrid.addWidget(self.saveDataBox, 3, 1)
+        subgrid.addWidget(self.piParamsLabel, 4, 1)
+        subgrid.addWidget(self.piParamsEdit, 5, 1)
+        subgrid.addWidget(self.piezopiParamsLabel, 6, 1)
+        subgrid.addWidget(self.piezopiParamsEdit, 7, 1)
+        
+        stat_subgrid = QtGui.QGridLayout()
+        self.statWidget.setLayout(stat_subgrid)
+        
+        stat_subgrid.addWidget(self.xstd_label, 0, 0)
+        stat_subgrid.addWidget(self.ystd_label, 1, 0)
+        stat_subgrid.addWidget(self.zstd_label, 2, 0)
+        stat_subgrid.addWidget(self.xstd_value, 0, 1)
+        stat_subgrid.addWidget(self.ystd_value, 1, 1)
+        stat_subgrid.addWidget(self.zstd_value, 2, 1)
         
         grid.addWidget(self.xyzGraph, 1, 0)
-        grid.addWidget(self.xyPoint, 1, 1)
+        grid.addWidget(self.xyPoint, 1, 1, 1, 2)
         
         self.liveviewButton.clicked.connect(lambda: self.toggle_liveview(self.liveviewButton.isChecked()))
         
@@ -501,10 +569,8 @@ class Backend(QtCore.QObject):
     
     changedImage = pyqtSignal(np.ndarray)
     changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
-    updateGUIcheckboxSignal = pyqtSignal(bool, bool, bool)
 
     xyIsDone = pyqtSignal(bool, float, float)  # signal to emit new piezo position after drift correction
-    # liveviewSignal = pyqtSignal(bool)
     
     """
     Signals
@@ -531,11 +597,13 @@ class Backend(QtCore.QObject):
         self.pz = piezo
         self.pz.connect()
         self.pz.set_zero() # important for internal piezo calibration
+        
+        self.setup_pi(np.array([0.37, 0.37, 0.37, 0.022, 0.022, 0.022]))
                 
         # folder
         
         today = str(date.today()).replace('-', '')  # TODO: change to right folder
-        root = r'C:\\Data\\'
+        root = r'C:/Users/Santiago/Documents/minflux/data/'
         folder = root + today
         
         filename = r'\xydata'
@@ -551,13 +619,15 @@ class Backend(QtCore.QObject):
         self.camON = False
 
         self.npoints = 1200
-        self.buffersize = 30000
+        self.buffersize = 30000 # TODO: fix bug when self.j reaches buffersize
                 
         self.reset()
         self.reset_data_arrays()
         
         self.counter = 0
         self.pattern = False
+        
+        self.previous_image = None
         
     @pyqtSlot(bool)
     def liveview(self, value):
@@ -603,18 +673,40 @@ class Backend(QtCore.QObject):
         
 #        print(datetime.now(), '[xy_tracking] entered update')
         
+        t0 = time.time()
         self.update_view()
+        t1 = time.time() 
+           
+        # print('updateview took', (t1-t0)*1000, 'ms')
 
         if self.tracking_value:
-                
+            
+            t0 = time.time()
             self.track('xy')
+            t1 = time.time()
+        
+            print('track xy took', (t1-t0)*1000, 'ms')
+            
+            t0 = time.time()
             self.track('z')
+            t1 = time.time()
+            
+            print('track z took', (t1-t0)*1000, 'ms')
+            
+            t0 = time.time()
             self.update_graph_data()
+            t1 = time.time()
+            
+            print('update graph data took', (t1-t0)*1000, 'ms')
             
             if self.feedback_active:
                     
+                t0 = time.time()    
                 self.correct()
-                    
+                t1 = time.time()
+                
+                print('correct took', (t1-t0)*1000, 'ms')
+
         self.counter += 1  # counter to check how many times this function is executed
 
 
@@ -622,15 +714,25 @@ class Backend(QtCore.QObject):
         """ Image update while in Liveview mode """
 
         # acquire image
-    
+        
         raw_image = self.camera.latest_frame()
+        
         # self.image = np.sum(raw_image, axis=2)   # sum the R, G, B images
         self.image = raw_image[:, :, 0] # take only R channel
-                
+        
+        # WARNING: fix to match camera orientation with piezo orientation
+        self.image = np.rot90(self.image, k=3)
+        
+        if np.all(self.previous_image == self.image):
+            
+            print('WARNING: latest_frame equal to previous frame')
+    
+        self.previous_image = self.image
+    
         # send image to the Frontend
         
         self.changedImage.emit(self.image)
-            
+        
     # def update_graph_data(self):
     #     """ Update the data displayed in the graphs """
         
@@ -666,10 +768,6 @@ class Backend(QtCore.QObject):
     def update_graph_data(self):
         """ Update the data displayed in the graphs """
         
-        print('update graph data')
-        print(np.mean(self.x))
-        print(np.mean(self.y))
-        
         if self.ptr < self.npoints:
             self.xData[self.ptr, :] = self.x
             self.yData[self.ptr, :] = self.y
@@ -680,7 +778,7 @@ class Backend(QtCore.QObject):
                                   self.xData[0:self.ptr + 1],
                                   self.yData[0:self.ptr + 1],
                                   self.zData[0:self.ptr + 1])
-
+            
         else:
             self.xData[:-1] = self.xData[1:]
             self.xData[-1, :] = self.x
@@ -733,7 +831,7 @@ class Backend(QtCore.QObject):
         if val is False:
         
             self.tracking_value = False
-            
+                    
     @pyqtSlot(bool)
     def toggle_feedback(self, val, mode='continous'):
         ''' 
@@ -754,11 +852,38 @@ class Backend(QtCore.QObject):
             
             if DEBUG:
                 print(datetime.now(), '[xy_tracking] Feedback loop OFF')
-#            
-#        self.updateGUIcheckboxSignal.emit(self.tracking_value, 
-#                                          self.feedback_active, 
-#                                          self.save_data_state)
-     
+                
+    @pyqtSlot(np.ndarray)
+    def setup_pi(self, params):
+        
+        kp_x, kp_y, kp_z, ki_x, ki_y, ki_z = params
+        
+        print('kp_x, kp_y, kp_z, ki_x, ki_y, ki_z')
+        print(params)
+        
+        setpoint = 0
+        
+        self.pi_x = tools.PI(setpoint, multiplier=0.001, kp=kp_x, ki=ki_x)
+        
+        self.pi_y = tools.PI(setpoint, multiplier=0.001, kp=kp_y, ki=ki_y)
+        
+        self.pi_z = tools.PI(setpoint, multiplier=0.001, kp=kp_z, ki=ki_z)
+      
+    @pyqtSlot(np.ndarray)
+    def setup_piezo_pi(self, params):
+        
+        kp, ki = params
+        print('piezo internal kp ki')
+        print(kp, ki)
+        
+        for i in range(1,4):
+                
+            chan = self.pz._piezo.GetChannel(i)
+            cts = chan.GetFeedbackLoopPIconsts()
+            cts.ProportionalTerm = int(kp)
+            cts.IntegralTerm = int(ki)
+
+        
     def center_of_mass(self):
         
         # set main reference frame
@@ -768,21 +893,25 @@ class Backend(QtCore.QObject):
         # select the data of the image corresponding to the ROI
 
         zimage = self.image[xmin:xmax, ymin:ymax]
+        
+        # WARNING: extra rotation added to match the sensitive direction (hardware)
+        
+        zimage = np.rot90(zimage, k=3)
+        
+        # calculate center of mass
+        
         self.m_center = np.array(ndi.measurements.center_of_mass(zimage))
         
-        #
+        # calculate z estimator
         
         self.currentz = np.sqrt(self.m_center[0]**2 + self.m_center[1]**2)
           
     def gaussian_fit(self, roi_coordinates):
         
-        print('roi_coordinates', roi_coordinates)
+        # print('roi_coordinates', roi_coordinates)
         
         # set main reference frame
-        
-        # xmin, xmax, ymin, ymax = self.ROIcoordinates
-        # xmin_nm, xmax_nm, ymin_nm, ymax_nm = self.ROIcoordinates * PX_SIZE
-        
+
         roi_coordinates = np.array(roi_coordinates, dtype=np.int)
         
         xmin, xmax, ymin, ymax = roi_coordinates
@@ -792,6 +921,10 @@ class Backend(QtCore.QObject):
 
         array = self.image[xmin:xmax, ymin:ymax]
         
+        if np.size(array) == 0:
+            
+            print('WARNING: array is []')
+            
         # set new reference frame
         
         xrange_nm = xmax_nm - xmin_nm
@@ -805,7 +938,7 @@ class Backend(QtCore.QObject):
         # find max 
         
         argmax = np.unravel_index(np.argmax(array, axis=None), array.shape)
-        
+                
         x_center_id = argmax[0]
         y_center_id = argmax[1]
         
@@ -819,7 +952,7 @@ class Backend(QtCore.QObject):
         
         ymin_id = int(y_center_id-yrange)
         ymax_id = int(y_center_id+yrange)
-        
+                
         array_sub = array[xmin_id:xmax_id, ymin_id:ymax_id]
                 
         xsubsize = 2 * xrange
@@ -836,15 +969,23 @@ class Backend(QtCore.QObject):
         
         bkg = np.min(array)
         A = np.max(array) - bkg
-        σ = 130 # nm
+        σ = 200 # nm
         x0 = x_sub_nm[int(xsubsize/2)]
         y0 = y_sub_nm[int(ysubsize/2)]
         
         initial_guess_G = [A, x0, y0, σ, σ, bkg]
-         
-        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx_sub, My_sub), 
-                                     array_sub.ravel(), p0=initial_guess_G)
         
+        if np.size(array_sub) == 0:
+            
+            print('WARNING: array_sub is []')
+        
+        poptG, pcovG = opt.curve_fit(PSF.gaussian2D, (Mx_sub, My_sub), 
+                                      array_sub.ravel(), p0=initial_guess_G)
+        
+        perr = np.sqrt(np.diag(pcovG))
+        
+        print('perr', perr)
+                
         # retrieve results
 
         poptG = np.around(poptG, 2)
@@ -853,36 +994,10 @@ class Backend(QtCore.QObject):
         
         x = x0 + Mx_nm[xmin_id, ymin_id]
         y = y0 + My_nm[xmin_id, ymin_id]
-        
+                
         currentx = x
         currenty = y
         
-        # TODO: delete this section, doesn't seem useful
-        
-        # if to avoid (probably) false localizations
-        
-        # maxdist = 200 # in nm
-        
-        # if self.initial is False:
-        
-        #     if np.abs(x - self.currentx) < maxdist and np.abs(y - self.currenty) < maxdist:
-        
-        #         currentx = x  # currentx is the absolute x position
-        #         currenty = y
-                
-        #         print(datetime.now(), '[xy_tracking] normal')
-                
-        #     else:
-                                
-        #         print(datetime.now(), '[xy_tracking] max dist exceeded')
-        
-        # else:
-            
-        #     currentx = x
-        #     currenty = y
-            
-#            print(datetime.now(), '[xy_tracking] else')
-
         return currentx, currenty
         
             
@@ -896,8 +1011,6 @@ class Backend(QtCore.QObject):
         
         """
         
-
-            
         # xy track routine of N=size fiducial AuNP
 
         if track_type == 'xy':
@@ -932,21 +1045,21 @@ class Backend(QtCore.QObject):
                 
                 self.currentTime = time.time() - self.startTime
                 
-            print('x, y', self.x, self.y)
-            print('currentx, currenty', self.currentx, self.currenty)
+            # print('x, y', self.x, self.y)
+            # print('currentx, currenty', self.currentx, self.currenty)
                 
-            # if self.save_data_state: # TODO: fix this part for N NPs
+            if self.save_data_state:
                 
-            #     self.time_array[self.j] = self.currentTime
-            #     self.x_array[self.j] = self.x 
-            #     self.y_array[self.j] = self.y
+                self.time_array[self.j] = self.currentTime
+                self.x_array[self.j, :] = self.x 
+                self.y_array[self.j, :] = self.y
                 
-            #     self.j += 1
+                self.j += 1
                             
-            #     if self.j >= (self.buffersize - 5):    # TODO: -5, arbitrary bad fix
+                if self.j >= (self.buffersize - 5):    # TODO: -5, arbitrary bad fix
                     
-            #         self.export_data()
-            #         self.reset_data_arrays()
+                    self.export_data()
+                    self.reset_data_arrays()
                     
             #         print(datetime.now(), '[xy_tracking] Data array, longer than buffer size, data_array reset')
             
@@ -965,49 +1078,68 @@ class Backend(QtCore.QObject):
             self.z = (self.currentz - self.initialz) * PX_Z
             
                 
-    def correct(self, mode='continous'):
-
-        dx = 0
-        dy = 0
-        dz = 0
-        threshold = 3
-        far_threshold = 12
-        # correct_factor = 0.6
-        correct_factor = 1.0
-        security_thr = 0.35 # in µm
+    def correct(self, mode='PI'):
         
         xmean = np.mean(self.x)
         ymean = np.mean(self.y)
+        security_thr = 0.35 # in µm
         
-        if np.abs(xmean) > threshold:
-            
-            dx = - (xmean)/1000 # conversion to µm
-            
-            if dx < far_threshold: #TODO: double check this conditions (do they work?)
-                
-                dx = correct_factor * dx #TODO: double check this conditions (do they work?)
+        if mode == 'ON/OFF':
 
-#                print('dx', dx)
+            dx = 0
+            dy = 0
+            dz = 0
+            # threshold = 3
+            # far_threshold = 12
+            # correct_factor = 0.6
             
-        if np.abs(ymean) > threshold:
+            threshold = 3
+            z_threshold = 3
+            far_threshold = 12
+            correct_factor = 0.6
                         
-            dy = - (ymean)/1000 # conversion to µm
-            
-            if dy < far_threshold:
+            if np.abs(xmean) > threshold:
                 
-                dy = correct_factor * dy
-            
-#                print('dy', dy)
-
-        if np.abs(self.z) > threshold:
-                        
-            dz = - (self.z)/1000 # conversion to µm
-            
-            if dz < far_threshold:
+                dx = - (xmean)/1000 # conversion to µm
                 
-                dz = correct_factor * dz
+                if dx < far_threshold: #TODO: double check this conditions (do they work?)
+                    
+                    dx = correct_factor * dx #TODO: double check this conditions (do they work?)
+    
+    #                print('dx', dx)
+                
+            if np.abs(ymean) > threshold:
+                            
+                dy = - (ymean)/1000 # conversion to µm
+                
+                if dy < far_threshold:
+                    
+                    dy = correct_factor * dy
+                
+    #                print('dy', dy)
+    
+            if np.abs(self.z) > z_threshold:
+                            
+                dz = - (self.z)/1000 # conversion to µm
+                
+                if dz < far_threshold:
+                    
+                    dz = correct_factor * dz
+                
+    #                print('dy', dy)
+    
+        elif mode == 'PI':
             
-#                print('dy', dy)
+            pass
+        
+            dx = self.pi_x.update(xmean)
+            dy = self.pi_y.update(ymean)
+            dz = self.pi_z.update(self.z)
+        
+        else:
+            
+            print('Please choose a valid feedback mode')
+            print('Feedback modes: ON/OFF, PI')
     
         if dx > security_thr or dy > security_thr or dz > 2 * security_thr:
             
@@ -1024,7 +1156,8 @@ class Backend(QtCore.QObject):
             
             # dy, dx = np.dot(R, np.asarray([dx, dy]))
             
-            print('dx, dy', dx, dy)
+            
+            # print('dx, dy', dx, dy)
             
             # # add correction to piezo position
             
@@ -1034,13 +1167,13 @@ class Backend(QtCore.QObject):
             currenty_piezo = current_piezo_pos[1] # in µm
             currentz_piezo = current_piezo_pos[2] # in µm
             
-            print('current x, y, z', currentx_piezo, currenty_piezo, currentz_piezo)
+            # print('current x, y, z', currentx_piezo, currenty_piezo, currentz_piezo)
             
-            targetx_piezo = currentx_piezo - dx # in µm
-            targety_piezo = currenty_piezo - dy # in µm
-            targetz_piezo = currentz_piezo - dz # in µm
+            targetx_piezo = currentx_piezo + dx # in µm
+            targety_piezo = currenty_piezo + dy - 0.005 # in µm
+            targetz_piezo = currentz_piezo + dz - 0.0035 # in µm
             
-            print('target x y z', targetx_piezo, targety_piezo, targetz_piezo)
+            # print('target x y z', targetx_piezo, targety_piezo, targetz_piezo)
                         
             self.actuator_xyz(targetx_piezo, targety_piezo, targetz_piezo)
                          
@@ -1054,7 +1187,7 @@ class Backend(QtCore.QObject):
             
             self.pz.set_positions([i+1, i+1, i+1]) # go to the middle of the piezo range
             time.sleep(.1)
-
+            
     def reset(self):
         
         self.initial = True
@@ -1073,7 +1206,6 @@ class Backend(QtCore.QObject):
         self.time = np.zeros(self.npoints)
         self.ptr = 0
         self.startTime = time.time()
-        self.j = 0  # iterator on the data array
         
         self.changedData.emit(self.time, self.xData, self.yData, self.zData)
         
@@ -1082,9 +1214,28 @@ class Backend(QtCore.QObject):
         # TODO: fix for N particles
         
         self.time_array = np.zeros(self.buffersize, dtype=np.float16)
-        self.x_array = np.zeros(self.buffersize, dtype=np.float16)
-        self.y_array = np.zeros(self.buffersize, dtype=np.float16)
+        self.x_array = np.zeros((self.buffersize, N_NP), dtype=np.float16)
+        self.y_array = np.zeros((self.buffersize, N_NP), dtype=np.float16)
+        self.j = 0  # iterator on the data array
+
         
+    def export_image(self):
+        
+        # folder
+        
+        today = str(date.today()).replace('-', '')  # TODO: change to right folder
+        root = r'C:/Users/Santiago/Documents/minflux/data/'
+        folder = root + today
+        
+        fname = 'image'
+        #case distinction to prevent wrong filenaming when starting minflux or psf measurement
+        if fname[0] == '!':
+            filename = fname[1:]
+        else:
+            filename = tools.getUniqueName(fname)
+        
+        tifffile.imwrite(folder + '/' + fname + '.tif', self.image)   
+
     def export_data(self):
         
         """
@@ -1101,18 +1252,22 @@ class Backend(QtCore.QObject):
             filename = fname[1:]
         else:
             filename = tools.getUniqueName(fname)
-        filename = filename + '_xydata.txt'
+        filename = filename + '.txt'
         
         size = self.j
-        savedData = np.zeros((3, size))
+        savedData = np.zeros((size, 2*N_NP+1))
 
-        savedData[0, :] = self.time_array[0:self.j]
-        savedData[1, :] = self.x_array[0:self.j]
-        savedData[2, :] = self.y_array[0:self.j]
+        savedData[:, 0] = self.time_array[0:self.j]
+        savedData[:, 1:N_NP+1] = self.x_array[0:self.j, :]
+        savedData[:, N_NP+1:2*N_NP+1] = self.y_array[0:self.j, :]
         
-        np.savetxt(filename, savedData.T,  header='t (s), x (nm), y(nm)') # transpose for easier loading
+        np.savetxt(filename, savedData,  header='t (s), x (nm), y(nm)') # transpose for easier loading
         
         print(datetime.now(), '[xy_tracking] xy data exported to', filename)
+        
+        print('Exported data shape', np.shape(savedData))
+        
+        self.export_image()
 
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
@@ -1121,8 +1276,17 @@ class Backend(QtCore.QObject):
         Description: gets value of the save_data_state variable, True -> save,
         False -> don't save
         '''
+        
+        print(self.pz.get_positions())
 
+        if self.save_data_state is True:
+                self.export_data()
+        else:
+            pass
+             
+        self.reset_data_arrays()
         self.save_data_state = val
+        
 
         if DEBUG:
             print(datetime.now(), '[xy_tracking] save_data_state = {}'.format(val))
@@ -1135,7 +1299,7 @@ class Backend(QtCore.QObject):
         Description: gets coordinates of the ROI in the GUI
         
         '''
-                
+        
         if roi_type == 'xy':
                     
             # print(len(coordinates_list))
@@ -1163,6 +1327,9 @@ class Backend(QtCore.QObject):
         frontend.trackingBeadsBox.stateChanged.connect(lambda: self.toggle_tracking(frontend.trackingBeadsBox.isChecked()))
         frontend.liveviewButton.clicked.connect(self.liveview)
         frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
+        frontend.piParamsSignal.connect(self.setup_pi)
+        frontend.piezopiParamsSignal.connect(self.setup_piezo_pi)
+        
         
         # TODO: clean-up checkbox such that they're fully reversible
         
@@ -1210,9 +1377,9 @@ if __name__ == '__main__':
         print('Unable to connect to piezo')
     
     print('Model {}'.format(cam.model))
-    print('Serial number {}'.format(cam.serial))
+    print('Cam Serial number {}'.format(cam.serial))
     
-    print('Serial number {}'.format(bpc.list_devices()))
+    print('Piezo Serial number {}'.format(bpc.list_devices()))
     
     gui = Frontend()
     worker = Backend(cam, pz)

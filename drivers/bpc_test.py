@@ -26,3 +26,11 @@ pz.set_positions([1.234, 2.985, 3.256])
 pz.get_positions()
 pz.set_positions([1.234, 2.985, 3.256])
 pz.get_positions()
+
+# chan = pz._piezo.GetChannel(1)
+
+# cts = chan.GetFeedbackLoopPIconsts()
+
+# cts.ProportionalTerm = 100
+# cts.IntegralTerm = 0
+
