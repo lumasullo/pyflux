@@ -41,11 +41,12 @@ from drivers import bpc_piezo as bpc
 
 
 DEBUG = True
+VIDEO = False
 
-PX_SIZE = 35.0 # px size of camera in nm
+PX_SIZE = 29.0 # px size of camera in nm
 PX_Z = 25.0 # px size for z in nm
 
-N_NP = 10 # number of AuNP required
+# N_NP = 10 # number of AuNP required
 
 class Frontend(QtGui.QFrame):
     
@@ -74,31 +75,29 @@ class Frontend(QtGui.QFrame):
 
         super().__init__(*args, **kwargs)
         
-        self.setup_gui()
-        
         # initial ROI parameters        
         
-        self.NofPixels = 200
-        self.roi = None
         self.ROInumber = 0
         self.roilist = []
-
-    def craete_roi(self, roi_type):
+        self.xCurve = None 
+        
+        self.setup_gui()
+        
+    def create_roi(self, roi_type):
         
         if roi_type == 'xy':
         
             ROIpen = pg.mkPen(color='r')
     
             ROIpos = (512 - 64, 512 - 64)
-            self.roi = viewbox_tools.ROI2(50, self.vb, ROIpos,
-                                         handlePos=(1, 0),
-                                         handleCenter=(0, 1),
-                                         scaleSnap=True,
-                                         translateSnap=True,
-                                         pen=ROIpen, number=self.ROInumber)
+            roi = viewbox_tools.ROI2(50, self.vb, ROIpos, handlePos=(1, 0),
+                                     handleCenter=(0, 1),
+                                     scaleSnap=True,
+                                     translateSnap=True,
+                                     pen=ROIpen, number=self.ROInumber)
             
             self.ROInumber += 1
-            self.roilist.append(self.roi)
+            self.roilist.append(roi)
             self.xyROIButton.setChecked(False)
             
         if roi_type == 'z':
@@ -149,7 +148,7 @@ class Frontend(QtGui.QFrame):
             coordinates_list = [coordinates]
             
             self.z_roiInfoSignal.emit('z', 0, coordinates_list)
-            
+                        
     def emit_pi_params(self):
         
         self.piParamsSignal.emit(np.array(self.piParamsEdit.text().split(' '),
@@ -160,16 +159,7 @@ class Frontend(QtGui.QFrame):
         self.piezopiParamsSignal.emit(np.array(self.piezopiParamsEdit.text().split(' '),
                                                dtype=np.int16))
     def delete_roi(self):
-        
-        # for i in range(len(self.roilist)):
-            
-        #     self.vb.removeItem(self.roilist[i])
-        #     self.roilist[i].hide()
-            
-        # self.roilist = []
-        # self.delete_roiButton.setChecked(False)
-        # self.ROInumber = 0
-        
+                
         self.vb.removeItem(self.roilist[-1])
         self.roilist[-1].hide()
         self.roilist = self.roilist[:-1]
@@ -186,27 +176,21 @@ class Frontend(QtGui.QFrame):
             self.emit_roi_info()
             self.img.setImage(np.zeros((512,512)), autoLevels=False)
             print(datetime.now(), '[xy_tracking] Live view stopped')
-        
-    # @pyqtSlot()  
-    # def get_roi_request(self):
-        
-    #     print(datetime.now(), '[xy_tracking] got ROI request')
-        
-    #     self.emit_roi_info()
-        
+    
     @pyqtSlot(np.ndarray)
     def get_image(self, img):
                 
         self.img.setImage(img, autoLevels=False)
-                
+
         # self.xaxis.setScale(scale=PX_SIZE/1000) #scale to µm
         # self.yaxis.setScale(scale=PX_SIZE/1000) #scale to µm
         
-        
-    @pyqtSlot(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
-    def get_data(self, tData, xData, yData, zData):
+    @pyqtSlot(np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray)
+    def get_data(self, tData, xData, yData, zData, avgIntData):
         
         # x data
+        
+        N_NP = np.shape(xData)[1]
         
         for i in range(N_NP):
         
@@ -214,14 +198,6 @@ class Frontend(QtGui.QFrame):
             
         self.xmeanCurve.setData(tData, np.mean(xData, axis=1))
         
-        # t0 = time.time()
-        # xstd = np.std(np.mean(xData, axis=1))
-        # xmean = np.mean(np.mean(xData, axis=1))
-        # t1 = time.time()
-        
-        # print('xstd, xmean', xstd, xmean)
-        # print('it took', t1-t0,'to calculate the stats')
-                
         # y data
             
         for i in range(N_NP):
@@ -234,14 +210,20 @@ class Frontend(QtGui.QFrame):
         
         self.zCurve.setData(tData, zData)
         
+        # avg intensity data
+        
+        self.avgIntCurve.setData(avgIntData)
+        
+        # set xy 2D data
+        
         self.xyDataItem.setData(np.mean(xData, axis=1), np.mean(yData, axis=1))
         
         if len(xData) > 2:
             
             self.plot_ellipse(xData, yData)
             
-            x, y = np.histogram(zData, bins=60)
-            self.zHist.setOpts(height=x)
+            hist, bin_edges = np.histogram(zData, bins=60)
+            self.zHist.setOpts(x=bin_edges[:-1], height=hist)
              
             xstd = np.std(np.mean(xData, axis=1))
             self.xstd_value.setText(str(np.around(xstd, 2)))
@@ -288,7 +270,6 @@ class Frontend(QtGui.QFrame):
         if self.saveDataBox.isChecked():
             
             self.saveDataSignal.emit(True)
-            # self.emit_roi_info()
             
         else:
             
@@ -353,11 +334,13 @@ class Frontend(QtGui.QFrame):
         self.vb.addItem(self.img)
         self.vb.setAspectLocked(True)
         imageWidget.setAspectLocked(True)
-                
+
+        # self.img.setLookupTable('plasma', )          
         # set up histogram for the liveview image
 
         self.hist = pg.HistogramLUTItem(image=self.img)
-        # lut = viewbox_tools.generatePgColormap(cmaps.parula)
+        # self.hist.setPredefinedGradient('greyclip')
+        # lut = viewbox_tools.generatePgColormap('inferno')
         # self.hist.gradient.setColorMap(lut)
 #        self.hist.vb.setLimits(yMin=800, yMax=3000)
 
@@ -382,11 +365,7 @@ class Frontend(QtGui.QFrame):
         self.xyzGraph.xPlot.setLabels(bottom=('Time', 's'),
                                       left=('X position', 'nm'))
         self.xyzGraph.xPlot.showGrid(x=True, y=True)
-        
-        self.xCurve = [0] * N_NP
-        for i in range(N_NP):
-            self.xCurve[i] = self.xyzGraph.xPlot.plot(pen='b', alpha=0.3)
-            self.xCurve[i].setAlpha(0.3, auto=False)
+                        
         self.xmeanCurve = self.xyzGraph.xPlot.plot(pen='b', width=40)
             
         self.xyzGraph.yPlot = self.xyzGraph.addPlot(row=1, col=0)
@@ -394,10 +373,6 @@ class Frontend(QtGui.QFrame):
                                      left=('Y position', 'nm'))
         self.xyzGraph.yPlot.showGrid(x=True, y=True)
         
-        self.yCurve = [0] * N_NP
-        for i in range(N_NP):
-            self.yCurve[i] = self.xyzGraph.yPlot.plot(pen='r', alpha=0.3)
-            self.yCurve[i].setAlpha(0.3, auto=False)
         self.ymeanCurve = self.xyzGraph.yPlot.plot(pen='r', width=40)
         
         
@@ -406,6 +381,12 @@ class Frontend(QtGui.QFrame):
                                      left=('Z position', 'nm'))
         self.xyzGraph.zPlot.showGrid(x=True, y=True)
         self.zCurve = self.xyzGraph.zPlot.plot(pen='y')
+        
+        self.xyzGraph.avgIntPlot = self.xyzGraph.addPlot(row=3, col=0)
+        self.xyzGraph.avgIntPlot.setLabels(bottom=('Time', 's'),
+                                           left=('Av. intensity', 'Counts'))
+        self.xyzGraph.avgIntPlot.showGrid(x=True, y=True)
+        self.avgIntCurve = self.xyzGraph.avgIntPlot.plot(pen='g')
         
         # xy drift graph (2D point plot)
         
@@ -435,7 +416,7 @@ class Frontend(QtGui.QFrame):
         x = np.arange(-30, 30)
         y = np.zeros(len(x))
     
-        self.zHist = pg.BarGraphItem(x=x, height=y, width=0.6, brush='g')
+        self.zHist = pg.BarGraphItem(x=x, height=y, width=0.6, brush='#3BC14A')
 
         self.zWin = self.xyPoint.addPlot()
         self.zWin.addItem(self.zHist)
@@ -449,13 +430,13 @@ class Frontend(QtGui.QFrame):
     
         self.xyROIButton = QtGui.QPushButton('xy ROI')
         self.xyROIButton.setCheckable(True)
-        self.xyROIButton.clicked.connect(lambda: self.craete_roi(roi_type='xy'))
+        self.xyROIButton.clicked.connect(lambda: self.create_roi(roi_type='xy'))
         
         # create z ROI button
     
         self.zROIButton = QtGui.QPushButton('z ROI')
         self.zROIButton.setCheckable(True)
-        self.zROIButton.clicked.connect(lambda: self.craete_roi(roi_type='z'))
+        self.zROIButton.clicked.connect(lambda: self.create_roi(roi_type='z'))
         
         # select xy ROI
         
@@ -479,6 +460,7 @@ class Frontend(QtGui.QFrame):
         # position tracking checkbox
         
         self.trackingBeadsBox = QtGui.QCheckBox('Track xy fiducials')
+        self.trackingBeadsBox.stateChanged.connect(self.setup_data_curves)
         self.trackingBeadsBox.stateChanged.connect(self.emit_roi_info)
         
         # position tracking checkbox
@@ -498,14 +480,13 @@ class Frontend(QtGui.QFrame):
         # pi feedback loop params
         
         self.piParamsLabel = QtGui.QLabel('PI params')
-        self.piParamsEdit = QtGui.QLineEdit('0.37 0.37 0.37 0.022 0.022 0.022')
+        self.piParamsEdit = QtGui.QLineEdit('0.38 0.3825 0.38 0.022 0.022 0.022')
         self.piParamsEdit.textChanged.connect(self.emit_pi_params)
         
         self.piezopiParamsLabel = QtGui.QLabel('Piezo internal PI params')
         self.piezopiParamsEdit =QtGui.QLineEdit('0.0 0.0')
         self.piezopiParamsEdit.textChanged.connect(self.emit_piezopi_params)
 
-        
         # button to clear the data
         
         self.clearDataButton = QtGui.QPushButton('Clear data')
@@ -556,6 +537,33 @@ class Frontend(QtGui.QFrame):
         
         self.liveviewButton.clicked.connect(lambda: self.toggle_liveview(self.liveviewButton.isChecked()))
         
+    def setup_data_curves(self):
+                    
+        if self.trackingBeadsBox.isChecked():
+            
+            if self.xCurve is not None:
+        
+                for i in range(len(self.roilist)): # remove previous curves
+                
+                    self.xyzGraph.xPlot.removeItem(self.xCurve[i]) 
+                    self.xyzGraph.yPlot.removeItem(self.yCurve[i]) 
+                
+            self.xCurve = [0] * len(self.roilist)
+            
+            for i in range(len(self.roilist)):
+                self.xCurve[i] = self.xyzGraph.xPlot.plot(pen='b', alpha=0.3)
+                self.xCurve[i].setAlpha(0.3, auto=False)
+                
+            self.yCurve = [0] * len(self.roilist)
+            
+            for i in range(len(self.roilist)):
+                self.yCurve[i] = self.xyzGraph.yPlot.plot(pen='r', alpha=0.3)
+                self.yCurve[i].setAlpha(0.3, auto=False) 
+                    
+        else:
+            
+            pass
+            
     def closeEvent(self, *args, **kwargs):
         
         print('close in frontend')
@@ -568,7 +576,7 @@ class Frontend(QtGui.QFrame):
 class Backend(QtCore.QObject):
     
     changedImage = pyqtSignal(np.ndarray)
-    changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray, np.ndarray)
+    changedData = pyqtSignal(np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray)
 
     xyIsDone = pyqtSignal(bool, float, float)  # signal to emit new piezo position after drift correction
     
@@ -594,23 +602,32 @@ class Backend(QtCore.QObject):
         self.camera.auto_blacklevel = True
         self.camera.gain_boost = True
         
+        if VIDEO:
+            self.video = []
+        
         self.pz = piezo
         self.pz.connect()
         self.pz.set_zero() # important for internal piezo calibration
         
-        self.setup_pi(np.array([0.37, 0.37, 0.37, 0.022, 0.022, 0.022]))
+        self.setup_pi(np.array([0.38, 0.3825, 0.38, 0.022, 0.022, 0.022]))
                 
         # folder
         
-        today = str(date.today()).replace('-', '')  # TODO: change to right folder
+        today = str(date.today()).replace('-', '')
         root = r'C:/Users/Santiago/Documents/minflux/data/'
-        folder = root + today
+        self.folder = root + today
         
-        filename = r'\xydata'
-        self.filename = folder + filename
+        try:
+            os.mkdir(self.folder)
+            
+        except OSError:
+            print ("Creation of the directory %s failed" % self.folder)
+            
+        else:
+            print ("Successfully created the directory %s " % self.folder)
+
         
         self.view_timer = QtCore.QTimer()
-        # self.view_timer.timeout.connect(self.update)
         self.xyz_time = 200 # 200 ms per acquisition + fit + correction
         
         self.tracking_value = False
@@ -621,8 +638,8 @@ class Backend(QtCore.QObject):
         self.npoints = 1200
         self.buffersize = 30000 # TODO: fix bug when self.j reaches buffersize
                 
-        self.reset()
-        self.reset_data_arrays()
+        # self.reset()
+        # self.reset_data_arrays()
         
         self.counter = 0
         self.pattern = False
@@ -640,7 +657,6 @@ class Backend(QtCore.QObject):
             self.liveview_stop()
             self.camON = False
 
-        
     def liveview_start(self):
         
         if self.camON:
@@ -651,9 +667,7 @@ class Backend(QtCore.QObject):
         self.camera.start_live_video()
         self.camera._set_exposure(Q_('50 ms')) # ms
 
-
         self.view_timer.start(self.xyz_time)
-
         
     def liveview_stop(self):
         
@@ -667,7 +681,7 @@ class Backend(QtCore.QObject):
             
         val = np.array([x0, y0, x1, y1])
         # self.get_new_roi(val)
-                    
+                  
     def update(self):
         """ General update method """
         
@@ -709,7 +723,6 @@ class Backend(QtCore.QObject):
 
         self.counter += 1  # counter to check how many times this function is executed
 
-
     def update_view(self):
         """ Image update while in Liveview mode """
 
@@ -728,43 +741,15 @@ class Backend(QtCore.QObject):
             print('WARNING: latest_frame equal to previous frame')
     
         self.previous_image = self.image
+        
+        if (VIDEO and self.save_data_state):
+                
+            self.video.append(self.image)
     
         # send image to the Frontend
         
         self.changedImage.emit(self.image)
         
-    # def update_graph_data(self):
-    #     """ Update the data displayed in the graphs """
-        
-    #     print('update graph data')
-    #     print(np.mean(self.x))
-    #     print(np.mean(self.y))
-        
-    #     if self.ptr < self.npoints:
-    #         self.xData[self.ptr] = np.mean(self.x)
-    #         self.yData[self.ptr] = np.mean(self.y)
-    #         self.zData[self.ptr] = self.z
-    #         self.time[self.ptr] = self.currentTime
-            
-    #         self.changedData.emit(self.time[0:self.ptr + 1],
-    #                               self.xData[0:self.ptr + 1],
-    #                               self.yData[0:self.ptr + 1],
-    #                               self.zData[0:self.ptr + 1])
-
-    #     else:
-    #         self.xData[:-1] = self.xData[1:]
-    #         self.xData[-1] = np.mean(self.x)
-    #         self.yData[:-1] = self.yData[1:]
-    #         self.yData[-1] = np.mean(self.y)
-    #         self.zData[:-1] = self.zData[1:]
-    #         self.zData[-1] = self.z
-    #         self.time[:-1] = self.time[1:]
-    #         self.time[-1] = self.currentTime
-            
-    #         self.changedData.emit(self.time, self.xData, self.yData, self.zData)
-
-    #     self.ptr += 1
-    
     def update_graph_data(self):
         """ Update the data displayed in the graphs """
         
@@ -772,12 +757,14 @@ class Backend(QtCore.QObject):
             self.xData[self.ptr, :] = self.x
             self.yData[self.ptr, :] = self.y
             self.zData[self.ptr] = self.z
+            self.avgIntData[self.ptr] = self.avgInt
             self.time[self.ptr] = self.currentTime
             
             self.changedData.emit(self.time[0:self.ptr + 1],
                                   self.xData[0:self.ptr + 1],
                                   self.yData[0:self.ptr + 1],
-                                  self.zData[0:self.ptr + 1])
+                                  self.zData[0:self.ptr + 1],
+                                  self.avgIntData[0:self.ptr + 1])
             
         else:
             self.xData[:-1] = self.xData[1:]
@@ -786,10 +773,13 @@ class Backend(QtCore.QObject):
             self.yData[-1, :] = self.y
             self.zData[:-1] = self.zData[1:]
             self.zData[-1] = self.z
+            self.avgIntData[:-1] = self.avgIntData[1:]
+            self.avgIntData[-1] = self.avgInt
             self.time[:-1] = self.time[1:]
             self.time[-1] = self.currentTime
             
-            self.changedData.emit(self.time, self.xData, self.yData, self.zData)
+            self.changedData.emit(self.time, self.xData, self.yData, 
+                                  self.zData, self.avgIntData)
 
         self.ptr += 1
     
@@ -803,7 +793,6 @@ class Backend(QtCore.QObject):
         
         '''
 
-        
         self.startTime = time.time()
         
         if val is True:
@@ -1011,6 +1000,12 @@ class Backend(QtCore.QObject):
         
         """
         
+        # Calculate average intensity in the image to check laser fluctuations
+        
+        self.avgInt = np.mean(self.image)
+        
+        print('Average intensity', self.avgInt)
+        
         # xy track routine of N=size fiducial AuNP
 
         if track_type == 'xy':
@@ -1156,7 +1151,6 @@ class Backend(QtCore.QObject):
             
             # dy, dx = np.dot(R, np.asarray([dx, dy]))
             
-            
             # print('dx, dy', dx, dy)
             
             # # add correction to piezo position
@@ -1169,9 +1163,13 @@ class Backend(QtCore.QObject):
             
             # print('current x, y, z', currentx_piezo, currenty_piezo, currentz_piezo)
             
+            # TODO: check the ad hoc fixes
+            
             targetx_piezo = currentx_piezo + dx # in µm
-            targety_piezo = currenty_piezo + dy - 0.005 # in µm
-            targetz_piezo = currentz_piezo + dz - 0.0035 # in µm
+            # targety_piezo = currenty_piezo + dy - 0.0035 # in µm
+            # targetz_piezo = currentz_piezo + dz - 0.0035 # in µm
+            targety_piezo = currenty_piezo + dy  # in µm
+            targetz_piezo = currentz_piezo + dz  # in µm
             
             # print('target x y z', targetx_piezo, targety_piezo, targetz_piezo)
                         
@@ -1203,50 +1201,48 @@ class Backend(QtCore.QObject):
             self.yData = np.zeros(self.npoints)
         
         self.zData = np.zeros(self.npoints)
+        self.avgIntData = np.zeros(self.npoints)
         self.time = np.zeros(self.npoints)
         self.ptr = 0
         self.startTime = time.time()
         
-        self.changedData.emit(self.time, self.xData, self.yData, self.zData)
+        self.changedData.emit(self.time, self.xData, self.yData, self.zData, 
+                              self.avgIntData)
         
     def reset_data_arrays(self):
         
-        # TODO: fix for N particles
-        
         self.time_array = np.zeros(self.buffersize, dtype=np.float16)
-        self.x_array = np.zeros((self.buffersize, N_NP), dtype=np.float16)
-        self.y_array = np.zeros((self.buffersize, N_NP), dtype=np.float16)
+        
+        self.x_array = np.zeros((self.buffersize, 
+                                 len(self.roi_coordinates_list)), 
+                                 dtype=np.float16)
+        
+        self.y_array = np.zeros((self.buffersize, 
+                                 len(self.roi_coordinates_list)), 
+                                 dtype=np.float16)
+        
         self.j = 0  # iterator on the data array
 
-        
     def export_image(self):
         
-        # folder
+        fname = self.folder + '/image'
         
-        today = str(date.today()).replace('-', '')  # TODO: change to right folder
-        root = r'C:/Users/Santiago/Documents/minflux/data/'
-        folder = root + today
-        
-        fname = 'image'
         #case distinction to prevent wrong filenaming when starting minflux or psf measurement
         if fname[0] == '!':
             filename = fname[1:]
         else:
             filename = tools.getUniqueName(fname)
         
-        tifffile.imwrite(folder + '/' + fname + '.tif', self.image)   
+        tifffile.imwrite(fname + '.tif', self.image)   
 
     def export_data(self):
         
         """
         Exports the x, y and t data into a .txt file
         """
-
-#        fname = self.filename
-##        filename = tools.getUniqueName(fname)    # TO DO: fix filename / folder
-#        filename = fname + '_xydata.txt'
         
-        fname = self.filename
+        fname = self.folder + '/xy_data'
+        
         #case distinction to prevent wrong filenaming when starting minflux or psf measurement
         if fname[0] == '!':
             filename = fname[1:]
@@ -1255,6 +1251,8 @@ class Backend(QtCore.QObject):
         filename = filename + '.txt'
         
         size = self.j
+        N_NP = len(self.roi_coordinates_list)
+        
         savedData = np.zeros((size, 2*N_NP+1))
 
         savedData[:, 0] = self.time_array[0:self.j]
@@ -1264,10 +1262,13 @@ class Backend(QtCore.QObject):
         np.savetxt(filename, savedData,  header='t (s), x (nm), y(nm)') # transpose for easier loading
         
         print(datetime.now(), '[xy_tracking] xy data exported to', filename)
-        
         print('Exported data shape', np.shape(savedData))
         
         self.export_image()
+        
+        if VIDEO:
+            
+            tifffile.imwrite(fname + 'video' + '.tif', np.array(self.video))
 
     @pyqtSlot(bool)
     def get_save_data_state(self, val):
@@ -1301,10 +1302,7 @@ class Backend(QtCore.QObject):
         '''
         
         if roi_type == 'xy':
-                    
-            # print(len(coordinates_list))
-            # print(coordinates_list)
-        
+                            
             self.roi_coordinates_list = coordinates_list
         
             if DEBUG:
@@ -1329,7 +1327,6 @@ class Backend(QtCore.QObject):
         frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         frontend.piParamsSignal.connect(self.setup_pi)
         frontend.piezopiParamsSignal.connect(self.setup_piezo_pi)
-        
         
         # TODO: clean-up checkbox such that they're fully reversible
         
