@@ -480,7 +480,7 @@ class Frontend(QtGui.QFrame):
         # pi feedback loop params
         
         self.piParamsLabel = QtGui.QLabel('PI params')
-        self.piParamsEdit = QtGui.QLineEdit('0.38 0.3825 0.38 0.022 0.022 0.022')
+        self.piParamsEdit = QtGui.QLineEdit('0.37 0.37 0.37 0.022 0.022 0.022')
         self.piParamsEdit.textChanged.connect(self.emit_pi_params)
         
         self.piezopiParamsLabel = QtGui.QLabel('Piezo internal PI params')
@@ -494,6 +494,10 @@ class Frontend(QtGui.QFrame):
         # button to reset piezo position
         
         self.resetPiezoPosButton = QtGui.QPushButton('Reset piezo position')
+        
+        # button to make custom pattern
+        
+        self.xyPatternButton = QtGui.QPushButton('Start pattern')
                 
         # buttons and param layout
         
@@ -513,6 +517,7 @@ class Frontend(QtGui.QFrame):
         # subgrid.addWidget(self.exportDataButton, 6, 0)
         subgrid.addWidget(self.clearDataButton, 6, 0)
         subgrid.addWidget(self.resetPiezoPosButton, 7, 0)
+        subgrid.addWidget(self.xyPatternButton, 8, 0)
         subgrid.addWidget(self.trackingBeadsBox, 1, 1)
         # subgrid.addWidget(self.trackZbeamBox, 2, 1)
         subgrid.addWidget(self.feedbackLoopBox, 2, 1)
@@ -609,7 +614,7 @@ class Backend(QtCore.QObject):
         self.pz.connect()
         self.pz.set_zero() # important for internal piezo calibration
         
-        self.setup_pi(np.array([0.38, 0.3825, 0.38, 0.022, 0.022, 0.022]))
+        self.setup_pi(np.array([0.38, 0.3825, 0.37, 0.015, 0.015, 0.022]))
                 
         # folder
         
@@ -637,11 +642,12 @@ class Backend(QtCore.QObject):
 
         self.npoints = 1200
         self.buffersize = 30000 # TODO: fix bug when self.j reaches buffersize
-                
-        # self.reset()
-        # self.reset_data_arrays()
-        
+
         self.counter = 0
+
+        # saves displacement when offsetting setpoint for feedbackloop
+        
+        self.displacement = np.array([0.0, 0.0])
         self.pattern = False
         
         self.previous_image = None
@@ -720,6 +726,13 @@ class Backend(QtCore.QObject):
                 t1 = time.time()
                 
                 print('correct took', (t1-t0)*1000, 'ms')
+                
+        if self.pattern:
+            
+            val = (self.counter - self.initcounter)
+            num_of_frames = 50
+            if (val % num_of_frames == 0):
+                self.make_tracking_pattern(val//num_of_frames)
 
         self.counter += 1  # counter to check how many times this function is executed
 
@@ -754,8 +767,8 @@ class Backend(QtCore.QObject):
         """ Update the data displayed in the graphs """
         
         if self.ptr < self.npoints:
-            self.xData[self.ptr, :] = self.x
-            self.yData[self.ptr, :] = self.y
+            self.xData[self.ptr, :] = self.x + self.displacement[0]
+            self.yData[self.ptr, :] = self.y + self.displacement[1]
             self.zData[self.ptr] = self.z
             self.avgIntData[self.ptr] = self.avgInt
             self.time[self.ptr] = self.currentTime
@@ -768,9 +781,9 @@ class Backend(QtCore.QObject):
             
         else:
             self.xData[:-1] = self.xData[1:]
-            self.xData[-1, :] = self.x
+            self.xData[-1, :] = self.x + self.displacement[0]
             self.yData[:-1] = self.yData[1:]
-            self.yData[-1, :] = self.y
+            self.yData[-1, :] = self.y + self.displacement[1]
             self.zData[:-1] = self.zData[1:]
             self.zData[-1] = self.z
             self.avgIntData[:-1] = self.avgIntData[1:]
@@ -827,6 +840,8 @@ class Backend(QtCore.QObject):
         Connection: [frontend] feedbackLoopBox.stateChanged
         Description: toggles ON/OFF feedback for continous active correction
         '''
+        
+        self.displacement = np.array([0.0, 0.0])
         
         if val is True:
             
@@ -1046,8 +1061,8 @@ class Backend(QtCore.QObject):
             if self.save_data_state:
                 
                 self.time_array[self.j] = self.currentTime
-                self.x_array[self.j, :] = self.x 
-                self.y_array[self.j, :] = self.y
+                self.x_array[self.j, :] = self.x + self.displacement[0]
+                self.y_array[self.j, :] = self.y + self.displacement[1]
                 
                 self.j += 1
                             
@@ -1178,6 +1193,93 @@ class Backend(QtCore.QObject):
     def actuator_xyz(self, x, y, z=None):
         
         self.pz.set_positions([float(x), float(y), float(z)]) # in µm
+        
+    def start_tracking_pattern(self):
+        
+        self.pattern = True
+        self.initcounter = self.counter
+        self.save_data_state = True
+        
+    def make_tracking_pattern(self, step):
+                
+        # if (step < 1) or (step > 4):
+        #     return
+        # elif step == 1:
+        #     dist = np.array([0.0, 10.0])
+        # elif step == 2:
+        #     dist = np.array([10.0, 0.0])
+        # elif step == 3:
+        #     dist = np.array([0.0, -10.0])
+        # elif step == 4:
+        #     dist = np.array([-10.0, 0.0])
+            
+        #     self.export_data()
+        #     self.save_data_state = False
+        
+        # if (step < 1) or (step > 10):
+        #     return
+        # elif step == 1:
+        #     dist = np.array([0.0, -50.0])
+        # elif step == 2:
+        #     dist = np.array([0.0, 10.0])
+        # elif step == 3:
+        #     dist = np.array([0.0, 20.0])
+        # elif step == 4:
+        #     dist = np.array([0.0, 30.0])
+        # elif step == 5:
+        #     dist = np.array([0.0, 40.0])
+        # elif step == 6:
+        #     dist = np.array([0.0, 50.0])
+        # elif step == 7:
+        #     dist = np.array([0.0, 60.0])
+        # elif step == 8:
+        #     dist = np.array([0.0, 70.0])
+        # elif step == 9:
+        #     dist = np.array([0.0, 80.0])
+        # elif step == 10:
+        #     dist = np.array([0.0, 90.0])
+        # elif step == 11:
+        #     dist = np.array([0.0, 100.0])
+            
+        #     self.export_data()
+        #     self.save_data_state = False
+        
+        deltax = 10
+        initialpos = -50
+        
+        if (step < 0) or (step > 10):
+            return
+        elif step == 0:
+            dist = np.array([initialpos, 0.0])
+        elif step == 1:
+            dist = np.array([deltax, 0.0])
+        elif step == 2:
+            dist = np.array([deltax, 0.0])
+        elif step == 3:
+            dist = np.array([deltax, 0.0])
+        elif step == 4:
+            dist = np.array([deltax, 0.0])
+        elif step == 5:
+            dist = np.array([deltax, 0.0])
+        elif step == 6:
+            dist = np.array([deltax, 0.0])
+        elif step == 7:
+            dist = np.array([deltax, 0.0])
+        elif step == 8:
+            dist = np.array([deltax, 0.0])
+        elif step == 9:
+            dist = np.array([deltax, 0.0])
+        elif step == 10:
+            dist = np.array([deltax, 0.0])
+            
+            self.export_data()
+            self.save_data_state = False
+        
+        self.initialx = self.initialx + dist[0]
+        self.initialy = self.initialy + dist[1]
+        self.displacement = self.displacement + dist
+        
+        print(datetime.now(), '[xy_tracking] Moved setpoint by', dist)
         
     def reset_piezo_position(self):
         
@@ -1327,6 +1429,7 @@ class Backend(QtCore.QObject):
         frontend.feedbackLoopBox.stateChanged.connect(lambda: self.toggle_feedback(frontend.feedbackLoopBox.isChecked()))
         frontend.piParamsSignal.connect(self.setup_pi)
         frontend.piezopiParamsSignal.connect(self.setup_piezo_pi)
+        frontend.xyPatternButton.clicked.connect(self.start_tracking_pattern)
         
         # TODO: clean-up checkbox such that they're fully reversible
         
